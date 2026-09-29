@@ -3,8 +3,7 @@ title: Astrix Space Odyssey
 emoji: 🚀
 colorFrom: blue
 colorTo: indigo
-sdk: docker
-app_port: 7860
+sdk: static
 pinned: false
 ---
 
