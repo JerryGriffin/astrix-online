@@ -12,15 +12,15 @@
 //
 // 约定：不修改 state.js（账号对象由调用方传入）；互 import 仅限函数体内使用（无 TDZ 风险）。
 
-import { PLANETS } from '../data/planets.js?v=21.0';
+import { PLANETS } from '../data/planets.js?v=21.1';
 import {
   generateRandomPlanet, capturePlanet, captureDefaultPlanet, uncapturedDefaults,
-} from './planetgen.js?v=21.0';
-import { ownedOf, spendOwned, getPlanetInstance } from './state.js?v=21.0';
-import { CELL_VOLUME, cellsForEquipmentKey } from './footprint.js?v=21.0';   // 纯聚合工具，state.js 不 import 本文件，无环
-import { resolveBlueprint, totalMass } from './shipyard.js?v=21.0';          // 只读导出：蓝图部件 / 蓝图质量
-import { ensureEntry } from './production.js?v=21.0';                        // 装卸货 / 奖励入包（生产模块不 import 本文件，无环）
-import { fmtNum } from './format.js?v=21.0';
+} from './planetgen.js?v=21.1';
+import { ownedOf, spendOwned, getPlanetInstance } from './state.js?v=21.1';
+import { CELL_VOLUME, cellsForEquipmentKey } from './footprint.js?v=21.1';   // 纯聚合工具，state.js 不 import 本文件，无环
+import { resolveBlueprint, totalMass } from './shipyard.js?v=21.1';          // 只读导出：蓝图部件 / 蓝图质量
+import { ensureEntry } from './production.js?v=21.1';                        // 装卸货 / 奖励入包（生产模块不 import 本文件，无环）
+import { fmtNum } from './format.js?v=21.1';
 
 // ============================================================================
 // 编队
@@ -390,6 +390,9 @@ export function startMission(acc, fleetId, type, targetCode, cargo) {
     startedAt: Date.now(),
     cmd,
   };
+  if (type === 'explore' || type === 'patrol') {
+    mission.anomaly = generateMissionAnomaly();
+  }
   fleet.mission = mission;
   if (type === 'defense') {
     // 驻留任务立即生效：写入一条 lastResult 供 UI 展示（数字口径同原 cmdDefense）
@@ -401,6 +404,129 @@ export function startMission(acc, fleetId, type, targetCode, cargo) {
     };
   }
   return { ok: true, mission };
+}
+
+export const ANOMALY_POOL = [
+  {
+    type: 'derelict',
+    icon: '🛰️',
+    title: '遭遇古代先驱者遗迹浮标',
+    desc: '深空雷达在引力透镜带捕捉到古老外星战舰遗迹，电磁波谱中残留着未熄灭的离子辉光。',
+    choices: [
+      { id: 'board', text: '派遣特战陆战队登船搜寻', effect: '获得 40 太空元素与高纯硅晶' },
+      { id: 'salvage', text: '远程引力束牵引拆解', effect: '回收 60 特种精炼钢与纯铁' },
+      { id: 'bypass', text: '保持无线电静默规避通过', effect: '安全规避未知辐射' }
+    ]
+  },
+  {
+    type: 'comet',
+    icon: '☄️',
+    title: '侦测到超高密度富矿彗星',
+    desc: '巡航星图前方交汇处掠过一颗富含稀有结晶碳与粗金核的高速彗星。',
+    choices: [
+      { id: 'laser', text: '部署集束激光切割矿核', effect: '捕获 25 粗金与 50 高纯硅晶' },
+      { id: 'harvest', text: '收集电离彗尾高能挥发分', effect: '收获 80 甲烷与 120 氧气' },
+      { id: 'bypass', text: '调整推进喷口规避航道', effect: '维持标准编队航速' }
+    ]
+  },
+  {
+    type: 'beacon',
+    icon: '📡',
+    title: '截获中立商船超空间求救信标',
+    desc: '一艘中立商会穿梭机被引力暗流捕获，反应堆即将过载并呼叫紧急拖曳。',
+    choices: [
+      { id: 'rescue', text: '展开磁力抓捕应急施救', effect: '获得商会致谢酬金 1200 Ascoin + 纯金' },
+      { id: 'plunder', text: '趁火打劫回收货物仓', effect: '掠夺 80 铝与 20 粗金' },
+      { id: 'ignore', text: '忽略求救维持原航线', effect: '不承担任何外交风险' }
+    ]
+  },
+  {
+    type: 'storm',
+    icon: '⚡',
+    title: '突遇脉冲星高能相对论电浆风暴',
+    desc: '剧烈的宇宙磁暴正在席卷跃迁通道，空间曲率传感器出现剧烈共振。',
+    choices: [
+      { id: 'warp_boost', text: '顺应磁暴能流加速跃迁', effect: '当前航程跃迁突进，剩余时长缩短 50%' },
+      { id: 'absorb', text: '偏转护盾相位过载储能', effect: '吸收 30 太空元素并充能' },
+      { id: 'shield_down', text: '收拢翼展全舰冷机潜航', effect: '规避强磁辐射冲击' }
+    ]
+  }
+];
+
+export function generateMissionAnomaly() {
+  const tpl = ANOMALY_POOL[Math.floor(Math.random() * ANOMALY_POOL.length)];
+  return {
+    id: 'ano_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 6),
+    ...tpl,
+    resolved: false,
+    resolvedAt: null,
+    choiceId: null,
+    resultMsg: null,
+  };
+}
+
+export function resolveFleetAnomaly(acc, fleetId, choiceId) {
+  const fleet = listFleets(acc).find((f) => f.id === fleetId);
+  if (!fleet || !fleet.mission || !fleet.mission.anomaly) {
+    return { ok: false, reason: '当前编队没有未解决的深空异象' };
+  }
+  const ano = fleet.mission.anomaly;
+  if (ano.resolved) {
+    return { ok: false, reason: '该异象事件已经处理完毕' };
+  }
+
+  let resultMsg = '';
+
+  if (ano.type === 'derelict') {
+    if (choiceId === 'board') {
+      grantRewards(acc, null, { '太空元素': 40, '硅': 30 });
+      resultMsg = '陆战队搜寻完毕，成功带回 40 太空元素与 30 高纯硅晶！';
+    } else if (choiceId === 'salvage') {
+      grantRewards(acc, null, { '钢': 60, '铁': 80 });
+      resultMsg = '引力束拆解完成，回收 60 精炼钢与 80 纯铁！';
+    } else {
+      resultMsg = '编队保持静默平稳绕行，未引发任何异常警报。';
+    }
+  } else if (ano.type === 'comet') {
+    if (choiceId === 'laser') {
+      grantRewards(acc, null, { '粗金': 25, '硅': 50 });
+      resultMsg = '激光阵列精准剥离矿核，收获 25 粗金与 50 高纯硅晶！';
+    } else if (choiceId === 'harvest') {
+      grantRewards(acc, null, { '甲烷': 80, '氧气': 120 });
+      resultMsg = '捕获电离彗尾，为母星注入 80 甲烷与 120 氧气！';
+    } else {
+      resultMsg = '编队规避了彗星轨道碎片，安然前行。';
+    }
+  } else if (ano.type === 'beacon') {
+    if (choiceId === 'rescue') {
+      acc.ascoin = (Number(acc.ascoin) || 0) + 1200;
+      grantRewards(acc, null, { '粗金': 10 });
+      resultMsg = '商船脱险！商会向我方电汇 1200 Ascoin 并附赠 10 粗金报酬！';
+    } else if (choiceId === 'plunder') {
+      grantRewards(acc, null, { '铝': 80, '粗金': 20 });
+      resultMsg = '成功强行破拆落难货仓，掠夺 80 铝与 20 粗金。';
+    } else {
+      resultMsg = '我方未应答信标，商船信号逐渐淡出监测雷达。';
+    }
+  } else if (ano.type === 'storm') {
+    if (choiceId === 'warp_boost') {
+      const rem = Math.max(0, (fleet.mission.duration || 0) - (fleet.mission.elapsed || 0));
+      fleet.mission.elapsed = (fleet.mission.elapsed || 0) + Math.round(rem * 0.5);
+      resultMsg = '借由电浆风暴能流加速，跃迁耗时骤降 50%！';
+    } else if (choiceId === 'absorb') {
+      grantRewards(acc, null, { '太空元素': 30 });
+      resultMsg = '护盾过载成功吸聚风暴离子，母星收获 30 太空元素！';
+    } else {
+      resultMsg = '冷机潜航成功，全舰各系统指标保持稳定。';
+    }
+  }
+
+  ano.resolved = true;
+  ano.resolvedAt = Date.now();
+  ano.choiceId = choiceId;
+  ano.resultMsg = resultMsg;
+
+  return { ok: true, anomaly: ano, resultMsg };
 }
 
 /** 取消任务：进度作废。驻留防卫也由此结束 */

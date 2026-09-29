@@ -2,27 +2,29 @@
 // 提供编队战备管理、实时战术交互交战视窗、船载物流、殖民地政令与星港贸易。
 // 纯原生 ES 模块，深空玻璃拟态风格，移动端与 PC 端自适应（点击区 >= 44px）。
 
-import { fmtNum, fmtRate, fmtTime } from '../core/format.js?v=21.0';
+import { fmtNum, fmtRate, fmtTime } from '../core/format.js?v=21.1';
 import {
   listFleets, createFleet, disbandFleet, addShipToFleet, removeShipFromFleet,
   fleetSpeedOf, fleetPowerOf, executeCommand,
   startMission, cancelMission, fleetMissionLabel, defenseBonusOf,
   shipCargoOf, loadShipCargo, unloadShipCargo,
   shipCargoMassOf, shipCargoCellsOf, shipCargoCellsMax, effectiveSpeedOf,
-} from '../core/fleet.js?v=21.0';
-import { equipmentList } from '../core/shipyard.js?v=21.0';
+  resolveFleetAnomaly,
+} from '../core/fleet.js?v=21.1';
+import { equipmentList } from '../core/shipyard.js?v=21.1';
 import {
   MANAGEMENT_MODES, MANAGEMENT_BY_ID, modeOf, setManagement,
   TERRITORY_ASSIMILATE_SEC, TERRITORY_HAPPY_THRESHOLD,
-} from '../core/planetgen.js?v=21.0';
+} from '../core/planetgen.js?v=21.1';
 import {
   SHOP_PLANET, shopPrices, sell, pendingOrders, deliverOrder, ascoinBalance,
   suggestPriceOf, listForSale, marketListings, cancelListing, buyListing, priceOf, shopStateOf,
   MARKET_FEE,
-} from '../core/shop.js?v=21.0';
-import { getPlanetInstance, currentAccount, ownedOf } from '../core/state.js?v=21.0';
-import { openBattleView } from './combat.js?v=21.0';
-import { detectShipRole, SHIP_ROLES } from '../core/combat.js?v=21.0';
+} from '../core/shop.js?v=21.1';
+import { getPlanetInstance, currentAccount, ownedOf } from '../core/state.js?v=21.1';
+import { openBattleView } from './combat.js?v=21.1';
+import { detectShipRole, SHIP_ROLES } from '../core/combat.js?v=21.1';
+import { isSoundEnabled, toggleSound, playPing, playVictory, playWarp, playExplosion } from '../core/sound.js?v=21.1';
 
 // HTML 转义
 function esc(s) {
@@ -328,7 +330,19 @@ export function renderFleet(container, ctx) {
     }, 50);
   };
 
+  const btnSound = document.createElement('button');
+  btnSound.className = 'btn-action';
+  btnSound.style.cssText = 'min-height:44px;padding:8px 14px;border-radius:6px;border:1px solid #334155;background:rgba(255,255,255,0.06);color:#cbd5e1;font-size:13px;cursor:pointer;display:flex;align-items:center;gap:6px;';
+  btnSound.innerHTML = isSoundEnabled() ? '🔊 舰载音频: 开' : '🔇 舰载音频: 关';
+  btnSound.onclick = () => {
+    const on = toggleSound();
+    btnSound.innerHTML = on ? '🔊 舰载音频: 开' : '🔇 舰载音频: 关';
+    btnSound.style.color = on ? '#7cd7ff' : '#94a3b8';
+    if (on) playPing();
+  };
+
   summary.appendChild(btnDrill);
+  summary.appendChild(btnSound);
   container.appendChild(summary);
 
   // 2. 编队列表与任务控制区
@@ -417,33 +431,129 @@ export function renderFleet(container, ctx) {
       row.appendChild(addBox);
     }
 
-    // 任务倒计时状态行
+    // 动态星际巡航雷达与深空异象 HUD
     if (fleet.mission) {
-      const mLine = el('div', 'fac-line4 muted fleet-mission');
-      mLine.style.cssText = 'padding:6px 10px;background:rgba(124,215,255,0.08);border-radius:4px;margin:8px 0;color:#7cd7ff;';
-      row.appendChild(mLine);
+      const radarBox = document.createElement('div');
+      radarBox.className = 'fleet-mission-radar';
+      radarBox.style.cssText = 'padding:12px;background:radial-gradient(ellipse at bottom, #111e30 0%, #080c14 100%);border:1px solid #38bdf840;border-radius:8px;margin:10px 0;position:relative;overflow:hidden;';
+
+      const radarHeader = document.createElement('div');
+      radarHeader.style.cssText = 'display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;font-size:13px;';
+      radarHeader.innerHTML = `
+        <span style="font-weight:bold;color:#7cd7ff;display:flex;align-items:center;gap:6px;">
+          <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#38bdf8;box-shadow:0 0 8px #38bdf8;"></span>
+          ${fleetMissionLabel(fleet.mission)}
+        </span>
+        <span id="m-remain-${fleet.id}" style="color:#94a3b8;font-family:monospace;">计算中...</span>
+      `;
+      radarBox.appendChild(radarHeader);
+
+      // 动态星际巡航轨道与旗舰进度条
+      const track = document.createElement('div');
+      track.style.cssText = 'height:28px;background:rgba(0,0,0,0.4);border:1px solid #1e293b;border-radius:14px;position:relative;margin-bottom:10px;overflow:hidden;display:flex;align-items:center;padding:0 8px;';
+      track.innerHTML = `
+        <div id="m-track-bar-${fleet.id}" style="position:absolute;left:0;top:0;bottom:0;width:0%;background:linear-gradient(90deg, rgba(56,189,248,0.1), rgba(56,189,248,0.35));border-right:2px solid #38bdf8;transition:width 0.5s ease;"></div>
+        <div id="m-ship-icon-${fleet.id}" style="position:absolute;left:0%;transform:translateX(-50%);font-size:16px;z-index:2;filter:drop-shadow(0 0 6px #38bdf8);transition:left 0.5s ease;">🚀</div>
+        <div style="position:absolute;right:8px;font-size:12px;z-index:1;color:#64748b;">🌌 巡航航道</div>
+      `;
+      radarBox.appendChild(track);
+
+      // 实时遥测指标
+      const fSpeed = fleetSpeedOf(account, fleet.id);
+      const fPower = Math.round(fleetPowerOf(account, fleet));
+      const telemetry = document.createElement('div');
+      telemetry.style.cssText = 'display:flex;justify-content:space-between;font-size:11px;color:#94a3b8;background:rgba(255,255,255,0.03);padding:6px 10px;border-radius:4px;';
+      telemetry.innerHTML = `
+        <span>巡航航速：<b style="color:#f1f5f9;">${fmtNum(fSpeed)}</b> km/s</span>
+        <span>编队战备力：<b style="color:#9FE1CB;">${fmtNum(fPower)}</b> 点</span>
+        <span>护航舰数：<b style="color:#7cd7ff;">${fleet.shipIds.length}</b> 艘</span>
+      `;
+      radarBox.appendChild(telemetry);
+
+      // 深空异象交互雷达（若触发）
+      if (fleet.mission.anomaly) {
+        const ano = fleet.mission.anomaly;
+        const anoDiv = document.createElement('div');
+        if (!ano.resolved) {
+          anoDiv.className = 'anomaly-alert';
+          anoDiv.style.cssText = 'margin-top:10px;padding:10px 12px;border-radius:6px;background:rgba(251,191,36,0.08);border:1px solid #f59e0b;';
+          anoDiv.innerHTML = `
+            <div style="font-weight:bold;color:#fbbf24;display:flex;align-items:center;gap:6px;font-size:13px;margin-bottom:4px;">
+              <span>${ano.icon}</span>
+              <span>深空传感器捕获：${esc(ano.title)}</span>
+            </div>
+            <p style="color:#cbd5e1;font-size:12px;line-height:1.5;margin-bottom:8px;">${esc(ano.desc)}</p>
+            <div style="display:flex;flex-wrap:wrap;gap:8px;" id="ano-choices-${fleet.id}">
+              ${ano.choices.map((c) => `
+                <button class="btn-ano-choice" data-cid="${c.id}" style="flex:1;min-width:130px;min-height:36px;padding:6px 10px;border-radius:4px;border:1px solid rgba(251,191,36,0.5);background:rgba(251,191,36,0.15);color:#fef3c7;font-size:12px;cursor:pointer;text-align:left;">
+                  <div style="font-weight:bold;">${esc(c.text)}</div>
+                  <div style="font-size:10px;color:#fde68a;">${esc(c.effect)}</div>
+                </button>
+              `).join('')}
+            </div>
+          `;
+          setTimeout(() => {
+            const cBox = anoDiv.querySelector(`#ano-choices-${fleet.id}`);
+            if (cBox) {
+              cBox.querySelectorAll('.btn-ano-choice').forEach((b) => {
+                b.onclick = () => {
+                  const cid = b.getAttribute('data-cid');
+                  b.disabled = true;
+                  const res = resolveFleetAnomaly(account, fleet.id, cid);
+                  if (res.ok) {
+                    playVictory();
+                    alert(res.resultMsg);
+                  }
+                  redraw();
+                };
+              });
+            }
+          }, 40);
+        } else {
+          anoDiv.style.cssText = 'margin-top:8px;padding:8px 10px;border-radius:4px;background:rgba(16,185,129,0.08);border:1px solid #10b98150;font-size:12px;color:#6ee7b7;';
+          anoDiv.innerHTML = `<span>${ano.icon}</span> <b>${esc(ano.title)}</b>：${esc(ano.resultMsg)}`;
+        }
+        radarBox.appendChild(anoDiv);
+      }
+
+      // 实时定时刷新雷达与倒计时
       const startedAt = fleet.mission.startedAt;
       const upd = () => {
         const cur = fleet.mission;
         if (!cur || cur.startedAt !== startedAt) { redraw(); return; }
+        const remainEl = document.getElementById(`m-remain-${fleet.id}`);
+        const barEl = document.getElementById(`m-track-bar-${fleet.id}`);
+        const shipEl = document.getElementById(`m-ship-icon-${fleet.id}`);
+
         if (cur.type === 'defense') {
-          mLine.textContent = '当前任务：' + fleetMissionLabel(cur) + '（低空驻留中 · 行星防御 +' + defenseBonusOf(account) + '）';
+          if (remainEl) remainEl.textContent = '低空警戒驻留 · 防御 +' + defenseBonusOf(account);
+          if (barEl) barEl.style.width = '100%';
+          if (shipEl) shipEl.style.left = '50%';
           return;
         }
-        const remain = Math.max(0, (Number(cur.duration) || 0) - (Number(cur.elapsed) || 0));
-        mLine.textContent = '当前任务：' + fleetMissionLabel(cur) + '（航行交战剩余 ' + fmtTime(remain) + '）';
+
+        const dur = Math.max(1, Number(cur.duration) || 1);
+        const elp = Math.min(dur, Number(cur.elapsed) || 0);
+        const pct = Math.min(100, Math.max(0, (elp / dur) * 100));
+        const rem = Math.max(0, dur - elp);
+
+        if (remainEl) remainEl.textContent = `剩余时间：${fmtTime(rem)} (${pct.toFixed(1)}%)`;
+        if (barEl) barEl.style.width = `${pct}%`;
+        if (shipEl) shipEl.style.left = `${Math.min(92, Math.max(2, pct))}%`;
       };
       updaters.push(upd);
       upd();
 
       const cx = btn('召回取消任务', 'btn-sm');
-      cx.style.cssText = 'min-height:44px;margin-bottom:8px;';
+      cx.style.cssText = 'min-height:36px;margin-top:8px;';
       cx.addEventListener('click', () => {
         const r = cancelMission(account, fleet.id);
         if (!r.ok) { alert(r.reason); return; }
         redraw();
       });
-      row.appendChild(cx);
+      radarBox.appendChild(cx);
+
+      row.appendChild(radarBox);
     }
 
     // 五项持续任务指令

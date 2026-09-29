@@ -156,11 +156,11 @@ const app = byId.app;
 
 // 用动态 import 真正跑一遍 main.js（含启动、渲染开始界面、注册心跳）
 step('加载 main.js（启动 + 渲染开始界面）', () => {});
-await import('../js/main.js?v=21.0');
+await import('../js/main.js?v=21.1');
 
-const S = await import('../js/core/state.js?v=21.0');
-const Y = await import('../js/core/shipyard.js?v=21.0');
-const POP = await import('../js/core/population.js?v=21.0');
+const S = await import('../js/core/state.js?v=21.1');
+const Y = await import('../js/core/shipyard.js?v=21.1');
+const POP = await import('../js/core/population.js?v=21.1');
 
 const allEls = () => walkAll(app).concat(app.children);
 const findButtons = () => allEls().filter((e) => e.tagName === 'BUTTON');
@@ -518,7 +518,7 @@ step('切回主界面再进星球（验证返回导航）', () => {
 
 // 存档往返
 step('存档落盘并重载', async () => {
-  const S = await import('../js/core/state.js?v=21.0');
+  const S = await import('../js/core/state.js?v=21.1');
   S.saveState();
   const before = _ls.size;
   const raw = _ls.get('astrix.save.' + S.STATE.currentAccountId);
@@ -535,7 +535,7 @@ await Promise.all(pending);
 // 验证：电力面板渲染 / 造出船坞后「星球选择」tab / 星球选择含 7 星 nameCn
 // （本段只读取已有作用域：tabBtns / allText / step / PLANETS，不改动其它步骤）
 // =====================================================================
-const PL = await import('../js/data/planets.js?v=21.0');
+const PL = await import('../js/data/planets.js?v=21.1');
 
 // ⚠ 这段追加在「存档落盘并重载」之后，而它前面那一步是「返回主界面 → 点离线模式」。
 //   v0.0.6（需求 R6）之后，点「离线模式」**总是先弹存档选择界面**（不再直接进游戏），

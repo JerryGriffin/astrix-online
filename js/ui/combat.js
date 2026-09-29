@@ -4,8 +4,9 @@
 import {
   createBattleSession, tickBattle, executeTacticalCommand, TACTICAL_COMMANDS,
   SHIP_ROLES, getBattleReport
-} from '../core/combat.js?v=21.0';
-import { fmtNum } from '../core/format.js?v=21.0';
+} from '../core/combat.js?v=21.1';
+import { fmtNum } from '../core/format.js?v=21.1';
+import { playLaser, playExplosion, playShield, playWarp, playVictory } from '../core/sound.js?v=21.1';
 
 function esc(s) {
   return String(s ?? '').replace(/[&<>"']/g, (c) => (
@@ -157,17 +158,19 @@ export function openBattleView(arg1, arg2, arg3) {
     }
   }
 
-  // 触发技能全屏或弹道视觉特效
+  // 触发技能全屏或弹道视觉特效与音效
   function triggerSkillVisualFx(cmdId) {
     const flash = document.getElementById('bt-screen-flash');
     const laserLayer = document.getElementById('bt-laser-layer');
 
     if (cmdId === 'emp') {
+      playWarp();
       if (flash) {
         flash.style.background = 'rgba(96, 165, 250, 0.4)';
         setTimeout(() => { if (flash) flash.style.background = 'transparent'; }, 400);
       }
     } else if (cmdId === 'torpedo') {
+      playExplosion(true);
       if (laserLayer) {
         const torp = document.createElement('div');
         torp.style.cssText = 'position:absolute;top:50%;left:5%;font-size:20px;z-index:8;animation:torpedo-travel 0.8s ease-in-out forwards;';
@@ -176,10 +179,24 @@ export function openBattleView(arg1, arg2, arg3) {
         setTimeout(() => torp.remove(), 800);
       }
     } else if (cmdId === 'focus') {
+      playLaser(true);
       if (flash) {
         flash.style.background = 'rgba(250, 204, 21, 0.2)';
         setTimeout(() => { if (flash) flash.style.background = 'transparent'; }, 300);
       }
+    } else if (cmdId === 'shield') {
+      playShield();
+    } else if (cmdId === 'drones') {
+      playLaser(false);
+      if (laserLayer) {
+        const drone = document.createElement('div');
+        drone.style.cssText = 'position:absolute;z-index:8;animation:drone-flight 1.2s ease-in-out forwards;font-size:22px;';
+        drone.textContent = '🐝🚀';
+        laserLayer.appendChild(drone);
+        setTimeout(() => drone.remove(), 1200);
+      }
+    } else if (cmdId === 'boarding') {
+      playExplosion(false);
     }
   }
 
@@ -377,6 +394,11 @@ export function openBattleView(arg1, arg2, arg3) {
   function showResultModal() {
     const report = getBattleReport(session);
     const isWin = report.winner === 'player';
+    if (isWin) {
+      playVictory();
+    } else {
+      playExplosion(true);
+    }
     const resDiv = document.createElement('div');
     resDiv.style.cssText = 'padding:16px;text-align:center;color:#c8d4e0;max-height:75vh;overflow-y:auto;';
 
@@ -467,18 +489,23 @@ export function openBattleView(arg1, arg2, arg3) {
           setTimeout(() => spawnLaserTracer(false), 120);
         }
 
-        // 随机在目标上方冒出跳字
+        // 随机在目标上方冒出跳字与音效
         if (session.logs.length > 0) {
           const latestLog = session.logs[0];
           if (latestLog.type === 'crit') {
+            playExplosion(false);
+            root.classList.add('screen-shake');
+            setTimeout(() => root.classList.remove('screen-shake'), 350);
             const eTarget = (session.designatedTargetId && aliveE.find((x) => x.id === session.designatedTargetId)) || aliveE[0];
             const el = document.getElementById(`bt-enemy-${eTarget.id}`);
             if (el) spawnDamageNumber(el, '💥 CRIT!', '#facc15');
           } else if (latestLog.type === 'fire') {
+            playLaser(false);
             const eTarget = aliveE[Math.floor(Math.random() * aliveE.length)];
             const el = document.getElementById(`bt-enemy-${eTarget.id}`);
             if (el) spawnDamageNumber(el, `-${Math.round(20 + Math.random() * 40)}`, '#38bdf8');
           } else if (latestLog.type === 'enemy-fire') {
+            playLaser(true);
             const pTarget = aliveP[Math.floor(Math.random() * aliveP.length)];
             const el = document.getElementById(`bt-player-${pTarget.id}`);
             if (el) spawnDamageNumber(el, `-${Math.round(15 + Math.random() * 30)}`, '#f43f5e');

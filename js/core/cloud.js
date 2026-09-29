@@ -2,11 +2,11 @@
 // 提供指挥官云身份、星系注册表、异步贸易与远征进攻、战报收件箱系统。
 // 遵循零构建原生 ES 模块规范，具备离线/断网平滑降级（自动混入 NPC 星系）。
 
-import { currentAccount, ownedOf, spendOwned, getPlanetInstance } from './state.js?v=21.0';
-import { listFleets, ensureFleets } from './fleet.js?v=21.0';
-import { fmtNum } from './format.js?v=21.0';
-import { ensureEntry } from './production.js?v=21.0';
-import { stationedArmyPower } from './army.js?v=21.0';
+import { currentAccount, ownedOf, spendOwned, getPlanetInstance } from './state.js?v=21.1';
+import { listFleets, ensureFleets } from './fleet.js?v=21.1';
+import { fmtNum } from './format.js?v=21.1';
+import { ensureEntry } from './production.js?v=21.1';
+import { stationedArmyPower } from './army.js?v=21.1';
 
 export function addMaterial(inst, matName, amount) {
   const e = ensureEntry(inst, matName);
