@@ -1,9 +1,9 @@
 // 开始界面：标题、离线/在线模式、账号选择、各次要入口模态层（Astrix）
-import {  STATE, createAccount, switchAccount, deleteAccount, currentAccount, START_MODES  } from '../core/state.js?v=21.8';
-import { fmtNum, fmtTime } from '../core/format.js?v=21.8';
-import { isSoundEnabled, toggleSound } from '../core/sound.js?v=21.8';
+import {  STATE, createAccount, switchAccount, deleteAccount, currentAccount, START_MODES, setStorageMode, getStorageMode  } from '../core/state.js?v=21.10';
+import { fmtNum, fmtTime } from '../core/format.js?v=21.10';
+import { isSoundEnabled, toggleSound } from '../core/sound.js?v=21.10';
 // 版本号与更新日志的唯一来源：任何地方要显示版本都从这里取，改版本只改 js/version.js 一处
-import { VERSION, VERSIONS } from '../version.js?v=21.8';
+import { VERSION, VERSIONS } from '../version.js?v=21.10';
 
 // 创建元素的小工具
 function el(tag, cls, text) {
@@ -17,6 +17,26 @@ function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, (c) => (
     { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
   ));
+}
+
+// 在线模式永久认证信息管理
+const ONLINE_AUTH_KEY = 'astrix.online.auth';
+
+function getOnlineAuth() {
+  try {
+    const raw = localStorage.getItem(ONLINE_AUTH_KEY);
+    if (!raw) return null;
+    const data = JSON.parse(raw);
+    if (data && data.email && typeof data.email === 'string') return data;
+  } catch (e) {}
+  return null;
+}
+
+function setOnlineAuth(data) {
+  try {
+    if (!data) localStorage.removeItem(ONLINE_AUTH_KEY);
+    else localStorage.setItem(ONLINE_AUTH_KEY, JSON.stringify(data));
+  } catch (e) {}
 }
 
 // 自定义二次确认弹层
@@ -49,7 +69,7 @@ export function renderStart(root, ctx) {
   // 主模式按钮：在线星际模式与离线单机模式
   const modes = el('div', 'start-modes');
   modes.append(
-    modeButton('在线星际', '星际星系 · 贸易与远征', () => ctx.enterOnline(), true, false),
+    modeButton('在线星际', '星际星系 · 贸易与远征', () => handleOnline(ctx), true, false),
     modeButton('离线模式', '与电脑对抗', () => handleOffline(ctx), false, false),
   );
 
@@ -81,29 +101,178 @@ function modeButton(label, sub, onClick, primary, soon) {
   return b;
 }
 
+// ===== 在线模式：邮箱认证与在线独立存档 =====
+function handleOnline(ctx) {
+  const auth = getOnlineAuth();
+  if (auth && auth.email) {
+    // 登录一次，永久免登：已登录过直接进入在线存档列表
+    setStorageMode('online', auth.email);
+    openOnlineAccountPicker(ctx, auth.email);
+  } else {
+    // 首次进入在线模式，弹出邮箱绑定与验证界面
+    openOnlineLoginModal(ctx);
+  }
+}
+
+function openOnlineLoginModal(ctx) {
+  const body = document.createElement('div');
+  body.className = 'glass';
+  body.style.cssText = 'padding:14px;border-radius:8px;';
+
+  const desc = el('p', '', '在线模式各账号存档相互独立，进度与邮箱绑定。首次验证后永久免登。');
+  desc.style.cssText = 'font-size:13px;color:#94a3b8;line-height:1.5;margin-bottom:14px;';
+
+  const emailLabel = el('label', '', '云账号邮箱：');
+  emailLabel.style.cssText = 'display:block;font-size:12px;color:#7cd7ff;margin-bottom:4px;';
+  const emailInput = document.createElement('input');
+  emailInput.type = 'email';
+  emailInput.placeholder = 'commander@space.net';
+  emailInput.className = 'acc-new-input';
+  emailInput.style.cssText = 'width:100%;min-height:44px;box-sizing:border-box;margin-bottom:12px;padding:8px 12px;background:#0b101c;border:1px solid #22354c;border-radius:6px;color:#c8d4e0;font-size:14px;';
+
+  const codeLabel = el('label', '', '安全验证码（首次登录请输入 6 位验证码，测试期支持 666888 或任意6位数字）：');
+  codeLabel.style.cssText = 'display:block;font-size:12px;color:#7cd7ff;margin-bottom:4px;';
+  const codeRow = el('div', '');
+  codeRow.style.cssText = 'display:flex;gap:8px;align-items:center;margin-bottom:14px;';
+  const codeInput = document.createElement('input');
+  codeInput.type = 'text';
+  codeInput.placeholder = '6 位验证码';
+  codeInput.maxLength = 6;
+  codeInput.value = '666888';
+  codeInput.style.cssText = 'flex:1;min-height:44px;padding:8px 12px;box-sizing:border-box;background:#0b101c;border:1px solid #22354c;border-radius:6px;color:#c8d4e0;font-size:15px;letter-spacing:2px;font-family:monospace;';
+  const codeBtn = el('button', 'btn btn-sm', '一键填码');
+  codeBtn.style.cssText = 'min-height:44px;white-space:nowrap;padding:0 12px;';
+  codeBtn.onclick = () => {
+    codeInput.value = '666888';
+  };
+  codeRow.append(codeInput, codeBtn);
+
+  const tip = el('div', 'acc-new-tip', '');
+  tip.style.cssText = 'color:#ff6b81;font-size:12px;margin-bottom:10px;min-height:18px;';
+
+  const actions = el('div', '');
+  actions.style.cssText = 'display:flex;gap:10px;justify-content:flex-end;';
+  const cancelBtn = el('button', 'btn', '取消');
+  cancelBtn.style.minHeight = '44px';
+  const loginBtn = el('button', 'btn btn-primary', '登录并进入在线存档池');
+  loginBtn.style.minHeight = '44px';
+
+  actions.append(cancelBtn, loginBtn);
+  body.append(desc, emailLabel, emailInput, codeLabel, codeRow, tip, actions);
+
+  const close = ctx.openModal({ title: '在线星际 · 账号登录与绑定', body, sheet: true });
+  cancelBtn.onclick = () => close();
+
+  const doSubmit = () => {
+    const email = emailInput.value.trim().toLowerCase();
+    const code = codeInput.value.trim();
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      tip.textContent = '请输入合法的邮箱格式（如 player@domain.com）。';
+      emailInput.focus();
+      return;
+    }
+    if (!code || code.length < 4) {
+      tip.textContent = '请输入有效的安全验证码。';
+      codeInput.focus();
+      return;
+    }
+
+    // 登录成功，写入永久免登凭证
+    setOnlineAuth({
+      email,
+      verifiedAt: Date.now(),
+      token: 'tk_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8),
+    });
+
+    close();
+    setStorageMode('online', email);
+    openOnlineAccountPicker(ctx, email);
+  };
+
+  loginBtn.onclick = doSubmit;
+  codeInput.onkeydown = (e) => { if (e.key === 'Enter') doSubmit(); };
+  emailInput.onkeydown = (e) => { if (e.key === 'Enter') doSubmit(); };
+}
+
+function openOnlineAccountPicker(ctx, email) {
+  const body = document.createElement('div');
+  renderOnlineAccountList(body, ctx, email);
+  ctx.openModal({ title: `在线存档池（${email}）`, body, sheet: true });
+}
+
+function renderOnlineAccountList(body, ctx, email) {
+  body.innerHTML = '';
+
+  const headerBar = el('div', 'glass');
+  headerBar.style.cssText = 'display:flex;justify-content:space-between;align-items:center;padding:10px 14px;border-radius:6px;margin-bottom:12px;background:rgba(124,215,255,0.06);border:1px solid rgba(124,215,255,0.2);';
+  headerBar.innerHTML = `
+    <div style="font-size:13px;color:#c8d4e0;">
+      <span>云端账号：</span><b style="color:#7cd7ff;">${escapeHtml(email)}</b>
+      <span style="font-size:11px;color:#94a3b8;margin-left:6px;">(永久免登已激活)</span>
+    </div>
+  `;
+  const switchAccBtn = el('button', 'btn btn-sm', '切换账号 / 退出');
+  switchAccBtn.style.cssText = 'font-size:12px;padding:4px 10px;';
+  switchAccBtn.onclick = () => {
+    setOnlineAuth(null);
+    setStorageMode('offline');
+    ctx.closeModal();
+    openOnlineLoginModal(ctx);
+  };
+  headerBar.appendChild(switchAccBtn);
+  body.appendChild(headerBar);
+
+  if (STATE.accounts.length === 0) {
+    const tip = el('p', 'modal-tip', '该邮箱下暂无在线存档。请在下方创建新存档（在线模式强制为「初登星球」全新开局）。');
+    tip.style.cssText = 'color:#ffc46b;margin-bottom:12px;';
+    body.appendChild(tip);
+  } else {
+    STATE.accounts.forEach((acc) => {
+      const row = el('div', 'acc-row');
+      const info = el('div', 'acc-info');
+      info.innerHTML =
+        `<div class="acc-name">${escapeHtml(acc.name)} <span style="font-size:11px;color:#6ee7b7;border:1px solid #10b98140;padding:1px 5px;border-radius:3px;">初登星球</span></div>` +
+        `<div class="acc-meta muted">母星 ${escapeHtml(acc.homePlanetCode)}1 · ${acc.planetsOwned.length} 个殖民地</div>`;
+      const actions = el('div', 'acc-actions');
+      const isCurrent = acc.id === STATE.currentAccountId;
+      const enter = el('button', 'btn btn-sm' + (isCurrent ? ' btn-primary' : ''), isCurrent ? '进入星系' : '切换');
+      enter.onclick = () => {
+        if (!isCurrent) switchAccount(acc.id);
+        ctx.enterOnline(acc);
+      };
+      const del = el('button', 'btn btn-sm btn-danger', '删除');
+      del.onclick = () => {
+        actions.innerHTML = '';
+        const yes = el('button', 'btn btn-sm btn-danger', '确认删除');
+        const no = el('button', 'btn btn-sm', '取消');
+        yes.onclick = () => {
+          deleteAccount(acc.id);
+          renderOnlineAccountList(body, ctx, email);
+        };
+        no.onclick = () => renderOnlineAccountList(body, ctx, email);
+        actions.append(yes, no);
+      };
+      actions.append(enter, del);
+      row.append(info, actions);
+      body.appendChild(row);
+    });
+  }
+
+  // 渲染新建表单（在线模式强制只能选择「初登星球」）
+  renderNewSaveForm(body, ctx, true, email);
+}
+
 // ===== 离线模式：账号选择 =====
 function handleOffline(ctx) {
-  // v0.0.6（需求 R6：修复「只有一个离线存档时无法删除」）：
-  //   **始终**先开存档选择界面，不再「没有存档就直接进游戏」。
-  //
-  //   旧写法是 `if (STATE.accounts.length === 0) { ctx.enterOffline(); return; }`，
-  //   而 ctx.enterOffline 会走到 main.js 的 ensureAccount()：
-  //       if (STATE.accounts.length === 0) createAccount('指挥官');
-  //   于是「删掉最后一个存档 → 退回开始界面 → 再点离线模式」会立刻看到一个
-  //   崭新的「指挥官」存档，玩家的感受就是「只有一个存档时根本删不掉」。
-  //   多存档时永远掉不到 0，所以只有单存档才撞得上这个坑 —— 这正是那个 bug
-  //   「只在只有一个存档时出现」的原因。
-  //
-  //   注意：删除动作本身（deleteAccount + 列表重绘）从 v0.0.51 起就是好的，
-  //   真正的幻影是「删完又被自动重建」。现在统一进选择界面：列表为空时
-  //   界面上只剩「+ 新建存档」，建不建由玩家自己决定。
+  // 切换为离线模式存储池
+  setStorageMode('offline');
   openAccountPicker(ctx);
 }
 
 function openAccountPicker(ctx) {
   const body = document.createElement('div');
   renderAccountList(body, ctx);
-  ctx.openModal({ title: '选择存档', body, sheet: true });
+  ctx.openModal({ title: '选择离线单机存档', body, sheet: true });
 }
 
 function renderAccountList(body, ctx) {
@@ -126,12 +295,6 @@ function renderAccountList(body, ctx) {
       const no = el('button', 'btn btn-sm', '取消');
       yes.onclick = () => {
         deleteAccount(acc.id);
-        // v0.0.51 修复「删除存档无效」：
-        // 此前删完最后一个存档会走 ctx.enterOffline()，而 enterOffline → ensureAccount()
-        // 发现没有账号就**立刻新建一个「指挥官」**，于是玩家下次点「离线模式」又看到存档，
-        // 观感就是「删除没生效」。
-        // 现在：无论删没删空，都留在存档选择界面重绘列表——
-        // 删空时列表为空、只剩下方的新建存档表单，玩家可以自己决定要不要建新的。
         renderAccountList(body, ctx);
         if (STATE.accounts.length === 0) {
           const tip = el('p', 'modal-tip', '存档已全部删除。可在下方新建一个。');
@@ -145,39 +308,51 @@ function renderAccountList(body, ctx) {
     row.append(info, actions);
     body.appendChild(row);
   });
-  renderNewSaveForm(body, ctx);
+  renderNewSaveForm(body, ctx, false);
 }
 
 // 新建存档：用模态内联表单替代 window.prompt（更稳健、可被自动化驱动）
-function renderNewSaveForm(body, ctx) {
+// isOnline = true 时，强制锁定为「初登星球」开局，隐藏并禁止「漫溯深空」
+function renderNewSaveForm(body, ctx, isOnline = false, email = '') {
   const form = el('div', 'acc-new-form');
   const input = document.createElement('input');
   input.type = 'text';
   input.className = 'acc-new-input';
-  input.placeholder = '输入新存档名称';
-  input.value = '深空旅人';
+  input.placeholder = isOnline ? '输入在线指挥官名称' : '输入新存档名称';
+  input.value = isOnline ? '星区指挥官' : '深空旅人';
   input.setAttribute('aria-label', '新存档名称');
-  // v0.1.0（设计者 [重要]）：新建存档时选择「初登星球」或「漫溯深空」
-  //   初登星球 = 标准白手起家；漫溯深空 = 已到船坞科技的中期存档（随机 10 艘飞船）
+
   const modeRow = el('div', 'acc-mode-row');
   const modeTip = el('p', 'acc-new-tip muted', '');
   let mode = 'fresh';
-  const modeBtns = {};
-  for (const m of START_MODES) {
-    const b = el('button', 'btn acc-mode-btn' + (m.id === mode ? ' active' : ''), m.nameCn);
+
+  if (isOnline) {
+    // 在线模式：强制且仅限「初登星球」开局
+    const b = el('button', 'btn acc-mode-btn active', '初登星球（在线限定）');
     b.type = 'button';
     b.style.minHeight = '44px';
-    b.onclick = () => {
-      mode = m.id;
-      for (const k in modeBtns) modeBtns[k].classList.toggle('active', k === mode);
-      modeTip.textContent = m.desc;
-    };
-    modeBtns[m.id] = b;
+    b.disabled = true;
     modeRow.appendChild(b);
+    modeTip.textContent = '在线联机模式为保障全服公平竞技与贸易生态，仅允许「初登星球」全新开局。';
+  } else {
+    // 离线模式：提供「初登星球」与「漫溯深空」
+    const modeBtns = {};
+    for (const m of START_MODES) {
+      const b = el('button', 'btn acc-mode-btn' + (m.id === mode ? ' active' : ''), m.nameCn);
+      b.type = 'button';
+      b.style.minHeight = '44px';
+      b.onclick = () => {
+        mode = m.id;
+        for (const k in modeBtns) modeBtns[k].classList.toggle('active', k === mode);
+        modeTip.textContent = m.desc;
+      };
+      modeBtns[m.id] = b;
+      modeRow.appendChild(b);
+    }
+    modeTip.textContent = START_MODES[0].desc;
   }
-  modeTip.textContent = START_MODES[0].desc;
 
-  const add = el('button', 'btn btn-primary', '+ 新建存档');
+  const add = el('button', 'btn btn-primary', isOnline ? '+ 新建在线存档' : '+ 新建存档');
   const tip = el('p', 'acc-new-tip muted', '');
   const submit = () => {
     const name = input.value.trim();
@@ -187,9 +362,14 @@ function renderNewSaveForm(body, ctx) {
       input.focus();
       return;
     }
-    // v0.1.0：按所选开局模式建档（'deep' = 漫溯深空）
-    createAccount(name, mode);
-    ctx.enterOffline();
+    // 在线模式强制为 fresh
+    const finalMode = isOnline ? 'fresh' : mode;
+    const acc = createAccount(name, finalMode);
+    if (isOnline) {
+      ctx.enterOnline(acc);
+    } else {
+      ctx.enterOffline();
+    }
   };
   add.onclick = submit;
   input.addEventListener('keydown', (e) => { if (e.key === 'Enter') submit(); });

@@ -15,45 +15,79 @@
 //    开局自带 1 座建筑工厂（设计者：「开局有一个建筑工厂」）。
 // 5. 施工队列由 tick 推进：速度 = 建筑工有效人力（受建筑工厂工位限制），无人则为 0。
 
-import { PLANETS } from '../data/planets.js?v=21.8';
-import { BUILDING_BY_ID, buildingCost } from '../data/buildings.js?v=21.8';
-import { TECH_BY_ID, canResearch, missingPrereqs } from '../data/techs.js?v=21.8';
-import { UPGRADES, upgradeCost } from '../data/upgrades.js?v=21.8';
+import { PLANETS } from '../data/planets.js?v=21.10';
+import { BUILDING_BY_ID, buildingCost } from '../data/buildings.js?v=21.10';
+import { TECH_BY_ID, canResearch, missingPrereqs } from '../data/techs.js?v=21.10';
+import { UPGRADES, upgradeCost } from '../data/upgrades.js?v=21.10';
 import {
   createPopulation, tickPopulation, getAvailable, gatherLaborByLayer, jobsOfBuilding, getIntensity,
   consumptionPerSec, jobOutput,
   JOBS, freeSlots,
-} from './population.js?v=21.8';
-import { buildRateOf, buildBlockReason } from './construction.js?v=21.8';
-import { tickShip, defaultBlueprints, createShip, shipBuildTick } from './shipyard.js?v=21.8';
-import { tickArmyBuildLines, armyStatsOf } from './army.js?v=21.8';
+} from './population.js?v=21.10';
+import { buildRateOf, buildBlockReason } from './construction.js?v=21.10';
+import { tickShip, defaultBlueprints, createShip, shipBuildTick } from './shipyard.js?v=21.10';
+import { tickArmyBuildLines, armyStatsOf } from './army.js?v=21.10';
 // v0.0.6：电力系统与配方生产。
 // 注意这两个模块**不反向 import 本文件**（否则形成循环依赖），
 // 它们只从传入的 inst 上读 buildings / pop / inventory / recipes。
-import { energyOf, computePower, tickPower } from './power.js?v=21.8';
+import { energyOf, computePower, tickPower } from './power.js?v=21.10';
 // v0.0.91：efficiencyBonus 由 production.js 导出（建筑总座数效率乘数），
 //   这里沿用既有的 state→production 单向边引入，不反向让 production import state，避免循环依赖。
-import { tickProduction, productionRates, ensureLines, lineWorkersTotal, efficiencyBonus, ensureEntry, addLine as addProductionLine, lineSlotInfo } from './production.js?v=21.8';
+import { tickProduction, productionRates, ensureLines, lineWorkersTotal, efficiencyBonus, ensureEntry, addLine as addProductionLine, lineSlotInfo } from './production.js?v=21.10';
 // v0.0.92：星际航行与殖民（管理模式 / 独立倾向 / 随机星球）
-import { tickIndependence, outputMulOf, happinessDeltaOf, ensureDiscoveredDefaults, discoverPlanet, purgeShopColonies, tickManagedColonies, SHOP_PLANET_CODE } from './planetgen.js?v=21.8';
+import { tickIndependence, outputMulOf, happinessDeltaOf, ensureDiscoveredDefaults, discoverPlanet, purgeShopColonies, tickManagedColonies, SHOP_PLANET_CODE } from './planetgen.js?v=21.10';
 // v0.1.2（需求 18/19）：永久升级的「效果」改乘方，唯一实现在 data/upgrades.js#upgradeMul
 // （UI 的 research.js 也用它，别在别处再写一套公式）。
 // 此前 upg_collect/refine/power/labor/research/build 六项付了钱却没有任何效果。
-import { upgradeMul } from '../data/upgrades.js?v=21.8';
-import { tickFleetMissions, ensureFleets } from './fleet.js?v=21.8';
+import { upgradeMul } from '../data/upgrades.js?v=21.10';
+import { tickFleetMissions, ensureFleets } from './fleet.js?v=21.10';
 // v0.1.0：电脑账号（离线存档里的 NPC 势力）与其交易池联动。
 //   注意 npc.js 是叶子模块（只 import 数据表），shop.js 与 state.js 互为函数级引用、无顶层副作用。
-import { ensureNpcs, tickNpcs } from './npc.js?v=21.8';
+import { ensureNpcs, tickNpcs } from './npc.js?v=21.10';
 import {
   priceOf as shopPriceOf, suggestPriceOf as shopSuggestPriceOf,
   npcListOnMarket, npcTakeFromMarket, tickShop as shopTick,
   tickListings as shopTickListings,
-} from './shop.js?v=21.8';
+} from './shop.js?v=21.10';
 
-const SAVE_PREFIX = 'astrix.save.';
-const INDEX_KEY = SAVE_PREFIX + 'index';
-const PLANETS_KEY = SAVE_PREFIX + 'planets.';   // 每个账号的星球实例存档前缀
 export const AUTOSAVE_INTERVAL = 10;            // 自动存档间隔（秒）
+
+// 存储模式与在线账号隔离：
+// offline: 'astrix.save.'
+// online:  'astrix.online.<email>.save.'
+let currentStorageMode = 'offline';
+let currentOnlineEmail = '';
+
+export function getStorageMode() {
+  return { mode: currentStorageMode, email: currentOnlineEmail };
+}
+
+export function setStorageMode(mode, email = '') {
+  const normEmail = (email || '').trim().toLowerCase();
+  if (currentStorageMode === mode && (mode === 'offline' || currentOnlineEmail === normEmail)) {
+    return;
+  }
+  // 切换前先落盘当前池
+  try { saveState(); } catch (e) {}
+  currentStorageMode = mode === 'online' ? 'online' : 'offline';
+  currentOnlineEmail = currentStorageMode === 'online' ? normEmail : '';
+  STATE.mode = currentStorageMode;
+  // 载入目标池
+  loadState();
+}
+
+function getSavePrefix() {
+  if (currentStorageMode === 'online' && currentOnlineEmail) {
+    return `astrix.online.${currentOnlineEmail}.save.`;
+  }
+  return 'astrix.save.';
+}
+function getIndexKey() {
+  return getSavePrefix() + 'index';
+}
+function getPlanetsKey() {
+  return getSavePrefix() + 'planets.';
+}
 
 // 适配器抽象：当前实现为 localStorage，后续可整体替换为云端实现
 let adapter = {
@@ -102,18 +136,19 @@ function defaultAccount(name) {
 // 从适配器载入全部存档到 STATE
 export function loadState() {
   try {
-    const raw = adapter.get(INDEX_KEY);
+    const raw = adapter.get(getIndexKey());
     if (!raw) {
       STATE.accounts = [];
       STATE.currentAccountId = null;
       return STATE;
     }
     const idx = JSON.parse(raw);
-    STATE.mode = idx.mode || 'offline';
+    STATE.mode = idx.mode || currentStorageMode;
     STATE.currentAccountId = idx.currentAccountId || null;
+    const prefix = getSavePrefix();
     STATE.accounts = (idx.ids || [])
       .map((id) => {
-        const a = adapter.get(SAVE_PREFIX + id);
+        const a = adapter.get(prefix + id);
         try { return a ? JSON.parse(a) : null; } catch (e) { return null; }
       })
       .filter(Boolean);
@@ -134,7 +169,7 @@ export function loadState() {
 function loadPlanets(accountId) {
   if (!accountId) return [];
   try {
-    const arr = JSON.parse(adapter.get(PLANETS_KEY + accountId) || '[]');
+    const arr = JSON.parse(adapter.get(getPlanetsKey() + accountId) || '[]');
     return Array.isArray(arr) ? arr : [];
   } catch (e) { return []; }
 }
@@ -146,7 +181,8 @@ export function saveState() {
     currentAccountId: STATE.currentAccountId,
     ids: STATE.accounts.map((a) => a.id),
   };
-  adapter.set(INDEX_KEY, JSON.stringify(idx));
+  adapter.set(getIndexKey(), JSON.stringify(idx));
+  const prefix = getSavePrefix();
   STATE.accounts.forEach((a) => {
     // v0.0.8：每次落盘把当前时间戳记到账号上，供离线收益结算（settleOffline）算离线时长。
     // 用 acc.stats.lastSeen 而非新建顶层字段，老存档（没有该字段）读不到就按「不结算」处理，兼容安全。
@@ -154,11 +190,11 @@ export function saveState() {
     // v0.1.1（需求 23）：只给**当前账号**刷 lastSeen。此前给所有账号刷，导致未登录账号
     // 的离线时长在每次自动存档时都被清零，离线结算永远算不出它们的离线时间。
     if (a.id === STATE.currentAccountId) a.stats.lastSeen = Date.now();
-    adapter.set(SAVE_PREFIX + a.id, JSON.stringify(a));
+    adapter.set(prefix + a.id, JSON.stringify(a));
   });
   // 星球实例按当前账号持久化（此前只存账号不存星球，导致刷新后进度归零）
   if (STATE.currentAccountId) {
-    adapter.set(PLANETS_KEY + STATE.currentAccountId, JSON.stringify(STATE.planets));
+    adapter.set(getPlanetsKey() + STATE.currentAccountId, JSON.stringify(STATE.planets));
   }
 }
 
@@ -203,8 +239,8 @@ export function deleteAccount(id) {
     // 于是「删 A」反而把 A 的进度灌进了 B。这里与 switchAccount 一样重载一次目标存档。
     STATE.planets = loadPlanets(STATE.currentAccountId);
   }
-  adapter.del(SAVE_PREFIX + id);
-  adapter.del(PLANETS_KEY + id);
+  adapter.del(getSavePrefix() + id);
+  adapter.del(getPlanetsKey() + id);
   saveState();
 }
 
@@ -1222,7 +1258,7 @@ export function settleOffline() {
     }
     // 该账号的星球实例写回它自己的存储槽
     if (acc.id) {
-      try { adapter.set(PLANETS_KEY + acc.id, JSON.stringify(STATE.planets)); } catch (e) { /* 单账号写盘失败不拖垮其它账号 */ }
+      try { adapter.set(getPlanetsKey() + acc.id, JSON.stringify(STATE.planets)); } catch (e) { /* 单账号写盘失败不拖垮其它账号 */ }
     }
     // v0.1.3：当前账号的实例就是推进过的这份 —— 结束时用它恢复上下文，别再用旧数组。
     if (acc.id === prevCurrentId) settledPlanetsOfCurrent = STATE.planets;

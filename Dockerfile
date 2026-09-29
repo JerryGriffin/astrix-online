@@ -1,6 +1,6 @@
 FROM node:22-alpine
 WORKDIR /app
 COPY . .
-EXPOSE 8080
-ENV PORT=8080
+EXPOSE 7860
+ENV PORT=7860
 CMD ["node", "server.mjs"]

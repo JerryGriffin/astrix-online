@@ -421,6 +421,34 @@ export const BUILDINGS = [
         + '它不再是科技树的终点，而是一个枢纽——建成后才会解锁生物工厂、电解池、'
         + '化学实验室与地心矿井，是把文明从单星球推向星系的关键一步。',
   },
+  {
+    id: 'munitions_plant',
+    nameCn: '重工军械总厂',
+    unlockTech: 't_m4',
+    category: 'industry',
+    baseCost: { '石头': 3500, '钢': 800, '铁': 600, '碳化钨': 200, '铝合金': 300 },
+    growth: 1.20,
+    work: 3600,
+    jobs: 24,
+    powerDraw: 120,
+    powerOut: 0,
+    desc: '大口径火炮、重装机动底盘与战备弹药专属重工总装厂。'
+        + '配备自动化液压冲压机与高能电弧焊工位，是陆海两军重装兵器总装的核心枢纽。',
+  },
+  {
+    id: 'military_academy',
+    nameCn: '军事指挥学院',
+    unlockTech: 't_m5',
+    category: 'industry',
+    baseCost: { '石头': 5000, '钢': 1200, '钛合金': 400, '玻璃': 500, '石墨烯': 100 },
+    growth: 1.22,
+    work: 5000,
+    jobs: 20,
+    powerDraw: 85,
+    powerOut: 0,
+    desc: '星际统帅部下属陆海战役推演参谋学院。'
+        + '培养战地指挥军官、测算战略学说协同效能，为全星球守备部队提供指挥中枢加成。',
+  },
 ];
 
 export const BUILDING_BY_ID = Object.fromEntries(BUILDINGS.map((b) => [b.id, b]));

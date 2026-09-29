@@ -1,10 +1,10 @@
 // 数据完整性自检：星球资源 / 建筑造价 / 材料表 交叉比对
 // 用法：node docs/selfcheck_materials.mjs
-import { PLANETS } from '../js/data/planets.js?v=21.8';
-import { MATERIALS } from '../js/data/materials.js?v=21.8';
-import { BUILDINGS } from '../js/data/buildings.js?v=21.8';
-import { FUELS } from '../js/data/fuels.js?v=21.8';
-import { TECHS } from '../js/data/techs.js?v=21.8';
+import { PLANETS } from '../js/data/planets.js?v=21.10';
+import { MATERIALS } from '../js/data/materials.js?v=21.10';
+import { BUILDINGS } from '../js/data/buildings.js?v=21.10';
+import { FUELS } from '../js/data/fuels.js?v=21.10';
+import { TECHS } from '../js/data/techs.js?v=21.10';
 
 const matNames = new Set(MATERIALS.map(m => m.nameCn));
 const matIds = new Set();
@@ -64,7 +64,7 @@ let facCount = 0;
 let dupRecipeId = [];
 
 try {
-  const { RECIPES } = await import('../js/data/recipes.js?v=21.8');
+  const { RECIPES } = await import('../js/data/recipes.js?v=21.10');
   recipeCount = RECIPES.length;
   const ids = new Set();
   const knownRes = new Set([...matNames, ...planetRes]);
@@ -88,7 +88,7 @@ try {
 }
 
 try {
-  const { POWER_FACILITIES } = await import('../js/data/facilities.js?v=21.8');
+  const { POWER_FACILITIES } = await import('../js/data/facilities.js?v=21.10');
   facCount = POWER_FACILITIES.length;
   const ids = new Set();
   const knownRes = new Set([...matNames, ...planetRes]);

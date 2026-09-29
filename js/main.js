@@ -1,9 +1,10 @@
 // 应用入口：路由、全局模态层与启动（Astrix）
-import { STATE, loadState, createAccount, currentAccount, saveState, tick, settleOffline, OFFLINE_RATIO } from './core/state.js?v=21.8';
-import { renderStart } from './ui/start.js?v=21.8';
-import { renderPlanet } from './ui/planet.js?v=21.8';
-import { renderGalaxy } from './ui/galaxy.js?v=21.8';
-import { startReportToasts } from './ui/reports.js?v=21.8';
+import { STATE, loadState, createAccount, currentAccount, saveState, tick, settleOffline, OFFLINE_RATIO, setStorageMode } from './core/state.js?v=21.10';
+import { renderStart } from './ui/start.js?v=21.10';
+import { renderPlanet } from './ui/planet.js?v=21.10';
+import { renderGalaxy } from './ui/galaxy.js?v=21.10';
+import { startReportToasts } from './ui/reports.js?v=21.10';
+import { syncOnlineServer } from './core/cloud.js?v=21.10';
 
 const root = document.getElementById('app');
 const modalRoot = document.getElementById('modal-root');
@@ -148,24 +149,26 @@ const nav = {
 
 function onOffline() {
   // v0.0.61（rev2）：进入星球前必须关掉还开着的「选择存档」弹窗。
-  //   此前从弹窗里点「+ 新建存档」或某行「进入」→ enterOffline() 直接切视图，
-  //   弹窗却留在屏幕上盖住星球界面，玩家得手动点 ×（或点弹窗外）才能看到游戏。
   closeModal();
+  setStorageMode('offline');
   ensureAccount();
   STATE.mode = 'offline';
   nav.showPlanet();
 }
 
-function onOnline() {
+function onOnline(acc) {
   closeModal();
+  if (acc && acc.id) {
+    STATE.currentAccountId = acc.id;
+  }
   ensureAccount();
-  const div = document.createElement('div');
-  renderGalaxy(div, {
-    openModal,
-    closeModal,
-    onBack: closeModal,
-  });
-  openModal({ title: '星际星系 · 在线大厅', body: div });
+  STATE.mode = 'online';
+  // 在线模式进入母星主界面（带在线状态和星际大厅入口），同时首发心跳同步
+  const current = currentAccount();
+  if (current) {
+    syncOnlineServer(current).catch(() => {});
+  }
+  nav.showPlanet();
 }
 
 // ===== 全局游戏心跳（v0.0.2）=====
@@ -173,6 +176,7 @@ function onOnline() {
 // 进度也从不落盘。这里统一用 1 秒心跳推进，任何界面下资源都在增长；
 // state.js 的 tick 内置自动存档（每 AUTOSAVE_INTERVAL 秒写一次）。
 let _heartbeat = null;
+let _onlineSyncTicks = 0;
 function startLoop() {
   if (_heartbeat) return;
   _heartbeat = setInterval(() => {
@@ -180,6 +184,15 @@ function startLoop() {
     if (!acc) return;
     acc.stats.playTimeSec = (acc.stats.playTimeSec || 0) + 1;
     tick(1);
+
+    // 在线模式每 10 秒自动向全服网络广播一次心跳快照与防御战力
+    if (STATE.mode === 'online') {
+      _onlineSyncTicks++;
+      if (_onlineSyncTicks >= 10) {
+        _onlineSyncTicks = 0;
+        syncOnlineServer(acc).catch(() => {});
+      }
+    }
   }, 1000);
 }
 

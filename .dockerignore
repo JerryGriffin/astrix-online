@@ -3,3 +3,7 @@ node_modules
 Thumbs.db
 *.log
 .git
+*.exe
+*.bat
+当前联机网址.txt
+launch.mjs

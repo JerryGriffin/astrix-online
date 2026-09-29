@@ -136,6 +136,31 @@ export const ARMY_BLUEPRINTS = [
       { id: 'ap_sup_supply', count: 1 },
     ],
   },
+  {
+    id: 'ab_titan', nameCn: '泰坦·重装机甲连', tech: 't_m5',
+    desc: '双重框架 + 复合重甲 + 履带底盘 + 双榴弹重炮：陆战攻坚终极巨兽，极高装甲与爆发火力。',
+    buildWork: 32000,
+    parts: [
+      { id: 'ap_frame_heavy', count: 4 },
+      { id: 'ap_mob_track', count: 3 },
+      { id: 'ap_wpn_howitzer', count: 2 },
+      { id: 'ap_wpn_hmg', count: 2 },
+      { id: 'ap_armor_composite', count: 4 },
+      { id: 'ap_sup_supply', count: 2 },
+    ],
+  },
+  {
+    id: 'ab_specops', nameCn: '幽灵·隐秘特战突击队', tech: 't_m5',
+    desc: '超轻框架 + 高速悬浮 + 高精度突击步枪 + 雷达侦测：超强渗透与闪击先锋，机动与夜战拔尖。',
+    buildWork: 14000,
+    parts: [
+      { id: 'ap_frame_light', count: 2 },
+      { id: 'ap_mob_hover', count: 3 },
+      { id: 'ap_wpn_rifle', count: 6 },
+      { id: 'ap_armor_light', count: 2 },
+      { id: 'ap_sup_radar', count: 2 },
+    ],
+  },
 ];
 
 export const ARMY_BP_BY_ID = Object.fromEntries(ARMY_BLUEPRINTS.map((b) => [b.id, b]));

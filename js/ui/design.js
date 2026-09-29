@@ -19,16 +19,16 @@
 import {
   HULLS, ENGINES, WEAPONS, FACILITIES,
   MATERIAL_SLOTS, DEFAULT_MATERIAL,
-} from '../data/ship_parts.js?v=21.8';
+} from '../data/ship_parts.js?v=21.10';
 import {
   evaluateBlueprint, materialMul,
   ensureBlueprints, genBlueprintId, kindOfHull, HULL_RP_COST,
   equipmentList, emptyBlueprint,
-} from '../core/shipyard.js?v=21.8';
-import { getPlanetInstance, ownedOf, getBuildingCounts } from '../core/state.js?v=21.8';
-import { fmtNum } from '../core/format.js?v=21.8';
-import { buildBlueprintEditor, shipBuildBlockReason } from './shipyard.js?v=21.8';
-import { playPing, playVictory, playLaser } from '../core/sound.js?v=21.8';
+} from '../core/shipyard.js?v=21.10';
+import { getPlanetInstance, ownedOf, getBuildingCounts } from '../core/state.js?v=21.10';
+import { fmtNum } from '../core/format.js?v=21.10';
+import { buildBlueprintEditor, shipBuildBlockReason } from './shipyard.js?v=21.10';
+import { playPing, playVictory, playLaser } from '../core/sound.js?v=21.10';
 
 function esc(s) {
   return String(s).replace(/[&<>"']/g, (c) => (
