@@ -4,9 +4,9 @@
 import {
   createBattleSession, tickBattle, executeTacticalCommand, TACTICAL_COMMANDS,
   SHIP_ROLES, getBattleReport
-} from '../core/combat.js?v=21.5';
-import { fmtNum } from '../core/format.js?v=21.5';
-import { playLaser, playExplosion, playShield, playWarp, playVictory } from '../core/sound.js?v=21.5';
+} from '../core/combat.js?v=21.6';
+import { fmtNum } from '../core/format.js?v=21.6';
+import { playLaser, playExplosion, playShield, playWarp, playVictory } from '../core/sound.js?v=21.6';
 
 function esc(s) {
   return String(s ?? '').replace(/[&<>"']/g, (c) => (

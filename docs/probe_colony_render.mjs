@@ -69,10 +69,10 @@ const fails = [];
 function ok(cond, label) { if (cond) { pass++; } else { fails.push(label); console.log('  ✗ ' + label); } }
 function section(t) { console.log('\n== ' + t + ' =='); }
 
-const STATE_M = await import('../js/core/state.js?v=21.5');
-const PG = await import('../js/core/planetgen.js?v=21.5');
-const COL = await import('../js/ui/colony.js?v=21.5');
-const PL = (await import('../js/data/planets.js?v=21.5')).PLANETS;
+const STATE_M = await import('../js/core/state.js?v=21.6');
+const PG = await import('../js/core/planetgen.js?v=21.6');
+const COL = await import('../js/ui/colony.js?v=21.6');
+const PL = (await import('../js/data/planets.js?v=21.6')).PLANETS;
 
 const STATE = STATE_M.STATE;
 function textOf(root) { return walkAll(root).map((e) => e.textContent).join(' '); }

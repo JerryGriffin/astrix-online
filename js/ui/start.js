@@ -1,8 +1,9 @@
 // 开始界面：标题、离线/在线模式、账号选择、各次要入口模态层（Astrix）
-import {  STATE, createAccount, switchAccount, deleteAccount, currentAccount, START_MODES  } from '../core/state.js?v=21.5';
-import { fmtNum, fmtTime } from '../core/format.js?v=21.5';
+import {  STATE, createAccount, switchAccount, deleteAccount, currentAccount, START_MODES  } from '../core/state.js?v=21.6';
+import { fmtNum, fmtTime } from '../core/format.js?v=21.6';
+import { isSoundEnabled, toggleSound } from '../core/sound.js?v=21.6';
 // 版本号与更新日志的唯一来源：任何地方要显示版本都从这里取，改版本只改 js/version.js 一处
-import { VERSION, VERSIONS } from '../version.js?v=21.5';
+import { VERSION, VERSIONS } from '../version.js?v=21.6';
 
 // 创建元素的小工具
 function el(tag, cls, text) {
@@ -233,12 +234,128 @@ function openTips(ctx) {
 
 function openStats(ctx) {
   const acc = currentAccount();
-  const stats = [
-    ['累计游玩时间', fmtTime(acc ? acc.stats.playTimeSec : 0)],
-    ['占领星球数', (acc ? acc.stats.planetsCaptured : 0) + ' 个'],
-    ['累计采集资源量', fmtNum(acc ? acc.stats.resourcesCollected : 0)],
+  const playTime = acc?.stats?.playTimeSec || 0;
+  const planetsCaptured = acc?.stats?.planetsCaptured || (acc?.planetsOwned?.length ? acc.planetsOwned.length - 1 : 0);
+  const resourcesCollected = acc?.stats?.resourcesCollected || 0;
+  const techCount = acc?.tech?.length || 0;
+  const shipsCount = acc?.ships?.length || 0;
+  const armyCount = acc?.armies?.length || 0;
+  const coloniesCount = acc?.planetsOwned?.length || 1;
+
+  // 1. 指挥官荣誉军衔系统 (Commander Rank Evaluation)
+  // 综合评估：总开采量、科技数、战舰数、殖民星球数、游玩时间
+  const rankScore = (resourcesCollected / 500) + (techCount * 40) + (shipsCount * 30) + (armyCount * 25) + (coloniesCount * 50) + (playTime / 60);
+  const RANKS = [
+    { title: '预备宇航学员', icon: '🧑‍🚀', minScore: 0, nextScore: 100, desc: '初入星渊的拓荒新星，正在接受母星轨道领航条例训练。' },
+    { title: '星际巡航少尉', icon: '🎖️', minScore: 100, nextScore: 300, desc: '具备独立指挥巡逻艇与采矿作业的合格初级军官。' },
+    { title: '先锋突击少校', icon: '⚔️', minScore: 300, nextScore: 800, desc: '征服多处外星地质裂隙与地底矿脉的精锐开拓者。' },
+    { title: '深空分舰队中校', icon: '🚀', minScore: 800, nextScore: 1800, desc: '统领多艘主力战舰与军团的深空前线指挥中坚。' },
+    { title: '星区舰队上将', icon: '⭐', minScore: 1800, nextScore: 4000, desc: '主宰恒星系航道秩序与殖民疆域扩张的星区巨擘。' },
+    { title: '星际最高统帅', icon: '👑', minScore: 4000, nextScore: 10000, desc: '威名响彻整个银河星网的终极文明缔造者与深空主宰。' },
   ];
+  let curRank = RANKS[0];
+  let nextRank = RANKS[1];
+  for (let i = RANKS.length - 1; i >= 0; i--) {
+    if (rankScore >= RANKS[i].minScore) {
+      curRank = RANKS[i];
+      nextRank = RANKS[i + 1] || null;
+      break;
+    }
+  }
+  const curBase = curRank.minScore;
+  const targetDiff = nextRank ? (nextRank.minScore - curBase) : 1000;
+  const progressRatio = nextRank ? Math.min(1, Math.max(0, (rankScore - curBase) / targetDiff)) : 1;
+
+  // 2. 八大星际勋章殿堂 (Cosmic Achievements)
+  const ACHIEVEMENTS = [
+    {
+      id: 'first_step',
+      name: '第一滴晨曦',
+      badge: '🌅',
+      desc: '累计完成 3 分钟深空殖民基地运营。',
+      unlocked: playTime >= 180,
+      progress: Math.min(100, Math.floor((playTime / 180) * 100)),
+      hint: `${fmtTime(playTime)} / 3分00秒`,
+    },
+    {
+      id: 'mining_magnate',
+      name: '行星采矿大亨',
+      badge: '⛏️',
+      desc: '累计从地表与深地层开采逾 1,000 战略物资。',
+      unlocked: resourcesCollected >= 1000,
+      progress: Math.min(100, Math.floor((resourcesCollected / 1000) * 100)),
+      hint: `${fmtNum(resourcesCollected)} / 1,000`,
+    },
+    {
+      id: 'tech_luminary',
+      name: '量子求索者',
+      badge: '🔬',
+      desc: '在科技树中攻克突破 5 项核心科研技术。',
+      unlocked: techCount >= 5,
+      progress: Math.min(100, Math.floor((techCount / 5) * 100)),
+      hint: `${techCount} / 5 项`,
+    },
+    {
+      id: 'fleet_admiral',
+      name: '星海巡航群',
+      badge: '🛸',
+      desc: '建造并入列至少 3 艘星际战舰或深空工程船。',
+      unlocked: shipsCount >= 3,
+      progress: Math.min(100, Math.floor((shipsCount / 3) * 100)),
+      hint: `${shipsCount} / 3 艘`,
+    },
+    {
+      id: 'army_legion',
+      name: '铁血地面军团',
+      badge: '🪖',
+      desc: '整编组建至少 2 支具备战备能力的行星陆战队。',
+      unlocked: armyCount >= 2,
+      progress: Math.min(100, Math.floor((armyCount / 2) * 100)),
+      hint: `${armyCount} / 2 支`,
+    },
+    {
+      id: 'galaxy_colonizer',
+      name: '星辰插旗者',
+      badge: '🪐',
+      desc: '将文明版图拓展至 2 颗或以上星系天体。',
+      unlocked: coloniesCount >= 2,
+      progress: Math.min(100, Math.floor((coloniesCount / 2) * 100)),
+      hint: `${coloniesCount} / 2 颗`,
+    },
+    {
+      id: 'deep_explorer',
+      name: '群星漫溯者',
+      badge: '🌌',
+      desc: '深空指挥长跑：累计在线指挥 15 分钟以上。',
+      unlocked: playTime >= 900,
+      progress: Math.min(100, Math.floor((playTime / 900) * 100)),
+      hint: `${fmtTime(playTime)} / 15分00秒`,
+    },
+    {
+      id: 'apex_overlord',
+      name: '深空银河霸权',
+      badge: '👑',
+      desc: '指挥官综合功勋积分突破 1,000 点。',
+      unlocked: rankScore >= 1000,
+      progress: Math.min(100, Math.floor((rankScore / 1000) * 100)),
+      hint: `${Math.floor(rankScore)} / 1,000 点`,
+    },
+  ];
+
+  const unlockedCount = ACHIEVEMENTS.filter((a) => a.unlocked).length;
+
   const body = document.createElement('div');
+  body.className = 'stats-ach-container';
+
+  // 基础统计卡片
+  const stats = [
+    ['累计指挥历程', fmtTime(playTime)],
+    ['已掌控星体', coloniesCount + ' 颗'],
+    ['累计开采资源', fmtNum(resourcesCollected)],
+    ['科研突破技术', techCount + ' 项'],
+    ['深空战舰数量', shipsCount + ' 艘'],
+    ['军备陆战序列', armyCount + ' 支'],
+  ];
   const grid = el('div', 'stat-grid');
   stats.forEach(([k, v]) => {
     const card = el('div', 'stat-card glass');
@@ -246,8 +363,73 @@ function openStats(ctx) {
     grid.appendChild(card);
   });
   body.appendChild(grid);
-  body.appendChild(el('p', 'modal-tip ach-tip', '成就系统开发中')); // 占位
-  ctx.openModal({ title: '统计数据与成就', body });
+
+  // 指挥官军衔 HUD
+  const rankBox = el('div', 'rank-hud glass');
+  const rankTop = el('div', 'rank-top-row');
+  const rankTitleWrap = el('div', 'rank-title-wrap');
+  rankTitleWrap.innerHTML = `
+    <div class="rank-icon-big">${curRank.icon}</div>
+    <div class="rank-name-box">
+      <div class="rank-honor-label muted">舰队最高司令部特授军衔</div>
+      <div class="rank-name-text">${curRank.title}</div>
+    </div>
+  `;
+  const rankScoreBadge = el('div', 'rank-score-badge');
+  rankScoreBadge.innerHTML = `<span class="muted">统帅功勋分</span> <strong>${Math.floor(rankScore)}</strong>`;
+  rankTop.append(rankTitleWrap, rankScoreBadge);
+
+  const rankDesc = el('div', 'rank-desc-text', curRank.desc);
+
+  const rankBarWrap = el('div', 'rank-bar-wrap');
+  const rankProgress = el('div', 'rank-progress-bar');
+  rankProgress.style.width = `${Math.round(progressRatio * 100)}%`;
+  rankBarWrap.appendChild(rankProgress);
+
+  const rankNextTip = el('div', 'rank-next-tip muted');
+  rankNextTip.textContent = nextRank
+    ? `晋升【${nextRank.title}】还需 ${(nextRank.minScore - Math.floor(rankScore)).toFixed(0)} 功勋分 (进度 ${Math.round(progressRatio * 100)}%)`
+    : `★ 已获封最高统帅荣誉军衔，受万星敬仰！`;
+
+  rankBox.append(rankTop, rankDesc, rankBarWrap, rankNextTip);
+  body.appendChild(rankBox);
+
+  // 成就殿堂头部
+  const achHeader = el('div', 'ach-header');
+  achHeader.innerHTML = `
+    <div class="ach-header-title">🏅 星际成就勋章殿堂 (${unlockedCount} / ${ACHIEVEMENTS.length})</div>
+    <div class="ach-header-rate muted">成就达成率：${Math.round((unlockedCount / ACHIEVEMENTS.length) * 100)}%</div>
+  `;
+  body.appendChild(achHeader);
+
+  // 成就卡片网格
+  const achGrid = el('div', 'ach-cards-grid');
+  ACHIEVEMENTS.forEach((ach) => {
+    const card = el('div', `ach-card glass ${ach.unlocked ? 'ach-unlocked' : 'ach-locked'}`);
+    const badge = el('div', 'ach-badge', ach.badge);
+    const content = el('div', 'ach-content');
+    const header = el('div', 'ach-card-header');
+    const title = el('div', 'ach-title', ach.name);
+    const status = el('span', `ach-status-tag ${ach.unlocked ? 'tag-unlocked' : 'tag-locked'}`, ach.unlocked ? '✓ 已加冕' : '进行中');
+    header.append(title, status);
+
+    const desc = el('div', 'ach-desc muted', ach.desc);
+
+    const progressBox = el('div', 'ach-prog-box');
+    const progTrack = el('div', 'ach-prog-track');
+    const progFill = el('div', 'ach-prog-fill');
+    progFill.style.width = `${ach.progress}%`;
+    progTrack.appendChild(progFill);
+    const hint = el('div', 'ach-prog-hint muted', ach.hint);
+    progressBox.append(progTrack, hint);
+
+    content.append(header, desc, progressBox);
+    card.append(badge, content);
+    achGrid.appendChild(card);
+  });
+  body.appendChild(achGrid);
+
+  ctx.openModal({ title: '指挥官统帅殿堂与星际成就', body });
 }
 
 function openMod(ctx) {
@@ -266,11 +448,13 @@ function openSettings(ctx) {
   const acc = currentAccount();
 
   // 音效开关
-  const soundOn = STATE.ui.soundOn !== false;
+  const soundOn = isSoundEnabled();
+  STATE.ui.soundOn = soundOn;
   const soundBtn = el('button', 'btn', soundOn ? '音效：开' : '音效：关');
   soundBtn.onclick = () => {
-    STATE.ui.soundOn = !STATE.ui.soundOn;
-    soundBtn.textContent = STATE.ui.soundOn ? '音效：开' : '音效：关';
+    const next = toggleSound();
+    STATE.ui.soundOn = next;
+    soundBtn.textContent = next ? '音效：开' : '音效：关';
   };
 
   // 数字格式
