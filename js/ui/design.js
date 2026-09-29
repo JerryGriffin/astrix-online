@@ -19,17 +19,16 @@
 import {
   HULLS, ENGINES, WEAPONS, FACILITIES,
   MATERIAL_SLOTS, DEFAULT_MATERIAL,
-} from '../data/ship_parts.js?v=21.4';
+} from '../data/ship_parts.js?v=21.5';
 import {
   evaluateBlueprint, materialMul,
   ensureBlueprints, genBlueprintId, kindOfHull, HULL_RP_COST,
   equipmentList, emptyBlueprint,
-} from '../core/shipyard.js?v=21.4';
-import { getPlanetInstance, ownedOf, getBuildingCounts } from '../core/state.js?v=21.4';
-import { fmtNum } from '../core/format.js?v=21.4';
-// R4：蓝图编辑器（含「建造」开 dock 线）从 shipyard.js 的舰船分支迁到「设计」分支。
-//   这里只复用函数，编辑器本体仍定义在 shipyard.js（其天然的归属），按其渲染。
-import { buildBlueprintEditor, shipBuildBlockReason } from './shipyard.js?v=21.4';
+} from '../core/shipyard.js?v=21.5';
+import { getPlanetInstance, ownedOf, getBuildingCounts } from '../core/state.js?v=21.5';
+import { fmtNum } from '../core/format.js?v=21.5';
+import { buildBlueprintEditor, shipBuildBlockReason } from './shipyard.js?v=21.5';
+import { playPing, playVictory, playLaser } from '../core/sound.js?v=21.5';
 
 function esc(s) {
   return String(s).replace(/[&<>"']/g, (c) => (
@@ -74,13 +73,19 @@ function makeMaterialSelect(slot, value, onChange, ownedMat) {
 
 function addButton(label, onClick) {
   const b = el('button', 'btn btn-sm bp-add', label);
-  b.onclick = onClick;
+  b.onclick = (e) => {
+    playPing();
+    onClick(e);
+  };
   return b;
 }
 
 function removeButton(onClick) {
   const b = el('button', 'btn btn-sm btn-danger bp-remove', '移除');
-  b.onclick = onClick;
+  b.onclick = (e) => {
+    playLaser();
+    onClick(e);
+  };
   return b;
 }
 
@@ -338,17 +343,24 @@ export function renderDesign(container, ctx) {
     const ev = evaluateBlueprint(draft, { researched, ships: account.ships });
     evalPanel.innerHTML = '';
     const grid = el('div', 'bp-eval-grid');
+    const twr = ev.massT > 0 ? (ev.thrust / ev.massT).toFixed(2) : '0.00';
     const rows = [
       ['容量占用', `${fmtNum(ev.footprint)} / ${fmtNum(ev.capacity)}`
         + (ev.footprintLeft < 0 ? ` <span class="bad">超 ${fmtNum(-ev.footprintLeft)}</span>` : '')],
       ['总质量', fmtNum(ev.massT)],
       ['总推力', fmtNum(ev.thrust)],
+      ['推重比(TWR)', `${twr} · ${Number(twr) >= 1.0 ? '<span class="ok">强劲</span>' : '<span class="warn">迟钝</span>'}`],
       ['航速', fmtNum(ev.speed)],
       ['结构强度', fmtNum(ev.agg.struct)],
       ['MK 等级', ev.markLabel],
       ['类型', ev.className],
-      ['强度', ev.strength + '（' + ev.grade + '级）'],
+      ['综合强度', ev.strength + '（' + ev.grade + '级）'],
     ];
+
+    const circuitLine = el('div', 'quantum-circuit');
+    circuitLine.style.cssText = 'height:3px;width:100%;border-radius:2px;margin-bottom:8px;';
+    evalPanel.appendChild(circuitLine);
+
     for (const [k, v] of rows) {
       const cell = el('div', 'bp-eval-cell');
       cell.innerHTML = `<span class="bp-eval-k muted">${esc(k)}</span><span class="bp-eval-v">${v}</span>`;
@@ -378,9 +390,11 @@ export function renderDesign(container, ctx) {
     designBtn.disabled = !(bpOk && rpOk);
     designBtn.onclick = () => {
       if (!(bpOk && rpOk)) {
+        playLaser();
         ctx.openModal({ title: '无法设计', body: simpleBody(esc(reasons.join('。<br>')) + '。'), sheet: true });
         return;
       }
+      playVictory();
       const bp = {
         id: genBlueprintId(kindOfHull(draft.hullId)),
         nameCn: draft.nameCn,

@@ -12,23 +12,24 @@
 //  - 所有数字走 js/core/format.js；文本一律用 el({text})（textContent）做 HTML 转义。
 //  - 样式内联注入，不碰 css/ 目录。
 
-import { PLANETS } from '../data/planets.js?v=21.4';
+import { PLANETS } from '../data/planets.js?v=21.5';
 import {
   STATE, getPlanetInstance, shelterRatio, ownedOf,
-} from '../core/state.js?v=21.4';
-import { fmtNum } from '../core/format.js?v=21.4';
+} from '../core/state.js?v=21.5';
+import { fmtNum } from '../core/format.js?v=21.5';
 // v0.1.2（R8）：调派人力从母星扣「可用人力」，走 population.js 既有接口，不硬改字段
-import { getAvailable } from '../core/population.js?v=21.4';
+import { getAvailable } from '../core/population.js?v=21.5';
 // v0.1.5（需求 2）：运输物资到殖民地 —— 复用 fleet.js 的运输任务（startMission + listFleets）
-import { startMission, listFleets } from '../core/fleet.js?v=21.4';
+import { startMission, listFleets } from '../core/fleet.js?v=21.5';
 // v0.0.93：商店星 Ast1（独立星球入口）+ 商店面板（舰队页复用）
-import { SHOP_PLANET } from '../core/shop.js?v=21.4';
+import { SHOP_PLANET } from '../core/shop.js?v=21.5';
 // v0.1.1：发现门禁 + 商店星拦截 + 托管说明
 import {
   capturePlanet, ensureDiscoveredDefaults, purgeShopColonies,
   modeOf, TRIBUTE_RATES, MANAGEMENT_MODES,
-} from '../core/planetgen.js?v=21.4';
-import { renderShop } from './fleet.js?v=21.4';
+} from '../core/planetgen.js?v=21.5';
+import { renderShop } from './fleet.js?v=21.5';
+import { playPing, playVictory, playWarp } from '../core/sound.js?v=21.5';
 
 const CSS = `
   .col-panel { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; color: #e8eef2; padding: 12px; box-sizing: border-box; max-width: 960px; margin: 0 auto; }
@@ -283,6 +284,7 @@ export function renderColony(root, ctx) {
         }
       }
       const ni = getPlanetInstance(p.code);   // 殖民：惰性建立星球实例（写入开局物资）
+      playVictory();
       // v0.1.2（R8）：从母星调派人力到新星（走 dispatchWorkforce，总数守恒）
       const n = Number(sel.value) || 0;
       if (n > 0 && homeInst && ni) {
@@ -509,7 +511,10 @@ export function renderColony(root, ctx) {
       if (canEnterPlanet(inst)) {
         const enterBtn = el('button', { class: 'col-btn col-enter', text: '进入' });
         if (onEnterPlanet) {
-          enterBtn.addEventListener('click', () => onEnterPlanet(code));
+          enterBtn.addEventListener('click', () => {
+            playPing();
+            onEnterPlanet(code);
+          });
         } else {
           // 没有进入回调：禁用按钮，提示在主界面切换（绝不 import main.js）
           enterBtn.setAttribute('disabled', 'disabled');
@@ -525,6 +530,7 @@ export function renderColony(root, ctx) {
       if (!inst.isHome) {
         const tBtn = el('button', { class: 'col-btn col-colonize', text: '运输物资' });
         tBtn.addEventListener('click', () => {
+          playWarp();
           if (openModal) openModal({ title: '向 ' + p.nameCn + ' 运输物资', body: buildTransportBody(p, inst) });
         });
         btnWrap.appendChild(tBtn);
@@ -533,6 +539,7 @@ export function renderColony(root, ctx) {
       btnWrap = el('button', { class: 'col-btn col-colonize', text: '殖民' });
       btnWrap.setAttribute('data-code', code);
       btnWrap.addEventListener('click', () => {
+        playPing();
         if (openModal) openModal({ title: '建立殖民地 · ' + p.nameCn, body: buildConfirmBody(p) });
       });
     }
@@ -559,6 +566,22 @@ export function renderColony(root, ctx) {
     panel.appendChild(el('div', { class: 'col-title', text: '殖民地管理' }));
     panel.appendChild(el('div', { class: 'col-sub',
       text: '统筹帝国疆域：只有探索发现的星球才会出现在这里；殖民扩张，托管星球由电脑代管并向母星上缴贡品。' }));
+
+    // 行星疆域全息中枢条
+    const domainHud = el('div', {
+      style: 'background:#16202b;border:1px solid #38bdf835;border-radius:10px;padding:12px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;',
+    });
+    const dTitle = el('div', {
+      style: 'font-size:13px;font-weight:bold;color:#7cd7ff;display:flex;align-items:center;gap:6px;',
+      html: '<span>🪐 星际文明拓展与深空行省疆域</span><span style="font-size:11px;color:#94a3b8;font-weight:normal;">(多行星据点网络)</span>',
+    });
+    const dBadge = el('div', {
+      class: 'quantum-circuit',
+      style: 'font-size:11px;color:#6ee7b7;padding:3px 8px;border-radius:4px;border:1px solid #10b98150;font-family:monospace;',
+      text: '超空间物流网络：畅通运行',
+    });
+    domainHud.append(dTitle, dBadge);
+    panel.appendChild(domainHud);
 
     // 顶部概览
     const overview = el('div', { class: 'col-overview' });
