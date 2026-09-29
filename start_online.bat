@@ -1,5 +1,9 @@
 @echo off
 title Astrix Online Server + Cloudflare Tunnel
+where node >nul 2>nul
+if %errorlevel% neq 0 (
+    set "PATH=C:\Users\zhang\.workbuddy\binaries\node\versions\22.22.2-3;%PATH%"
+)
 echo ========================================================
 echo  Starting Astrix Online Server ^& Cloudflare Tunnel...
 echo ========================================================
