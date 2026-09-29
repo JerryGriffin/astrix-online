@@ -1,0 +1,232 @@
+/* 科研面板样式（Astrix v0.0.4）—— 三大方向：科技 / 升级 / 设施 */
+
+/* 三大方向切换条 */
+.res-nav {
+  display: flex;
+  gap: 8px;
+  padding: 4px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, .05);
+}
+.res-nav-btn {
+  flex: 1;
+  min-height: 44px;
+  cursor: pointer;
+  border: 0.5px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: #8a97ad;
+  font-size: 13px;
+  transition: background .15s, color .15s;
+}
+.res-nav-btn:hover { background: rgba(255, 255, 255, .06); color: #e6edf7; }
+.res-nav-btn.active {
+  background: rgba(77, 208, 225, .14);
+  border-color: rgba(77, 208, 225, .5);
+  color: #4dd0e1;
+  font-weight: 500;
+}
+.res-body { display: flex; flex-direction: column; gap: 14px; }
+.res-sub { font-size: 12px; line-height: 1.6; }
+
+/* 设施目录 */
+.fac-group {
+  border: 0.5px solid rgba(255, 255, 255, .1);
+  border-radius: 10px;
+  overflow: hidden;
+  margin-bottom: 12px;
+}
+.fac-sum {
+  cursor: pointer;
+  padding: 10px 12px;
+  background: rgba(255, 255, 255, .05);
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 10px;
+  min-height: 44px;
+  box-sizing: border-box;
+}
+.fac-sum::-webkit-details-marker { display: none; }
+.fac-name { font-size: 13px; font-weight: 500; color: #e6edf7; }
+.fac-note { font-size: 12px; }
+.fac-row {
+  padding: 10px 12px;
+  min-height: 44px;
+  border-top: 0.5px solid rgba(255, 255, 255, .07);
+  cursor: pointer;
+}
+.fac-row:hover { background: rgba(255, 255, 255, .04); }
+.fac-row.is-locked { opacity: .55; }
+.fac-line1 { display: flex; align-items: baseline; gap: 8px; }
+.fac-title { font-size: 13px; font-weight: 500; color: #e6edf7; }
+.fac-mark {
+  font-size: 11px;
+  color: #4dd0e1;
+  border: 0.5px solid rgba(77, 208, 225, .5);
+  border-radius: 4px;
+  padding: 1px 5px;
+}
+.fac-lock { font-size: 11px; color: #ffab40; }
+.fac-line2 { font-size: 12px; margin-top: 3px; }
+.fac-line3 { font-size: 12px; line-height: 1.55; margin-top: 3px; }
+.fac-line4 { font-size: 11px; margin-top: 3px; }
+
+
+.research-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.res-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 18px;
+  padding: 12px 16px;
+  border-radius: var(--radius, 12px);
+}
+
+.res-head-item { display: flex; align-items: baseline; gap: 8px; }
+.res-k { font-size: 12px; color: var(--muted, #8a97ad); }
+.res-v { font-size: 16px; font-weight: 500; color: #e6edf7; }
+.res-v.cyan { color: #4dd0e1; }
+.res-note { font-size: 12px; color: var(--muted, #8a97ad); margin-left: auto; }
+
+.res-section-title {
+  font-size: 13px;
+  font-weight: 500;
+  color: #8a97ad;
+  letter-spacing: .04em;
+  padding-left: 2px;
+}
+
+.res-tier {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.res-tier-tag {
+  flex: 0 0 30px;
+  font-size: 12px;
+  color: #8a97ad;
+  padding-top: 12px;
+  text-align: right;
+}
+
+.res-cards {
+  flex: 1;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: 10px;
+}
+
+.res-card {
+  text-align: left;
+  cursor: pointer;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 0.5px solid rgba(255, 255, 255, .12);
+  background: rgba(255, 255, 255, .04);
+  color: #e6edf7;
+  min-height: 44px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  transition: background .15s, border-color .15s;
+}
+.res-card:hover { background: rgba(255, 255, 255, .08); border-color: rgba(77, 208, 225, .45); }
+.res-card.is-done { border-color: rgba(77, 208, 225, .5); background: rgba(77, 208, 225, .08); }
+.res-card.is-locked { opacity: .55; }
+
+.res-card-top { display: flex; align-items: baseline; gap: 8px; }
+.res-code {
+  font-size: 11px;
+  color: #4dd0e1;
+  border: 0.5px solid rgba(77, 208, 225, .5);
+  border-radius: 4px;
+  padding: 1px 5px;
+}
+.res-name { font-size: 13px; font-weight: 500; }
+
+.res-card-mid { display: flex; flex-wrap: wrap; gap: 8px; font-size: 12px; color: #8a97ad; }
+.res-unlock { color: #ffab40; }
+
+.res-card-bot {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  padding-top: 4px;
+  border-top: 0.5px solid rgba(255, 255, 255, .08);
+}
+.res-card-bot.ok { color: #4dd0e1; }
+.res-card-bot.ready { color: #ffab40; }
+.res-card-bot.lock { color: #8a97ad; }
+.res-branch { font-size: 11px; }
+
+.res-upgrades {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 10px;
+}
+.res-upg {
+  text-align: left;
+  cursor: pointer;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 0.5px solid rgba(255, 255, 255, .12);
+  background: rgba(255, 255, 255, .04);
+  color: #e6edf7;
+  min-height: 44px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.res-upg:hover { background: rgba(255, 255, 255, .08); }
+.res-upg.is-done { border-color: rgba(77, 208, 225, .5); }
+.res-upg.is-ready { border-color: rgba(255, 171, 64, .5); }
+.res-upg-name { font-size: 13px; font-weight: 500; display: flex; justify-content: space-between; }
+.res-upg-lv { font-size: 11px; color: #4dd0e1; font-weight: 400; }
+.res-upg-eff { font-size: 12px; }
+.res-upg-cost { font-size: 12px; color: #ffab40; }
+
+.res-desc { font-size: 13px; line-height: 1.6; color: #e6edf7; margin-bottom: 10px; }
+.res-kv {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  font-size: 13px;
+  padding: 6px 0;
+  border-bottom: 0.5px solid rgba(255, 255, 255, .07);
+}
+.res-kv span { color: #8a97ad; }
+.res-kv b { font-weight: 500; color: #e6edf7; text-align: right; }
+
+/* 移动端：单列，层级标签改为横条 */
+@media (max-width: 768px) {
+  .res-tier { flex-direction: column; gap: 6px; }
+  .res-tier-tag { text-align: left; padding-top: 0; }
+  .res-cards { grid-template-columns: 1fr; width: 100%; }
+  .res-upgrades { grid-template-columns: 1fr; }
+  .res-note { width: 100%; margin-left: 0; }
+  .res-kv { flex-direction: column; gap: 2px; }
+  .res-kv b { text-align: left; }
+}
+
+/* v0.0.8：研究点增速（形如 研究点 1234 (+2.5)）。颜色由 JS 注入（绿涨/灰零） */
+.res-growth {
+  font-size: 12px;
+  font-weight: 500;
+  margin-left: 4px;
+  white-space: nowrap;
+}
+
+/* v0.0.9：已解锁科技统一用绿色 #9FE1CB（与「正值/成功」同色）。
+   覆盖原 .res-card-bot.ok 的青色，使已研究科技卡底部状态文案变绿；
+   同行内的 .res-branch.muted 仍保持次要色，不受影响。 */
+.res-card-bot.ok { color: #9FE1CB; }
+.fac-lock.fac-done { color: #9FE1CB; }
+.ok-green { color: #9FE1CB; }

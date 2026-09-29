@@ -1,0 +1,188 @@
+/* 开始界面样式（Astrix）：深空背景、标题、模式按钮、次要入口 */
+
+.screen-start {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 20px calc(32px + env(safe-area-inset-bottom));
+  background-image: url('../assets/background/deepspace.jpg');
+  background-size: cover;
+  background-position: center;
+  background-attachment: fixed;
+}
+/* 半透明暗色遮罩，保证文字可读 */
+.screen-start::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse at 50% 35%, rgba(5, 7, 15, 0.45), rgba(5, 7, 15, 0.85) 75%);
+  z-index: 0;
+}
+
+.start-wrap {
+  position: relative;
+  z-index: 1;
+  width: min(720px, 100%);
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 18px;
+}
+
+.start-title {
+  font-size: clamp(3rem, 12vw, 6rem);
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  background: linear-gradient(135deg, var(--cyan), var(--purple));
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  text-shadow: 0 0 40px rgba(124, 215, 255, 0.25);
+}
+.start-sub {
+  font-size: clamp(0.95rem, 3vw, 1.2rem);
+  color: var(--text);
+  letter-spacing: 0.3em;
+  opacity: 0.9;
+}
+.start-ver {
+  font-size: 0.8rem;
+  color: var(--muted);
+  letter-spacing: 0.2em;
+}
+
+/* 主模式按钮 */
+.start-modes {
+  display: flex;
+  gap: 16px;
+  width: 100%;
+  max-width: 560px;
+  margin-top: 8px;
+}
+.mode-btn {
+  flex: 1;
+  min-height: 96px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 18px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--panel);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  transition: transform 0.12s ease, border-color 0.15s ease, background 0.15s ease;
+}
+.mode-btn:hover { transform: translateY(-3px); border-color: var(--border-strong); background: rgba(124, 215, 255, 0.1); }
+.mode-label { font-size: 1.2rem; font-weight: 600; }
+.mode-sub { font-size: 0.82rem; }
+.mode-primary {
+  background: linear-gradient(135deg, rgba(124, 215, 255, 0.2), rgba(179, 156, 255, 0.2));
+  border-color: var(--border-strong);
+}
+/* 在线模式：未接入，置顶但视觉上弱化为「即将推出」 */
+.mode-soon {
+  opacity: 0.86;
+  background: rgba(10, 15, 28, 0.5);
+  border-color: rgba(124, 215, 255, 0.22);
+  border-style: dashed;
+}
+.mode-soon:hover { transform: none; border-color: var(--border-strong); background: rgba(124, 215, 255, 0.08); }
+.mode-soon .mode-label { color: var(--cyan); }
+.mode-soon .mode-sub { color: var(--muted); }
+
+/* ===== 模态内容：新建存档内联表单 ===== */
+.acc-new-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 8px;
+  align-items: center;
+}
+.acc-new-input {
+  flex: 1 1 180px;
+  min-height: 44px;
+  width: 100%;
+}
+.acc-new-form .btn { flex: 0 0 auto; }
+.acc-new-tip { flex-basis: 100%; margin: 2px 0 0; color: var(--danger); min-height: 1.1em; }
+.mod-offline-only {
+  color: #ffd479;
+  background: rgba(255, 212, 121, 0.08);
+  border: 1px solid rgba(255, 212, 121, 0.28);
+  border-radius: var(--radius-sm);
+  padding: 8px 12px;
+  margin-bottom: 10px;
+}
+
+/* 次要入口 */
+.start-secondary {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 6px;
+}
+.sec-btn {
+  min-height: 40px;
+  padding: 8px 16px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: rgba(10, 15, 28, 0.6);
+  color: var(--muted);
+  font-size: 0.85rem;
+  transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+}
+.sec-btn:hover { color: var(--text); border-color: var(--border-strong); background: rgba(124, 215, 255, 0.08); }
+
+/* ===== 模态内容：账号列表 ===== */
+.acc-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  margin-bottom: 10px;
+}
+.acc-name { font-weight: 600; }
+.acc-meta { font-size: 0.8rem; }
+.acc-actions { display: flex; gap: 8px; flex-shrink: 0; }
+.btn-sm { min-height: 36px; padding: 6px 12px; font-size: 0.85rem; }
+.acc-new { width: 100%; margin-top: 4px; }
+
+/* ===== 模态内容：更新日志 / 玩法 / 统计 / 设置 ===== */
+.changelog .cl-ver { font-weight: 600; margin-bottom: 8px; }
+.cl-list, .tip-list { padding-left: 20px; }
+.cl-list li, .tip-list li { margin-bottom: 8px; color: var(--text); }
+
+.stat-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 14px; }
+.stat-card { padding: 16px 10px; text-align: center; }
+.stat-val { font-size: 1.3rem; font-weight: 700; color: var(--cyan); }
+.stat-key { font-size: 0.78rem; margin-top: 4px; }
+.ach-tip { text-align: center; letter-spacing: 0.1em; }
+
+.set-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 4px;
+  border-bottom: 1px solid var(--border);
+}
+.set-label { color: var(--muted); }
+
+.modal-actions { display: flex; gap: 12px; justify-content: flex-end; margin-top: 14px; }
+
+/* ===== 移动端适配 ===== */
+@media (max-width: 899px) {
+  .screen-start { background-attachment: scroll; }
+  .start-modes { flex-direction: column; }
+  .mode-btn { min-height: 84px; }
+  .stat-grid { grid-template-columns: 1fr; }
+  .start-secondary .sec-btn { flex: 1 1 calc(50% - 10px); }
+}

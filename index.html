@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>ASTRIX · 太空探索</title>
+  <link rel="icon" href="data:," />
+  <!-- v0.1.3：静态托管没有 Cache-Control 响应头，移动端会把 index.html 与模块缓存好几天，
+       于是改了数据表玩家却仍看到旧数值（化学实验室「造价还是塑料/橡胶」就是这么来的）。
+       这里用 meta 尽量让 HTML 自身不被缓存；模块文件仍靠 ?v=20.0"Cache-Control" content="no-cache, no-store, must-revalidate" />
+  <meta http-equiv="Pragma" content="no-cache" />
+  <meta http-equiv="Expires" content="0" />
+  <!-- v= 与 js/version.js 的 VERSION 保持同步：改版本号即自动击穿浏览器缓存 -->
+  <link rel="stylesheet" href="css/base.css?v=20.0" />
+  <link rel="stylesheet" href="css/start.css?v=20.0" />
+  <link rel="stylesheet" href="css/planet.css?v=20.0" />
+  <link rel="stylesheet" href="css/research.css?v=20.0" />
+  <link rel="stylesheet" href="css/shipyard.css?v=20.0" />
+</head>
+<body>
+  <!-- 全部界面渲染容器 -->
+  <div id="app"></div>
+  <!-- 模态层挂载点（由 main.js 控制） -->
+  <div id="modal-root"></div>
+
+  <!-- ======================================================================
+       启动守卫（v0.0.61 rev3，零依赖内联脚本，必须是普通脚本不能是 module）
+       目的：修复「移动端进入黑屏」。此前若模块加载失败或启动期 JS 抛异常，
+       页面只剩深空背景 = 纯黑屏，错误被完全吞掉、无从排查。
+       现在任何启动期失败都会在屏幕上显示完整错误（标题 + 详情 + 可复制），
+       main.js 启动完成后调用 __bootDone() 移除本守卫。
+       ====================================================================== -->
+  <div id="boot-guard"
+       style="position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;
+              background:#050912;color:#c8d4e0;font:14px/1.6 system-ui,-apple-system,sans-serif;">
+    <div style="text-align:center;">
+      <div style="font-size:20px;letter-spacing:.3em;color:#7cd7ff;margin-bottom:12px;">ASTRIX</div>
+      <div style="opacity:.7;">加载中…</div>
+    </div>
+  </div>
+  <script>
+  (function () {
+    var done = false;
+    window.__bootDone = function () {
+      done = true;
+      var g = document.getElementById('boot-guard');
+      if (g) g.remove();
+    };
+    function show(title, detail) {
+      if (done) return;                 // 启动完成后的错误不接管屏幕
+      done = true;                      // 只显示一次
+      var g = document.getElementById('boot-guard');
+      if (!g) return;
+      var ua = navigator.userAgent || '';
+      g.innerHTML =
+        '<div style="max-width:560px;padding:20px;text-align:left;">'
+        + '<div style="font-size:17px;font-weight:600;color:#ff6b81;margin-bottom:10px;">✕ ' + title + '</div>'
+        + '<div style="opacity:.65;margin-bottom:8px;">游戏启动时发生错误，把下面的信息发给开发者即可精准修复。</div>'
+        + '<textarea readonly id="boot-err" style="width:100%;height:180px;background:#0b101c;color:#c8d4e0;'
+        +   'border:1px solid #223; border-radius:8px;padding:10px;font:12px/1.5 ui-monospace,Consolas,monospace;'
+        +   'white-space:pre-wrap;word-break:break-all;"></textarea>'
+        + '<div style="margin-top:10px;display:flex;gap:8px;">'
+        +   '<button id="boot-copy" style="flex:1;min-height:44px;border:1px solid #345;border-radius:8px;'
+        +     'background:rgba(124,215,255,.08);color:#c8d4e0;font-size:14px;">复制错误信息</button>'
+        +   '<button onclick="location.reload()" style="flex:1;min-height:44px;border:1px solid #345;border-radius:8px;'
+        +     'background:rgba(124,215,255,.08);color:#c8d4e0;font-size:14px;">刷新重试</button>'
+        + '</div></div>';
+      var extra = '\n--- 环境 ---\nUA: ' + ua + '\n页面: ' + location.href + '\n时间: ' + new Date().toISOString();
+      g.querySelector('#boot-err').value = title + '\n' + detail + extra;
+      g.querySelector('#boot-copy').addEventListener('click', function () {
+        var ta = g.querySelector('#boot-err');
+        ta.focus(); ta.select();
+        try { document.execCommand('copy'); } catch (e) {}
+        try { if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(ta.value); } catch (e) {}
+      });
+    }
+    // ① 脚本/样式资源加载失败（捕获阶段才能拿到 <script> 元素错误）
+    window.addEventListener('error', function (e) {
+      var t = e.target;
+      if (t && (t.tagName === 'SCRIPT' || t.tagName === 'LINK')) {
+        show('资源加载失败', '加载不下的文件：' + (t.src || t.href)
+          + '\n常见原因：网络不稳 / 运营商劫持 / 旧缓存。切网或清理缓存后重试。');
+      } else if (!done) {
+        show('启动失败', (e.message || '未知错误') + '\n' + ((e.error && e.error.stack) || ''));
+      }
+    }, true);
+    // ② 模块顶层抛错 / ③ 未处理的 Promise 拒绝（main.js import 链上任何一环炸了都会到这）
+    window.addEventListener('unhandledrejection', function (e) {
+      var r = e.reason;
+      show('启动失败', String((r && (r.stack || r.message)) || r));
+    });
+  })();
+  </script>
+
+  <script type="module" src="js/main.js?v=20.0"></script>
+</body>
+</html>

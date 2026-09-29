@@ -1,0 +1,353 @@
+/* 星球界面与物品栏样式（Astrix）：信息条、底部菜单、物品列表、双端适配 */
+
+.screen-planet {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  min-height: 100dvh;
+  background:
+    radial-gradient(1200px 600px at 50% -10%, rgba(124, 215, 255, 0.08), transparent 60%),
+    var(--bg);
+}
+
+/* ===== 顶部信息条 ===== */
+.planet-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: rgba(8, 12, 22, 0.72);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--border);
+}
+.topbar-inner {
+  max-width: var(--maxw);
+  margin: 0 auto;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 28px;
+  padding: 14px 20px;
+}
+.tb-item { display: flex; flex-direction: column; gap: 2px; min-width: 90px; }
+.tb-label { font-size: 0.7rem; color: var(--muted); letter-spacing: 0.1em; }
+.tb-val { font-size: 0.98rem; font-weight: 600; }
+.tb-val.cyan { color: var(--cyan); }
+
+/* ===== 内容区 ===== */
+.planet-content {
+  flex: 1;
+  width: 100%;
+  max-width: var(--maxw);
+  margin: 0 auto;
+  padding: 18px 20px calc(96px + env(safe-area-inset-bottom));
+}
+.content-inner { width: 100%; }
+
+/* ===== 底部菜单 ===== */
+.planet-bottombar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 20;
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  flex-wrap: wrap;
+  padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
+  background: rgba(8, 12, 22, 0.82);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-top: 1px solid var(--border);
+}
+.tab-btn {
+  min-width: 84px;
+  min-height: 44px;
+  padding: 8px 16px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  color: var(--muted);
+  font-size: 0.95rem;
+  transition: color 0.15s ease, background 0.15s ease, border-color 0.15s ease;
+}
+.tab-btn:hover { color: var(--text); background: rgba(124, 215, 255, 0.08); }
+.tab-btn.active {
+  color: var(--text);
+  background: linear-gradient(135deg, rgba(124, 215, 255, 0.2), rgba(179, 156, 255, 0.2));
+  border-color: var(--border-strong);
+}
+.tab-back { color: var(--purple); }
+
+/* ===== 占位面板 ===== */
+.placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: 40vh;
+  text-align: center;
+  padding: 32px;
+}
+.ph-title { font-size: 1.4rem; font-weight: 700; color: var(--text); }
+.ph-sub { font-size: 0.9rem; }
+
+/* ===== 物品栏 ===== */
+.inventory { width: 100%; }
+.inv-overview {
+  font-size: 0.78rem;
+  color: var(--muted);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 14px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--panel);
+}
+
+/* 两栏：玩家拥有的 / 星球储藏 */
+.inv-block { margin-top: 14px; }
+.inv-block-title {
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: var(--cyan);
+  letter-spacing: 0.06em;
+  padding: 8px 10px;
+  margin-bottom: 6px;
+  border-left: 3px solid var(--cyan);
+  background: rgba(124, 215, 255, 0.06);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+}
+.inv-block-store .inv-block-title {
+  color: #ffd479;
+  border-left-color: #ffd479;
+  background: rgba(255, 212, 121, 0.06);
+}
+.inv-block-sub { font-size: 0.74rem; font-weight: 400; letter-spacing: 0; }
+
+.inv-grid { display: grid; grid-template-columns: 1fr; gap: 6px; }
+.inv-empty { text-align: center; padding: 14px; font-size: 0.82rem; }
+
+/* 单行紧凑资源行；min-height 44px 保证移动端触摸区 */
+.inv-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  text-align: left;
+  min-height: 44px;
+  padding: 7px 14px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--panel);
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+.inv-row:hover { border-color: var(--border-strong); background: rgba(124, 215, 255, 0.1); }
+.inv-row-store { border-style: dashed; opacity: 0.92; }
+.inv-row::after { content: '›'; color: var(--muted); margin-left: 6px; font-size: 1.2rem; line-height: 1; flex-shrink: 0; }
+
+.inv-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  font-size: 0.9rem;
+  font-weight: 600;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.inv-chip {
+  font-size: 0.62rem;
+  line-height: 1.6;
+  padding: 0 6px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  flex-shrink: 0;
+}
+.inv-chip-surface { color: #8fe3b0; border-color: rgba(143, 227, 176, 0.4); }
+.inv-chip-underground { color: #e3c98f; border-color: rgba(227, 201, 143, 0.4); }
+.inv-chip-core { color: #ff9f8f; border-color: rgba(255, 159, 143, 0.4); }
+.inv-chip-gas { color: var(--cyan); border-color: rgba(124, 215, 255, 0.4); }
+
+.inv-val {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  flex-shrink: 0;
+  font-size: 0.82rem;
+  font-variant-numeric: tabular-nums;
+}
+.inv-owned { font-weight: 700; color: var(--text); }
+.inv-rate { color: var(--ok); font-style: normal; }
+.inv-rate-zero { color: var(--muted); }
+.inv-remain { font-weight: 700; color: #ffd479; }
+.inv-ab { font-size: 0.72rem; }
+
+/* ===== 详情表 ===== */
+.detail-table { width: 100%; border-collapse: collapse; }
+.detail-table td { padding: 9px 4px; border-bottom: 1px solid var(--border); vertical-align: top; }
+.dt-key { width: 92px; font-size: 0.82rem; }
+.dt-val { font-size: 0.9rem; color: var(--text); }
+
+/* ===== PC 宽屏适配（≥900px） ===== */
+@media (min-width: 900px) {
+  .screen-planet { --maxw: 1200px; }
+  .topbar-inner { flex-wrap: nowrap; }
+  .tb-item { min-width: 0; }
+  .planet-content { padding-top: 24px; }
+  /* 每栏 PC 端两列并排，尽量一屏展示完 */
+  .inv-grid { grid-template-columns: repeat(2, 1fr); gap: 8px; }
+  .tab-btn { min-width: 110px; }
+}
+
+/* ===== 移动端适配（<900px） ===== */
+@media (max-width: 899px) {
+  .topbar-inner { gap: 8px 18px; padding: 12px 14px; }
+  .tb-item { min-width: 40%; }
+  .planet-content { padding: 14px 14px calc(108px + env(safe-area-inset-bottom)); }
+  .inv-row { min-height: 44px; }
+  .planet-bottombar { gap: 6px; }
+  .tab-btn { flex: 1 1 auto; min-width: 0; padding: 8px 6px; font-size: 0.85rem; }
+}
+
+/* ===== v0.0.7：生产线区块（人力面板）===== */
+/* 沿用 research.js 的 fac-row / fac-line1..4 类，这里补一份样式，保证在星球界面也生效 */
+.pop-prod { margin-bottom: 12px; background: #1b2530; border: 1px solid #2a3645; border-radius: 10px; padding: 10px 12px; }
+.pop-prod-title { font-size: 14px; font-weight: 700; color: #cfe2f2; margin-bottom: 4px; }
+.pop-prod-sub { font-size: 12px; opacity: .65; line-height: 1.6; margin-bottom: 8px; }
+.pop-lines { display: flex; flex-direction: column; gap: 10px; }
+
+.pop-newline { background: #14202b; border: 1px solid #223040; border-radius: 10px; padding: 10px 12px; }
+.pop-newline-title { font-size: 13px; font-weight: 600; margin-bottom: 6px; }
+.pop-newline-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 6px; }
+.pop-sel { flex: 1 1 160px; min-width: 0; min-height: 44px; border-radius: 8px; background: #101820;
+  color: #e8eef2; border: 1px solid #34465a; padding: 0 8px; font-size: 13px; }
+.pop-sel-mat { flex: 0 1 140px; }
+.pop-wlabel { font-size: 12px; opacity: .7; white-space: nowrap; }
+.pop-wcnt { width: 76px; min-height: 44px; text-align: center; font-size: 15px; font-weight: 700;
+  border-radius: 8px; background: #101820; color: #fff; border: 1px solid #34465a; box-sizing: border-box; }
+.pop-newline-reason { font-size: 12px; color: #f09595; min-height: 1.2em; line-height: 1.6; margin-top: 2px; }
+
+.pop-ov { font-size: 12px; line-height: 1.8; background: #16202b; border: 1px solid #223040; border-radius: 8px; padding: 6px 10px; }
+.pop-ov.over { border-color: #f09595; }
+.pop-ov-name { font-weight: 600; }
+.pop-ov-label { opacity: .7; }
+.pop-ov-used { font-weight: 700; color: #9FE1CB; }
+.pop-ov.over .pop-ov-used { color: #f09595; }
+.pop-ov-total { font-weight: 700; }
+
+.pop-line-group { border: 1px solid #223040; border-radius: 10px; overflow: hidden; }
+.pop-line-group-head { padding: 7px 12px; background: #16202b; font-size: 13px; font-weight: 600; }
+
+/* 单条生产线行（沿用 research 的 fac-row 视觉） */
+.pop-lines .fac-row { padding: 8px 12px; min-height: 44px; border-top: 0.5px solid rgba(255,255,255,.07); }
+.pop-lines .fac-row:hover { background: rgba(255,255,255,.04); }
+.pop-lines .fac-line1 { display: flex; align-items: baseline; gap: 8px; }
+.pop-lines .fac-title { font-size: 13px; font-weight: 500; color: #e6edf7; }
+.pop-lines .fac-line2 { font-size: 12px; margin-top: 4px; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+
+.pop-step { min-width: 40px; min-height: 44px; font-size: 17px; border: none; border-radius: 8px; background: #2d3e50; color: #fff; cursor: pointer; }
+.pop-step:active { background: #3a5066; }
+.pop-line-del { min-height: 40px; min-width: 56px; border: 1px solid rgba(255,107,129,.4); border-radius: 8px;
+  background: transparent; color: #f09595; cursor: pointer; font-size: 12px; }
+.pop-line-del:active { background: rgba(255,107,129,.12); }
+.pop-line-rate { font-size: 12px; color: #9FE1CB; font-weight: 600; }
+.pop-prod-empty { font-size: 12px; opacity: .6; padding: 6px 2px; }
+
+/* 移动端：生产线控件点击区加大 */
+@media (max-width: 899px) {
+  .pop-sel, .pop-wcnt { min-height: 44px; }
+  .pop-step, .pop-line-del { min-height: 44px; }
+}
+
+/* v0.0.8：舰队面板子分支（舰船 / 设计）。「设计」仅在造出船坞后出现。 */
+.fleet-subnav {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+.fleet-subnav-btn {
+  flex: 0 0 auto;
+  min-height: 44px;
+  min-width: 88px;
+  padding: 0 16px;
+  cursor: pointer;
+  border: 1px solid rgba(255, 255, 255, .12);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, .04);
+  color: #8a97ad;
+  font-size: 13px;
+  transition: background .15s, color .15s, border-color .15s;
+}
+.fleet-subnav-btn:hover { background: rgba(255, 255, 255, .08); color: #e6edf7; }
+.fleet-subnav-btn.active {
+  background: rgba(77, 208, 225, .14);
+  border-color: rgba(77, 208, 225, .5);
+  color: #4dd0e1;
+  font-weight: 500;
+}
+.fleet-subcontent { width: 100%; }
+
+/* ===== v0.0.9：电力面板「电力来源 / 消耗明细」折叠区块 ===== */
+/* 样式只追加于此，不改动上面任何既有规则。 */
+.pwr-sources {
+  background: #16202b;
+  border: 1px solid #2a3645;
+  border-radius: 10px;
+  margin-bottom: 12px;
+  overflow: hidden;
+}
+/* 可点击标题：min-height 44px 保证移动端触摸区 ≥44px */
+.pwr-sources-head {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 700;
+  color: #cfe2f2;
+  user-select: none;
+}
+.pwr-sources-head:hover { background: rgba(255, 255, 255, .04); }
+.pwr-sources-head:focus-visible { outline: 2px solid #5DCAA5; outline-offset: -2px; }
+.pwr-sources-arrow { transition: transform .15s ease; display: inline-block; }
+.pwr-sources.collapsed .pwr-sources-arrow { transform: rotate(-90deg); }
+.pwr-sources-body { padding: 8px 12px 12px; }
+.pwr-sources.collapsed .pwr-sources-body { display: none; }
+
+.pwr-sources-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.pwr-sources-coltitle { font-size: 12px; font-weight: 700; margin-bottom: 4px; }
+.pwr-sources-coltitle.gen { color: #9FE1CB; }
+.pwr-sources-coltitle.draw { color: #f09595; }
+
+.pwr-src-row { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; font-size: 12px; line-height: 1.7; }
+.pwr-src-name { opacity: .9; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pwr-src-val { font-weight: 600; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.pwr-src-val.gen { color: #9FE1CB; }
+.pwr-src-val.draw { color: #f09595; }
+.pwr-src-total { border-top: 1px solid #2a3645; margin-top: 6px; padding-top: 6px; }
+.pwr-src-total .pwr-src-name { opacity: 1; }
+.pwr-sources-note { font-size: 11px; opacity: .6; margin-top: 8px; line-height: 1.5; }
+
+/* v0.0.9：移动端单列，控件点击区加大 */
+@media (max-width: 899px) {
+  .pwr-sources-cols { grid-template-columns: 1fr; }
+  .pwr-sources-head { min-height: 44px; }
+}
+
+/* v0.0.9：生产线每条线的工作强度下拉（与人力面板岗位下拉同款样式） */
+.pop-line-int {
+  min-height: 40px;
+  border-radius: 8px;
+  background: #2d3e50;
+  color: #fff;
+  border: none;
+  padding: 0 6px;
+}

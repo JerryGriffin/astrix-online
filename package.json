@@ -1,0 +1,22 @@
+{
+  "name": "astrix-space-odyssey",
+  "version": "0.2.0",
+  "type": "module",
+  "description": "Astrix Hardcore Sci-Fi Real-time Multiplayer Space Strategy Game",
+  "main": "server.mjs",
+  "scripts": {
+    "start": "node server.mjs",
+    "test": "node docs/selfcheck_v006.mjs"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "keywords": [
+    "game",
+    "space",
+    "sci-fi",
+    "multiplayer",
+    "strategy",
+    "simulation"
+  ]
+}

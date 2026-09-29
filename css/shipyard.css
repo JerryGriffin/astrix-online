@@ -1,0 +1,201 @@
+/* 船坞界面样式（Astrix v0.0.4）—— 蓝图编辑器 + 飞船列表与详情 */
+
+.yard-wrap { display: flex; flex-direction: column; gap: 14px; }
+
+/* 顶部概览 */
+.yard-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 18px;
+  padding: 12px 16px;
+  border-radius: var(--radius, 12px);
+}
+.yard-head-item { display: flex; align-items: baseline; gap: 8px; }
+.yard-k { font-size: 12px; color: var(--muted, #8a97ad); }
+.yard-v { font-size: 16px; font-weight: 500; color: #e6edf7; }
+.yard-v.cyan { color: #4dd0e1; }
+.yard-note { font-size: 12px; color: var(--muted, #8a97ad); margin-left: auto; }
+
+/* 蓝图编辑器 */
+.bp-box { display: flex; flex-direction: column; gap: 8px; }
+.bp-sub {
+  font-size: 12px;
+  color: #4dd0e1;
+  margin-top: 6px;
+  letter-spacing: .03em;
+}
+.bp-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+}
+.bp-label {
+  flex: 0 0 62px;
+  font-size: 12px;
+  color: #8a97ad;
+}
+.bp-gap { flex: 0 0 1px; }
+
+.bp-select,
+.bp-input {
+  min-height: 40px;
+  box-sizing: border-box;
+  border-radius: 8px;
+  border: 0.5px solid rgba(255, 255, 255, .14);
+  background: rgba(255, 255, 255, .06);
+  color: #e6edf7;
+  font-size: 13px;
+  padding: 0 8px;
+  max-width: 100%;
+}
+.bp-select { flex: 1 1 220px; min-width: 0; }
+.bp-input { flex: 0 0 96px; }
+.bp-input-wide { flex: 1 1 160px; }
+.bp-unit { font-size: 12px; }
+.bp-tip { font-size: 12px; }
+
+.bp-add,
+.bp-remove { align-self: flex-start; }
+.bp-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+/* 实时评估面板 */
+.bp-eval {
+  padding: 12px;
+  border-radius: 10px;
+  margin-top: 6px;
+}
+.bp-eval-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 8px;
+}
+.bp-eval-cell { display: flex; flex-direction: column; gap: 2px; }
+.bp-eval-k { font-size: 11px; }
+.bp-eval-v { font-size: 13px; color: #e6edf7; }
+.bp-eval-v .bad { color: #ff6b6b; }
+
+.bp-verdict {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 10px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 0.5px solid rgba(255, 255, 255, .1);
+}
+.bp-v-name { font-size: 15px; font-weight: 600; color: #4dd0e1; }
+.bp-v-tag {
+  font-size: 11px;
+  color: #ffab40;
+  border: 0.5px solid rgba(255, 171, 64, .45);
+  border-radius: 4px;
+  padding: 1px 6px;
+}
+
+.bp-issues { margin: 8px 0 0; padding-left: 18px; font-size: 12px; line-height: 1.7; }
+.bp-issues.err { color: #ff6b6b; }
+.bp-issues.warn { color: #ffab40; }
+
+/* 飞船列表 */
+.yard-ships { display: flex; flex-direction: column; gap: 8px; }
+.yard-ship {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  min-height: 44px;
+}
+.ys-info { flex: 1; min-width: 0; }
+.ys-name { font-size: 14px; font-weight: 500; color: #e6edf7; }
+.ys-meta { font-size: 12px; margin-top: 2px; }
+.ys-badge {
+  font-size: 12px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  border: 0.5px solid rgba(255, 255, 255, .15);
+  white-space: nowrap;
+}
+.ys-badge.ok { color: #4dd0e1; border-color: rgba(77, 208, 225, .5); }
+.ys-badge.warn { color: #ffab40; border-color: rgba(255, 171, 64, .5); }
+.ys-badge.lethal { color: #ff6b6b; border-color: rgba(255, 107, 107, .55); }
+
+/* 飞船详情 */
+.sp-detail { display: flex; flex-direction: column; gap: 10px; }
+.sp-kv { display: flex; flex-direction: column; }
+.sp-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  font-size: 13px;
+  padding: 6px 0;
+  border-bottom: 0.5px solid rgba(255, 255, 255, .07);
+}
+.sp-k { font-size: 12px; }
+.sp-v { color: #e6edf7; text-align: right; }
+
+.sp-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  gap: 8px;
+}
+.sp-card { padding: 10px; border-radius: 10px; }
+.sp-card-k { font-size: 11px; }
+.sp-card-v { font-size: 16px; font-weight: 600; color: #e6edf7; margin: 3px 0; }
+.sp-card-s { font-size: 11px; }
+.sp-card.ok .sp-card-v { color: #4dd0e1; }
+.sp-card.warn .sp-card-v { color: #ffab40; }
+.sp-card.lethal .sp-card-v { color: #ff6b6b; }
+
+.sp-temp-tip { font-size: 12px; line-height: 1.6; }
+
+.sp-inv { display: flex; flex-direction: column; }
+.sp-inv-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+  padding: 5px 0;
+  border-bottom: 0.5px solid rgba(255, 255, 255, .06);
+}
+.sp-inv-k { color: #8a97ad; }
+.sp-inv-v { color: #e6edf7; }
+
+.sp-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+}
+.sp-simple { font-size: 13px; line-height: 1.7; color: #e6edf7; }
+
+@media (max-width: 768px) {
+  .yard-note { width: 100%; margin-left: 0; }
+  .bp-label { flex: 0 0 100%; }
+  .bp-select { flex: 1 1 100%; }
+  .bp-eval-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .yard-ship { flex-wrap: wrap; }
+  .sp-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .sp-row { flex-direction: column; gap: 2px; }
+  .sp-v { text-align: left; }
+}
+
+/* ============================================================================
+ * 设计面板（v0.0.7，js/ui/design.js）—— 追加，不改动上面已有规则
+ * ==========================================================================*/
+.design-wrap { display: flex; flex-direction: column; gap: 14px; }
+.dsn-saved { display: flex; flex-direction: column; gap: 8px; }
+.dsn-group { display: flex; flex-direction: column; gap: 4px; }
+/* 移动端点击区 ≥ 44px（仅对设计面板内的控件生效，不动既有 .bp-select/.bp-input 全局值） */
+.design-wrap .bp-select,
+.design-wrap .bp-input { min-height: 44px; }
+.bp-block { font-size: 12px; margin-top: 6px; }
+

@@ -1,0 +1,4 @@
+dt=1 code ratio=0.6000 (确实不足→0.6合理)
+dt=0.5 code ratio=0.6000 (储能足以覆盖本tick→应=1.0)
+dt=0.1 code ratio=0.6000 (储能足以覆盖本tick→应=1.0)
+dt=0.01 code ratio=0.6000 (储能足以覆盖本tick→应=1.0)

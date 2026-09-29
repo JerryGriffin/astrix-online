@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: astrix-space-odyssey
+    env: node
+    plan: free
+    buildCommand: ""
+    startCommand: node server.mjs
+    envVars:
+      - key: PORT
+        value: 10000

@@ -1,0 +1,346 @@
+{
+  "unitScale": { "k": 1e3, "m": 1e6, "g": 1e9, "t": 1e12 },
+  "note": "储量单位 k=10^3, m=10^6, g=10^9, t=10^12。丰度为采集效率乘数。标注 inferred=true 的字段为基于 Astroneer 设定的合理推断，非查证事实。",
+  "planets": [
+    {
+      "id": "sylva",
+      "nameZh": "希尔瓦",
+      "nameEn": "Sylva",
+      "type": "类地行星",
+      "difficulty": "Easy",
+      "dayNightCycle": "~10min",
+      "atmosphere": "正常大气",
+      "gravityRelative": 1.0,
+      "surface": [
+        { "name": "有机质", "reserve": "5m", "abundance": 2 },
+        { "name": "石头", "reserve": "100g", "abundance": 1 },
+        { "name": "石墨", "reserve": "100k", "abundance": 0.02 },
+        { "name": "粘土", "reserve": "500k", "abundance": 0.02 },
+        { "name": "孔雀石", "reserve": "10k", "abundance": 0.001 },
+        { "name": "水", "reserve": "10g", "abundance": 10 },
+        { "name": "泥土", "reserve": "1g", "abundance": 1 },
+        { "name": "二氧化硅", "reserve": "100g", "abundance": 1 }
+      ],
+      "underground": [
+        { "name": "石头", "reserve": "1t", "abundance": 2 },
+        { "name": "红土", "reserve": "100k", "abundance": 0.005 },
+        { "name": "闪锌矿", "reserve": "50k", "abundance": 0.002 },
+        { "name": "粗银", "reserve": "1k", "abundance": 1e-5 },
+        { "name": "粗金", "reserve": "500", "abundance": 1e-7 },
+        { "name": "石英", "reserve": "500k", "abundance": 0.05 }
+      ],
+      "core": [
+        { "name": "石头", "reserve": "2m", "abundance": 2 },
+        { "name": "太空元素", "reserve": "1m", "abundance": 1e-5 },
+        { "name": "粗银", "reserve": "100k", "abundance": 1e-4, "note": "储量=地幔100倍, 丰度=地幔10倍" },
+        { "name": "粗金", "reserve": "50k", "abundance": 1e-6, "note": "储量=地幔100倍, 丰度=地幔10倍" }
+      ],
+      "gases": [
+        { "name": "氮气", "reserve": "80g", "abundance": 1 },
+        { "name": "氧气", "reserve": "20g", "abundance": 1 },
+        { "name": "氨气", "reserve": "10k", "abundance": 0.001 },
+        { "name": "甲烷", "reserve": "10k", "abundance": 0.001 },
+        { "name": "二氧化碳", "reserve": "1k", "abundance": 1e-5 }
+      ],
+      "power": { "totalEnergy": "100t", "hydro": 1.2, "wind": 1.2, "solar": 1.2 },
+      "internalEnergy": { "referenceTempC": 25, "inferred": false, "note": "基准：开始时地球上所有物质 25 摄氏度总内能" },
+      "initialLabor": { "total": 1000, "usable": 900 },
+      "sources": ["用户给定范式"]
+    },
+
+    {
+      "id": "desolo",
+      "nameZh": "德索罗",
+      "nameEn": "Desolo",
+      "type": "类地卫星(荒芜月)",
+      "difficulty": "Easy",
+      "dayNightCycle": "1m55s",
+      "atmosphere": "无大气层",
+      "gravityRelative": 0.8,
+      "surface": [
+        { "name": "有机质", "reserve": "2m", "abundance": 1.5 },
+        { "name": "石头", "reserve": "80g", "abundance": 1 },
+        { "name": "石墨", "reserve": "80k", "abundance": 0.02 },
+        { "name": "粘土", "reserve": "300k", "abundance": 0.02 },
+        { "name": "闪锌矿", "reserve": "8k", "abundance": 0.001, "note": "次资源·山地" },
+        { "name": "钨锰铁矿", "reserve": "1k", "abundance": 1e-4, "note": "主资源·洞口" },
+        { "name": "泥土", "reserve": "500m", "abundance": 1 },
+        { "name": "二氧化硅", "reserve": "80g", "abundance": 1 },
+        { "name": "铵", "reserve": "200k", "abundance": 0.03 }
+      ],
+      "underground": [
+        { "name": "石头", "reserve": "800g", "abundance": 2 },
+        { "name": "红土", "reserve": "80k", "abundance": 0.005 },
+        { "name": "钨锰铁矿", "reserve": "60k", "abundance": 0.002, "note": "主资源·洞穴" },
+        { "name": "闪锌矿", "reserve": "40k", "abundance": 0.0015, "note": "次资源·地幔" },
+        { "name": "粗银", "reserve": "800", "abundance": 1e-5 },
+        { "name": "粗金", "reserve": "400", "abundance": 1e-7 },
+        { "name": "石英", "reserve": "400k", "abundance": 0.05 }
+      ],
+      "core": [
+        { "name": "石头", "reserve": "1.5m", "abundance": 2 },
+        { "name": "太空元素", "reserve": "800k", "abundance": 1e-5 },
+        { "name": "粗银", "reserve": "80k", "abundance": 1e-4, "note": "储量=地幔100倍, 丰度=地幔10倍" },
+        { "name": "粗金", "reserve": "40k", "abundance": 1e-6, "note": "储量=地幔100倍, 丰度=地幔10倍" }
+      ],
+      "gases": [],
+      "gasNote": "无大气层，无任何大气气体（事实）",
+      "power": { "totalEnergy": "70t", "hydro": 0.2, "wind": 0.4, "solar": 1.8 },
+      "internalEnergy": { "referenceTempC": -30, "inferred": true, "note": "无大气保温、昼夜极端温差，平均偏冷" },
+      "initialLabor": { "total": 300, "usable": 250 },
+      "sources": [
+        "https://astroneer.gamepedia.com/Desolo",
+        "https://astroneer.wiki.gg/wiki/Desolo",
+        "https://nerdburglars.net/gameguides/desolo/"
+      ]
+    },
+
+    {
+      "id": "calidor",
+      "nameZh": "卡利多",
+      "nameEn": "Calidor",
+      "type": "干旱行星(荒漠)",
+      "difficulty": "Medium",
+      "dayNightCycle": "13.5min",
+      "atmosphere": "正常大气(沙漠)",
+      "gravityRelative": 1.0,
+      "surface": [
+        { "name": "有机质", "reserve": "1m", "abundance": 1 },
+        { "name": "石头", "reserve": "120g", "abundance": 1 },
+        { "name": "石墨", "reserve": "90k", "abundance": 0.02 },
+        { "name": "粘土", "reserve": "600k", "abundance": 0.03 },
+        { "name": "孔雀石", "reserve": "5k", "abundance": 0.001, "note": "主资源·峡谷少" },
+        { "name": "钨锰铁矿", "reserve": "2k", "abundance": 1e-4, "note": "次资源·崖壁" },
+        { "name": "泥土", "reserve": "800m", "abundance": 1 },
+        { "name": "二氧化硅", "reserve": "100g", "abundance": 1 },
+        { "name": "铵", "reserve": "150k", "abundance": 0.02 }
+      ],
+      "underground": [
+        { "name": "石头", "reserve": "1t", "abundance": 2 },
+        { "name": "红土", "reserve": "120k", "abundance": 0.005 },
+        { "name": "孔雀石", "reserve": "80k", "abundance": 0.002, "note": "主资源·上层洞穴" },
+        { "name": "钨锰铁矿", "reserve": "50k", "abundance": 0.0015, "note": "次资源·深处" },
+        { "name": "粗银", "reserve": "600", "abundance": 1e-5 },
+        { "name": "粗金", "reserve": "300", "abundance": 1e-7 },
+        { "name": "石英", "reserve": "450k", "abundance": 0.05 }
+      ],
+      "core": [
+        { "name": "石头", "reserve": "2m", "abundance": 2 },
+        { "name": "太空元素", "reserve": "900k", "abundance": 1e-5 },
+        { "name": "粗银", "reserve": "60k", "abundance": 1e-4, "note": "储量=地幔100倍, 丰度=地幔10倍" },
+        { "name": "粗金", "reserve": "30k", "abundance": 1e-6, "note": "储量=地幔100倍, 丰度=地幔10倍" }
+      ],
+      "gases": [
+        { "name": "氢气", "reserve": "100g", "abundance": 1 },
+        { "name": "硫磺气", "reserve": "50g", "abundance": 1 }
+      ],
+      "power": { "totalEnergy": "120t", "hydro": 0.2, "wind": 0.4, "solar": 2.2 },
+      "internalEnergy": { "referenceTempC": 55, "inferred": true, "note": "被阳光暴晒的干旱炎热世界" },
+      "initialLabor": { "total": 500, "usable": 420 },
+      "sources": [
+        "https://astroneer.gamepedia.com/Calidor",
+        "https://astroneer.wiki.gg/zh/wiki/卡利多",
+        "https://nerdburglars.net/gameguides/calidor/"
+      ]
+    },
+
+    {
+      "id": "vesania",
+      "nameZh": "弗沙尼亞",
+      "nameEn": "Vesania",
+      "type": "外星行星(茂密森林)",
+      "difficulty": "Medium",
+      "dayNightCycle": "13.5min",
+      "atmosphere": "厚密葱郁大气",
+      "gravityRelative": 1.0,
+      "surface": [
+        { "name": "有机质", "reserve": "8m", "abundance": 2 },
+        { "name": "石头", "reserve": "90g", "abundance": 1 },
+        { "name": "石墨", "reserve": "100k", "abundance": 0.02 },
+        { "name": "粘土", "reserve": "400k", "abundance": 0.02 },
+        { "name": "锂", "reserve": "3k", "abundance": 1e-4, "note": "主资源·地表" },
+        { "name": "钛", "reserve": "2k", "abundance": 1e-4, "note": "次资源·紫丘" },
+        { "name": "泥土", "reserve": "600m", "abundance": 1 },
+        { "name": "二氧化硅", "reserve": "90g", "abundance": 1 },
+        { "name": "铵", "reserve": "300k", "abundance": 0.03 }
+      ],
+      "underground": [
+        { "name": "石头", "reserve": "900g", "abundance": 2 },
+        { "name": "红土", "reserve": "90k", "abundance": 0.005 },
+        { "name": "锂", "reserve": "70k", "abundance": 0.002, "note": "主资源·洞穴" },
+        { "name": "钛", "reserve": "60k", "abundance": 0.0015, "note": "次资源·地幔" },
+        { "name": "粗银", "reserve": "700", "abundance": 1e-5 },
+        { "name": "粗金", "reserve": "350", "abundance": 1e-7 },
+        { "name": "石英", "reserve": "420k", "abundance": 0.05 }
+      ],
+      "core": [
+        { "name": "石头", "reserve": "1.8m", "abundance": 2 },
+        { "name": "太空元素", "reserve": "950k", "abundance": 1e-5 },
+        { "name": "粗银", "reserve": "70k", "abundance": 1e-4, "note": "储量=地幔100倍, 丰度=地幔10倍" },
+        { "name": "粗金", "reserve": "35k", "abundance": 1e-6, "note": "储量=地幔100倍, 丰度=地幔10倍" }
+      ],
+      "gases": [
+        { "name": "氢气", "reserve": "90g", "abundance": 1 },
+        { "name": "氮气", "reserve": "75g", "abundance": 1 },
+        { "name": "氩气", "reserve": "50g", "abundance": 0.5 }
+      ],
+      "power": { "totalEnergy": "140t", "hydro": 0.8, "wind": 1.8, "solar": 0.7 },
+      "internalEnergy": { "referenceTempC": 15, "inferred": true, "note": "厚密多云大气，温和偏凉" },
+      "initialLabor": { "total": 400, "usable": 330 },
+      "sources": [
+        "https://astroneer.gamepedia.com/Vesania",
+        "https://astroneer.wiki.gg/wiki/Vesania",
+        "https://nerdburglars.net/gameguides/vesania/"
+      ]
+    },
+
+    {
+      "id": "novus",
+      "nameZh": "诺福斯",
+      "nameEn": "Novus",
+      "type": "外星卫星",
+      "difficulty": "Medium",
+      "dayNightCycle": "3.5min",
+      "atmosphere": "稀薄雾状大气",
+      "gravityRelative": 0.8,
+      "surface": [
+        { "name": "有机质", "reserve": "3m", "abundance": 1.5 },
+        { "name": "石头", "reserve": "70g", "abundance": 1 },
+        { "name": "石墨", "reserve": "80k", "abundance": 0.02 },
+        { "name": "粘土", "reserve": "350k", "abundance": 0.02 },
+        { "name": "赤铁矿", "reserve": "4k", "abundance": 1e-4, "note": "主资源·地表" },
+        { "name": "锂", "reserve": "2k", "abundance": 1e-4, "note": "次资源·山地" },
+        { "name": "泥土", "reserve": "500m", "abundance": 1 },
+        { "name": "二氧化硅", "reserve": "70g", "abundance": 1 },
+        { "name": "铵", "reserve": "200k", "abundance": 0.03 }
+      ],
+      "underground": [
+        { "name": "石头", "reserve": "700g", "abundance": 2 },
+        { "name": "红土", "reserve": "70k", "abundance": 0.005 },
+        { "name": "赤铁矿", "reserve": "60k", "abundance": 0.002, "note": "主资源·洞穴" },
+        { "name": "锂", "reserve": "50k", "abundance": 0.0015, "note": "次资源·地幔" },
+        { "name": "粗银", "reserve": "600", "abundance": 1e-5 },
+        { "name": "粗金", "reserve": "300", "abundance": 1e-7 },
+        { "name": "石英", "reserve": "380k", "abundance": 0.05 }
+      ],
+      "core": [
+        { "name": "石头", "reserve": "1.4m", "abundance": 2 },
+        { "name": "太空元素", "reserve": "850k", "abundance": 1e-5 },
+        { "name": "粗银", "reserve": "60k", "abundance": 1e-4, "note": "储量=地幔100倍, 丰度=地幔10倍" },
+        { "name": "粗金", "reserve": "30k", "abundance": 1e-6, "note": "储量=地幔100倍, 丰度=地幔10倍" }
+      ],
+      "gases": [
+        { "name": "氢气", "reserve": "40g", "abundance": 1 },
+        { "name": "甲烷", "reserve": "75g", "abundance": 1 }
+      ],
+      "power": { "totalEnergy": "80t", "hydro": 0.6, "wind": 1.7, "solar": 1.6 },
+      "internalEnergy": { "referenceTempC": 10, "inferred": true, "note": "稀薄雾状大气，温和" },
+      "initialLabor": { "total": 200, "usable": 160 },
+      "sources": [
+        "https://astroneer.gamepedia.com/Novus",
+        "https://astroneer.wiki.gg/zh/wiki/诺福斯",
+        "https://nerdburglars.net/gameguides/novus/"
+      ]
+    },
+
+    {
+      "id": "glacio",
+      "nameZh": "格拉西歐",
+      "nameEn": "Glacio",
+      "type": "冰原行星(苔原)",
+      "difficulty": "Hard",
+      "dayNightCycle": "~20min",
+      "atmosphere": "风蚀稀薄大气",
+      "gravityRelative": 1.0,
+      "surface": [
+        { "name": "有机质", "reserve": "500k", "abundance": 1 },
+        { "name": "石头", "reserve": "150g", "abundance": 1 },
+        { "name": "石墨", "reserve": "60k", "abundance": 0.015 },
+        { "name": "粘土", "reserve": "200k", "abundance": 0.01 },
+        { "name": "钛", "reserve": "5k", "abundance": 1e-4, "note": "主资源·冰山" },
+        { "name": "赤铁矿", "reserve": "3k", "abundance": 1e-4, "note": "次资源·冰原" },
+        { "name": "冰/水", "reserve": "5g", "abundance": 5 },
+        { "name": "泥土", "reserve": "200m", "abundance": 1 },
+        { "name": "二氧化硅", "reserve": "120g", "abundance": 1 },
+        { "name": "铵", "reserve": "100k", "abundance": 0.02 }
+      ],
+      "underground": [
+        { "name": "石头", "reserve": "1.2t", "abundance": 2 },
+        { "name": "红土", "reserve": "50k", "abundance": 0.004 },
+        { "name": "钛", "reserve": "70k", "abundance": 0.002, "note": "主资源·洞穴" },
+        { "name": "赤铁矿", "reserve": "60k", "abundance": 0.0015, "note": "次资源·地幔" },
+        { "name": "粗银", "reserve": "500", "abundance": 1e-5 },
+        { "name": "粗金", "reserve": "250", "abundance": 1e-7 },
+        { "name": "石英", "reserve": "500k", "abundance": 0.05 }
+      ],
+      "core": [
+        { "name": "石头", "reserve": "2.5m", "abundance": 2 },
+        { "name": "太空元素", "reserve": "1m", "abundance": 1e-5 },
+        { "name": "粗银", "reserve": "50k", "abundance": 1e-4, "note": "储量=地幔100倍, 丰度=地幔10倍" },
+        { "name": "粗金", "reserve": "25k", "abundance": 1e-6, "note": "储量=地幔100倍, 丰度=地幔10倍" }
+      ],
+      "gases": [
+        { "name": "氩气", "reserve": "100g", "abundance": 1 }
+      ],
+      "gasNote": "无氢气，无法仅靠本星气体激活星门（事实）",
+      "power": { "totalEnergy": "160t", "hydro": 1.5, "wind": 2.2, "solar": 0.4 },
+      "internalEnergy": { "referenceTempC": -60, "inferred": true, "note": "距恒星最远，极寒冰原" },
+      "initialLabor": { "total": 150, "usable": 120 },
+      "sources": [
+        "https://astroneer.gamepedia.com/Glacio",
+        "https://astroneer.wiki.gg/wiki/Glacio",
+        "https://nerdburglars.net/gameguides/glacio/"
+      ]
+    },
+
+    {
+      "id": "atrox",
+      "nameZh": "阿特洛克斯",
+      "nameEn": "Atrox",
+      "type": "辐射行星(毒性废土)",
+      "difficulty": "Very Hard",
+      "dayNightCycle": "~20min",
+      "atmosphere": "窒息性毒雾",
+      "gravityRelative": 1.0,
+      "surface": [
+        { "name": "有机质", "reserve": "5m", "abundance": 1 },
+        { "name": "石头", "reserve": "100g", "abundance": 1 },
+        { "name": "石墨", "reserve": "100k", "abundance": 0.02 },
+        { "name": "粘土", "reserve": "400k", "abundance": 0.02 },
+        { "name": "硫磺", "reserve": "30k", "abundance": 1e-3, "note": "地表" },
+        { "name": "铵", "reserve": "400k", "abundance": 0.04 },
+        { "name": "泥土", "reserve": "300m", "abundance": 1 },
+        { "name": "二氧化硅", "reserve": "100g", "abundance": 1 }
+      ],
+      "underground": [
+        { "name": "石头", "reserve": "1t", "abundance": 2 },
+        { "name": "红土", "reserve": "100k", "abundance": 0.005 },
+        { "name": "硫磺", "reserve": "80k", "abundance": 0.002 },
+        { "name": "石英", "reserve": "450k", "abundance": 0.05 },
+        { "name": "粗银", "reserve": "400", "abundance": 1e-5 },
+        { "name": "粗金", "reserve": "200", "abundance": 1e-7 }
+      ],
+      "core": [
+        { "name": "石头", "reserve": "2m", "abundance": 2 },
+        { "name": "太空元素", "reserve": "1.2m", "abundance": 1e-5 },
+        { "name": "粗银", "reserve": "40k", "abundance": 1e-4, "note": "储量=地幔100倍, 丰度=地幔10倍" },
+        { "name": "粗金", "reserve": "20k", "abundance": 1e-6, "note": "储量=地幔100倍, 丰度=地幔10倍" }
+      ],
+      "gases": [
+        { "name": "氦气", "reserve": "25g", "abundance": 0.5 },
+        { "name": "甲烷", "reserve": "100g", "abundance": 1 },
+        { "name": "氮气", "reserve": "50g", "abundance": 1 },
+        { "name": "硫磺气", "reserve": "75g", "abundance": 1 }
+      ],
+      "gasNote": "无主/次固态资源；气体最丰富，且唯一需气体激活星门（事实）",
+      "power": { "totalEnergy": "130t", "hydro": 0.4, "wind": 0.5, "solar": 0.6 },
+      "internalEnergy": { "referenceTempC": 50, "inferred": true, "note": "距恒星最近，但毒雾遮蔽光照，炎热废土" },
+      "initialLabor": { "total": 80, "usable": 60 },
+      "sources": [
+        "https://astroneer.gamepedia.com/Atrox",
+        "https://astroneer.wiki.gg/zh/wiki/阿特洛克斯",
+        "https://gamevoyagers.com/ultimate-guide-to-astroneer/"
+      ]
+    }
+  ]
+}

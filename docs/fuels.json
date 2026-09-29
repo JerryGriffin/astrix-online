@@ -1,0 +1,131 @@
+{
+  "meta": {
+    "game": "Astrix",
+    "document": "Fuel resource data (research draft, data only)",
+    "note": "Heat values are per mole of substance (amount of substance), not per mass. Burn rates are mol/s at 1x burn strength.",
+    "scales": {
+      "heatValueFormula": "heatValue = realHeat_kJ_per_mol / 100",
+      "burnRateDefinition": "Design relative value in mol/s at 1x burn strength, anchored to real combustion/reactivity ordering (methane = 1.0 baseline). Nuclear is scaled up from real ~5e-6 mol/s for playability.",
+      "burnTime1xFormula": "burnTime1x_s = 1 / burnRate",
+      "coalMolarEquivalent": "Standard coal is not a pure substance (29307 kJ/kg). Carbon-equivalent molar heat value = 29307 * 0.012011 ≈ 352 kJ/mol, treating 1 game-mole of coal as 1 mol of carbon-equivalent energy."
+    }
+  },
+  "fuels": [
+    {
+      "id": "carbon",
+      "nameZh": "碳",
+      "nameEn": "Carbon",
+      "formula": "C",
+      "category": "solid",
+      "fuelType": "chemical",
+      "realHeatValueKJperMol": 393.5,
+      "realHeatValueNote": "Graphite standard molar enthalpy of combustion at 25C, 101kPa (C + O2 -> CO2).",
+      "realBurnRateRef": "Solid surface oxidation; bulk combustion slow (cm/min scale), diffusion-limited.",
+      "heatValue": 3.935,
+      "burnRate": 0.35,
+      "burnTime1x": 2.857,
+      "intro": "最基础的单质燃料，燃烧平缓、能量密度低但易获取。"
+    },
+    {
+      "id": "standard_coal",
+      "nameZh": "标准煤",
+      "nameEn": "Standard coal",
+      "formula": "mixture (carbon-equivalent)",
+      "category": "fossil",
+      "fuelType": "chemical",
+      "realHeatValueKJperMol": 351.9,
+      "realHeatValueNote": "Mass basis 29307 kJ/kg (7000 kcal/kg). Carbon-equivalent molar = 29307 * 0.012011 ≈ 351.9 kJ/mol.",
+      "realBurnRateRef": "Pulverized/lump coal, diffusion-controlled, slow ignition and burnout.",
+      "heatValue": 3.519,
+      "burnRate": 0.15,
+      "burnTime1x": 6.667,
+      "intro": "工业时代能量货币，质量基准热值 29307 kJ/kg，能量密度偏低。"
+    },
+    {
+      "id": "uranium",
+      "nameZh": "铀",
+      "nameEn": "Uranium (U-235)",
+      "formula": "U-235",
+      "category": "nuclear",
+      "fuelType": "nuclear",
+      "realHeatValueKJperMol": 1.93e10,
+      "realHeatValueNote": "Nuclear fission: ~200 MeV per fission * 6.022e23 / 1000 = 1.93e10 kJ/mol. EPFL (202.5 MeV) gives 1.954e10.",
+      "realBurnRateRef": "Fission controlled by neutron flux; real consumption ~1 g U-235 per MW_th-day ≈ 5e-6 mol/s for a 1 GW reactor. Scaled up ~4000x for gameplay to 0.02 mol/s.",
+      "heatValue": 1.93e8,
+      "burnRate": 0.02,
+      "burnTime1x": 50.0,
+      "intro": "核裂变燃料，单摩尔能量是化学燃料的千万倍，受控缓慢释放。"
+    },
+    {
+      "id": "plutonium",
+      "nameZh": "钚",
+      "nameEn": "Plutonium (Pu-239)",
+      "formula": "Pu-239",
+      "category": "nuclear",
+      "fuelType": "nuclear",
+      "realHeatValueKJperMol": 2.03e10,
+      "realHeatValueNote": "Nuclear fission: ~210 MeV per fission * 6.022e23 / 1000 = 2.03e10 kJ/mol (National Academies: 0.98 MWd/g vs U 0.95 MWd/g).",
+      "realBurnRateRef": "Fission ~210 MeV/nucleus, same order as uranium, slightly higher. Scaled to 0.018 mol/s for gameplay (controlled fission).",
+      "heatValue": 2.03e8,
+      "burnRate": 0.018,
+      "burnTime1x": 55.56,
+      "intro": "人工核燃料，裂变能略高于铀，同属受控裂变、慢速高能量。"
+    },
+    {
+      "id": "hydrogen",
+      "nameZh": "氢气",
+      "nameEn": "Hydrogen",
+      "formula": "H2",
+      "category": "gas",
+      "fuelType": "chemical",
+      "realHeatValueKJperMol": 285.8,
+      "realHeatValueNote": "Standard molar enthalpy of combustion (H2 + 1/2 O2 -> H2O(l)), 25C, 101kPa.",
+      "realBurnRateRef": "Laminar burning velocity ~2.4-3.25 m/s (stoichiometric air, 1 atm); lowest minimum ignition energy among common fuels.",
+      "heatValue": 2.858,
+      "burnRate": 3.0,
+      "burnTime1x": 0.333,
+      "intro": "火焰传播极快、最易点燃的气体燃料，燃烧迅猛但单摩尔能量不高。"
+    },
+    {
+      "id": "hydrazine",
+      "nameZh": "联氨(肼)",
+      "nameEn": "Hydrazine",
+      "formula": "N2H4",
+      "category": "liquid",
+      "fuelType": "chemical",
+      "realHeatValueKJperMol": 622.0,
+      "realHeatValueNote": "Standard enthalpy of combustion (N2H4 + O2 -> N2 + 2 H2O(l)) ≈ -622 kJ/mol (NIST: -622.08 kJ/mol gas).",
+      "realBurnRateRef": "Hypergolic (auto-ignites on contact), near-zero ignition delay; monopropellant decomposition very rapid.",
+      "heatValue": 6.22,
+      "burnRate": 1.4,
+      "burnTime1x": 0.714,
+      "intro": "火箭级自燃液体燃料，反应凶猛、能量密度高，易储运。"
+    },
+    {
+      "id": "methane",
+      "nameZh": "甲烷",
+      "nameEn": "Methane",
+      "formula": "CH4",
+      "category": "gas",
+      "fuelType": "chemical",
+      "realHeatValueKJperMol": 890.8,
+      "realHeatValueNote": "Standard molar enthalpy of combustion HHV (CH4 + 2 O2 -> CO2 + 2 H2O(l)), 25C, 101kPa.",
+      "realBurnRateRef": "Laminar burning velocity ~0.38-0.43 m/s (stoichiometric air, 1 atm); moderate.",
+      "heatValue": 8.908,
+      "burnRate": 1.0,
+      "burnTime1x": 1.0,
+      "intro": "基准气体燃料，单摩尔热值最高（化学燃料），燃烧温和稳定。"
+    }
+  ],
+  "sources": [
+    "https://cnx.org/contents/havxkyvS@12.1:MrqvGATg@29/Enthalpy",
+    "https://webbook.nist.gov/cgi/cbook.cgi?ID=C302012&Mask=1E9F",
+    "https://www.peopleapp.com/rmharticle/30025205292",
+    "https://fiveable.me/honors-chem/unit-13/nuclear-fission-fusion-processes/study-guide/IVZ3rzjOG9vaNHBI",
+    "https://graphsearch.epfl.ch/en/concept/481843",
+    "https://cnx.org/contents/rydUIGBQ@12.1:9zCw8Rtq/10-2-nuclear-binding-energy",
+    "https://www.mdpi.com/2076-3417/16/17/8588",
+    "https://homo-deus.com/lab/combustion/flame-speed",
+    "https://www.nationalacademies.org/read/4754/chapter/4"
+  ]
+}
