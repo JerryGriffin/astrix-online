@@ -1,15 +1,16 @@
 // 军队系统用户界面（Astrix v0.2.0）
 // 纯原生 ES 模块，深空玻璃拟态风格，移动端与 PC 端自适应（点击区 >= 44px）
 
-import { currentAccount, getPlanetInstance } from '../core/state.js?v=21.3';
+import { currentAccount, getPlanetInstance } from '../core/state.js?v=21.4';
 import {
   ARMY_BLUEPRINTS, ARMY_BP_BY_ID, ARMY_PART_BY_ID, armyBpPartNeeds, armyBpMaterialNeeds
-} from '../data/army_parts.js?v=21.3';
+} from '../data/army_parts.js?v=21.4';
 import {
   listArmies, ensureArmies, armyStatsOf, stationedArmyPower, toggleStationed, disbandArmy,
   getArmyPartStock, canAssembleArmy, startArmyAssemble, cancelArmyAssemble
-} from '../core/army.js?v=21.3';
-import { fmtNum } from '../core/format.js?v=21.3';
+} from '../core/army.js?v=21.4';
+import { fmtNum } from '../core/format.js?v=21.4';
+import { playPing, playShield, playLaser, playVictory } from '../core/sound.js?v=21.4';
 
 function escapeHtml(s) {
   return String(s ?? '').replace(/[&<>"']/g, (c) => (
@@ -102,15 +103,25 @@ export function renderArmy(root, ctx) {
 
       for (const line of buildLines) {
         const row = document.createElement('div');
-        row.style.cssText = 'display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;padding:8px;background:rgba(0,0,0,0.25);border-radius:6px;margin-bottom:6px;';
+        row.style.cssText = 'display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;padding:10px;background:rgba(0,0,0,0.3);border:1px solid #22354c;border-radius:6px;margin-bottom:8px;';
         const pct = Math.min(100, Math.floor((line.progress || 0) * 100));
 
+        let stageText = '🪖 兵员动员与体格检定';
+        if (pct >= 90) stageText = '🚩 战地动员集结与授旗';
+        else if (pct >= 60) stageText = '🛡️ 装甲车辆火控并网';
+        else if (pct >= 25) stageText = '⚙️ 单兵外骨骼与火线列装';
+
         row.innerHTML = `
-          <div style="flex:1;min-width:200px;">
-            <div style="font-size:13px;font-weight:bold;color:#f1f5f9;">${escapeHtml(line.nameCn)}</div>
-            <div style="font-size:11px;color:#94a3b8;margin-top:2px;">指派组装工人：${line.workers} 人 · 进度 ${pct}%</div>
-            <div style="width:100%;height:6px;background:#1e293b;border-radius:3px;margin-top:6px;overflow:hidden;">
-              <div style="width:${pct}%;height:100%;background:#9FE1CB;transition:width 0.3s;"></div>
+          <div style="flex:1;min-width:220px;">
+            <div style="font-size:14px;font-weight:bold;color:#f1f5f9;display:flex;align-items:center;gap:6px;">
+              <span>${escapeHtml(line.nameCn)}</span>
+              <span class="assembly-spark" style="font-size:11px;color:#38bdf8;">⚡ 军备整编中</span>
+            </div>
+            <div style="font-size:11px;color:#94a3b8;margin-top:2px;">
+              指派组装工人：${line.workers} 人 · 进度 ${pct}% · <span style="color:#7cd7ff;">${stageText}</span>
+            </div>
+            <div style="width:100%;height:8px;background:#1e293b;border-radius:4px;margin-top:6px;overflow:hidden;position:relative;border:1px solid #334155;">
+              <div class="quantum-circuit" style="width:${pct}%;height:100%;transition:width 0.3s;"></div>
             </div>
           </div>
         `;
@@ -119,6 +130,7 @@ export function renderArmy(root, ctx) {
         btnCancel.style.cssText = 'min-height:44px;padding:6px 14px;border:1px solid #f0959550;background:rgba(240,149,149,0.12);color:#f09595;border-radius:6px;cursor:pointer;font-size:12px;';
         btnCancel.textContent = '取消退件';
         btnCancel.onclick = () => {
+          playLaser();
           const res = cancelArmyAssemble(acc, inst, line.id);
           if (res.ok) {
             refresh();
@@ -269,6 +281,7 @@ export function renderArmy(root, ctx) {
       btnToggle.style.cssText = `padding:6px 12px;min-height:44px;border-radius:6px;font-size:12px;cursor:pointer;border:1px solid ${isStationed ? '#7cd7ff50' : '#9FE1CB50'};background:${isStationed ? 'rgba(124,215,255,0.1)' : 'rgba(159,225,203,0.12)'};color:${isStationed ? '#7cd7ff' : '#9FE1CB'};`;
       btnToggle.textContent = isStationed ? '转入机动备勤' : '驻防本星防线';
       btnToggle.onclick = () => {
+        playPing();
         toggleStationed(acc, a.id);
         refresh();
       };
@@ -280,6 +293,7 @@ export function renderArmy(root, ctx) {
       btnDisband.textContent = '解散编制';
       btnDisband.onclick = () => {
         if (confirm(`确定要解散部队「${a.nameCn}」吗？部分部件将返还归入装备库。`)) {
+          playLaser();
           disbandArmy(acc, inst, a.id);
           refresh();
         }
@@ -326,8 +340,10 @@ export function renderArmy(root, ctx) {
           const w = parseInt(inp.value, 10) || 10;
           const res = startArmyAssemble(acc, inst, bp.id, w);
           if (!res.ok) {
+            playLaser();
             err.textContent = res.reason || '组建失败';
           } else {
+            playShield();
             closeModal();
             refresh();
           }

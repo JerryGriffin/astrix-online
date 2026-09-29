@@ -24,15 +24,15 @@
 // 所有数字显示一律走 format.js 的 fmtNum / fmtRate / fmtRateBody / fmtSci。
 // 样式集中在 css/planet.css。
 
-import { MATERIALS } from '../data/materials.js?v=21.3';
-import { fmtNum, fmtRate, fmtSci } from '../core/format.js?v=21.3';
-import { getPlanetInstance, tick, currentAccount, atmosphereOf, ownedOf, rateOf } from '../core/state.js?v=21.3';
-import { computePower } from '../core/power.js?v=21.3';
-import { equipmentList } from '../core/shipyard.js?v=21.3';
-import { materialLabel, productionRates } from '../core/production.js?v=21.3';
-import { BUILDING_BY_ID } from '../data/buildings.js?v=21.3';
-import { NUTRIENT_NAMES, METABOLITE_NAMES, consumptionPerSec, metabolitePerSec } from '../core/population.js?v=21.3';
-import { playPing } from '../core/sound.js?v=21.3';
+import { MATERIALS } from '../data/materials.js?v=21.4';
+import { fmtNum, fmtRate, fmtSci } from '../core/format.js?v=21.4';
+import { getPlanetInstance, tick, currentAccount, atmosphereOf, ownedOf, rateOf } from '../core/state.js?v=21.4';
+import { computePower } from '../core/power.js?v=21.4';
+import { equipmentList } from '../core/shipyard.js?v=21.4';
+import { materialLabel, productionRates } from '../core/production.js?v=21.4';
+import { BUILDING_BY_ID } from '../data/buildings.js?v=21.4';
+import { NUTRIENT_NAMES, METABOLITE_NAMES, consumptionPerSec, metabolitePerSec } from '../core/population.js?v=21.4';
+import { playPing } from '../core/sound.js?v=21.4';
 
 // 地层扫描雷达配置
 const STRATA_CONFIG = [

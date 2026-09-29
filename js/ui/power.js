@@ -8,13 +8,14 @@ import {
   computePower, energyOf,
   installedFacilities, installFacility, uninstallFacility, facilityStockOf,
   panelEffOf, facilityFuelOf, buildingCountBonus,
-} from '../core/power.js?v=21.3';
-import { POWER_FACILITIES, POWER_FACILITY_BY_ID } from '../data/facilities.js?v=21.3';
-import { BUILDING_BY_ID } from '../data/buildings.js?v=21.3';
-import { RECIPES } from '../data/recipes.js?v=21.3';
-import { linesOf } from '../core/production.js?v=21.3';
-import { jobsOfBuilding, jobOutput, assignedToBuilding, buildingSlots } from '../core/population.js?v=21.3';
-import { fmtNum, fmtRate, fmtRateBody } from '../core/format.js?v=21.3';
+} from '../core/power.js?v=21.4';
+import { POWER_FACILITIES, POWER_FACILITY_BY_ID } from '../data/facilities.js?v=21.4';
+import { BUILDING_BY_ID } from '../data/buildings.js?v=21.4';
+import { RECIPES } from '../data/recipes.js?v=21.4';
+import { linesOf } from '../core/production.js?v=21.4';
+import { jobsOfBuilding, jobOutput, assignedToBuilding, buildingSlots } from '../core/population.js?v=21.4';
+import { fmtNum, fmtRate, fmtRateBody } from '../core/format.js?v=21.4';
+import { playPing, playLaser, playShield } from '../core/sound.js?v=21.4';
 
 const CSS = `
   .pwr-panel { font-family: system-ui, sans-serif; color: #e8eef2; padding: 12px; box-sizing: border-box; }
@@ -43,8 +44,14 @@ const CSS = `
   .pwr-card .p-count { font-size: 12px; color: #9FE1CB; }
   .pwr-card button { min-height: 40px; min-width: 72px; border: none; border-radius: 8px; background: #2d5b7a; color: #fff; font-weight: 600; cursor: pointer; }
   .pwr-card button.uninstall { background: #3a2a2a; color: #ffd9d9; }
-  .pwr-card button[disabled] { background: #28323d; color: #7d8a97; cursor: not-allowed; }
   .pwr-hint2 { font-size: 12px; opacity: .6; padding: 4px 2px 12px; line-height: 1.6; }
+  .pwr-grid-hud { background: #16202b; border: 1px solid #38bdf835; border-radius: 10px; padding: 12px; margin-bottom: 12px; }
+  .pwr-hud-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; flex-wrap: wrap; gap: 8px; }
+  .pwr-hud-title { font-size: 13px; font-weight: bold; color: #7cd7ff; display: flex; align-items: center; gap: 6px; }
+  .pwr-hud-btn { min-height: 32px; padding: 4px 10px; font-size: 12px; border-radius: 6px; border: 1px solid #38bdf850; background: rgba(56,189,248,0.15); color: #7cd7ff; cursor: pointer; }
+  .pwr-charge-track { width: 100%; height: 8px; background: rgba(0,0,0,0.35); border-radius: 4px; overflow: hidden; margin-bottom: 8px; border: 1px solid #1e293b; }
+  .pwr-charge-fill { height: 100%; border-radius: 4px; transition: width 0.4s ease; }
+  .pwr-hud-telemetry { font-size: 11px; color: #94a3b8; font-family: monospace; }
 `;
 
 function el(tag, attrs = {}, children = []) {
@@ -265,6 +272,38 @@ export function renderPower(root, ctx) {
     });
     panel.appendChild(sourcesWrap);
 
+    // ---- 智能微电网导能环网 HUD ----
+    const gridHud = el('div', { class: 'pwr-grid-hud' });
+    const hudHead = el('div', { class: 'pwr-hud-head' });
+    const hudTitle = el('div', { class: 'pwr-hud-title' });
+    hudTitle.innerHTML = '<span>⚡ 行星智能微电网与导流中枢</span><span style="font-size:11px;color:#94a3b8;font-weight:normal;">(超导母线自动稳频)</span>';
+    const diagBtn = el('button', { class: 'pwr-hud-btn', text: '⚡ 调测微电网母线' });
+    hudHead.append(hudTitle, diagBtn);
+
+    const chargePct = pw.storageMax > 0 ? Math.min(100, Math.max(0, Math.round((pw.storage / pw.storageMax) * 100))) : 0;
+    const chargeTrack = el('div', { class: 'pwr-charge-track' });
+    const chargeFill = el('div', {
+      class: 'pwr-charge-fill quantum-circuit',
+      style: `width:${chargePct}%;background:${chargePct > 20 ? 'linear-gradient(90deg, #10b981, #38bdf8)' : '#f09595'};`,
+    });
+    chargeTrack.appendChild(chargeFill);
+
+    const hudTelem = el('div', { class: 'pwr-hud-telemetry' });
+    const freq = pw.ratio >= 1 ? '50.00 Hz (极度稳定)' : '46.80 Hz (过载欠频警报)';
+    hudTelem.textContent = `储电蓄能率: ${chargePct}% · 电网母线频率: ${freq} · 谐振损耗: <0.01%`;
+
+    diagBtn.onclick = () => {
+      playPing();
+      const phases = ['0.01°', '0.03°', '0.00°', '0.02°'];
+      const p = phases[Math.floor(Math.random() * phases.length)];
+      hudTelem.textContent = `微电网相角差: ${p} · 导能环网母线阻抗趋近 0 Ω · 全星区相位锁相已校准`;
+      hudTelem.style.color = '#34d399';
+      setTimeout(() => { hudTelem.style.color = '#94a3b8'; }, 2000);
+    };
+
+    gridHud.append(hudHead, chargeTrack, hudTelem);
+    panel.appendChild(gridHud);
+
     // ---- 顶部概览 ----
     const overview = el('div', { class: 'pwr-overview' });
     const ratioPct = Math.round(pw.ratio * 100);
@@ -350,7 +389,11 @@ export function renderPower(root, ctx) {
         if (cnt > 0) {
           actions.appendChild(el('span', { class: 'p-count', text: '已装 ' + fmtNum(cnt) + ' 座' }));
           const unBtn = el('button', { class: 'uninstall', text: '拆除' });
-          unBtn.addEventListener('click', () => { uninstallFacility(planet, f.id); draw(); });
+          unBtn.addEventListener('click', () => {
+            playLaser();
+            uninstallFacility(planet, f.id);
+            draw();
+          });
           actions.appendChild(unBtn);
         }
         const insBtn = el('button', { class: 'install', text: '安装' });
@@ -363,10 +406,12 @@ export function renderPower(root, ctx) {
         insBtn.addEventListener('click', () => {
           const res = installFacility(planet, f.id, account);
           if (!res.ok) {
+            playLaser();
             if (openModal) openModal({ title: '无法安装：' + f.nameCn, body: '<p class="p-sub">' + res.reason + '</p>' });
             else window.alert && window.alert(res.reason);
             return;
           }
+          playShield();
           draw();
         });
         actions.appendChild(insBtn);
