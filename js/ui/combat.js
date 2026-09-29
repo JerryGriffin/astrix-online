@@ -1,5 +1,5 @@
 // 舰队实时交互交战视窗（Astrix v0.2.0）
-// 纯原生 ES 模块，深空玻璃拟态风格，支持移动端与 PC 端响应式、手动点选集火与多战术指令。
+// 纯原生 ES 模块，深空玻璃拟态风格，配备动态激光弹道、伤害跳字浮层、护盾波动与高能粒子特效。
 
 import {
   createBattleSession, tickBattle, executeTacticalCommand, TACTICAL_COMMANDS,
@@ -44,16 +44,16 @@ export function openBattleView(arg1, arg2, arg3) {
 
   const root = document.createElement('div');
   root.className = 'battle-arena-root';
-  root.style.cssText = 'display:flex;flex-direction:column;gap:12px;color:#c8d4e0;font-size:13px;max-width:940px;margin:0 auto;';
+  root.style.cssText = 'display:flex;flex-direction:column;gap:12px;color:#c8d4e0;font-size:13px;max-width:940px;margin:0 auto;position:relative;';
 
   // 1. 顶部控制栏与态势
   const header = document.createElement('div');
-  header.style.cssText = 'display:flex;justify-content:space-between;align-items:center;background:rgba(0,0,0,0.5);padding:10px 14px;border-radius:8px;border:1px solid rgba(124,215,255,0.25);';
+  header.style.cssText = 'display:flex;justify-content:space-between;align-items:center;background:rgba(0,0,0,0.55);padding:10px 14px;border-radius:8px;border:1px solid rgba(124,215,255,0.25);';
   header.innerHTML = `
     <div>
       <span style="font-weight:bold;font-size:16px;color:#7cd7ff;">⚔️ ${esc(session.title)}</span>
       <span id="bt-time-label" style="margin-left:12px;font-size:12px;color:#94a3b8;">作战耗时：00:00</span>
-      <span id="bt-target-hint" style="margin-left:10px;font-size:11px;color:#facc15;">(点击敌舰可手动锁定集火)</span>
+      <span id="bt-target-hint" style="margin-left:10px;font-size:11px;color:#facc15;">(点击敌舰可手动锁定首要集火目标)</span>
     </div>
     <div style="display:flex;gap:8px;align-items:center;">
       <button id="bt-btn-speed" style="padding:4px 10px;min-height:36px;border-radius:4px;background:rgba(255,255,255,0.06);border:1px solid #475569;color:#cbd5e1;cursor:pointer;">1.0x 航速</button>
@@ -62,18 +62,26 @@ export function openBattleView(arg1, arg2, arg3) {
   `;
   root.appendChild(header);
 
-  // 2. 战场主画卷（双方舰阵雷达对峙区）
+  // 2. 战场主画卷（双方舰阵雷达对峙区 + 激光弹道与跳字层）
   const stage = document.createElement('div');
-  stage.style.cssText = 'position:relative;min-height:260px;background:radial-gradient(ellipse at center, #0b1329 0%, #030610 100%);border-radius:8px;border:1px solid rgba(124,215,255,0.3);overflow:hidden;display:flex;justify-content:space-between;padding:16px 20px;gap:12px;';
+  stage.id = 'bt-battle-stage';
+  stage.style.cssText = 'position:relative;min-height:270px;background:radial-gradient(ellipse at center, #0b1533 0%, #030612 100%);border-radius:8px;border:1px solid rgba(124,215,255,0.3);overflow:hidden;display:flex;justify-content:space-between;padding:16px 20px;gap:12px;';
   stage.innerHTML = `
-    <div style="position:absolute;inset:0;opacity:0.2;background-image:radial-gradient(#38bdf8 1px, transparent 1px);background-size:20px 20px;pointer-events:none;"></div>
+    <!-- 星空背景与雷达扫描线 -->
+    <div style="position:absolute;inset:0;opacity:0.25;background-image:radial-gradient(#38bdf8 1px, transparent 1px);background-size:24px 24px;pointer-events:none;"></div>
+    <div id="bt-screen-flash" style="position:absolute;inset:0;pointer-events:none;z-index:5;transition:background 0.3s;"></div>
+
     <!-- 己方舰队列阵 -->
     <div id="bt-player-formation" style="flex:1;display:flex;flex-direction:column;gap:10px;justify-content:center;z-index:2;max-width:44%;"></div>
-    <!-- 战场中央动态交火指示 -->
-    <div id="bt-fx-zone" style="flex:0 0 100px;position:relative;pointer-events:none;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;">
-      <div id="bt-fx-icon" style="font-size:22px;transition:transform 0.2s;">⚡</div>
+
+    <!-- 战场中央动态交火指示与弹道轨迹层 -->
+    <div id="bt-fx-zone" style="flex:0 0 110px;position:relative;pointer-events:none;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;z-index:4;">
+      <div id="bt-fx-icon" style="font-size:24px;transition:transform 0.2s;">⚡</div>
       <div id="bt-fx-label" style="font-size:12px;color:#93c5fd;font-weight:bold;text-align:center;transition:all 0.2s;">交火接触中</div>
+      <!-- 动态弹道图层 -->
+      <div id="bt-laser-layer" style="position:absolute;inset:0;pointer-events:none;"></div>
     </div>
+
     <!-- 敌方舰队列阵（支持点击锁定目标） -->
     <div id="bt-enemy-formation" style="flex:1;display:flex;flex-direction:column;gap:10px;justify-content:center;z-index:2;max-width:44%;"></div>
   `;
@@ -103,7 +111,7 @@ export function openBattleView(arg1, arg2, arg3) {
     const b = document.createElement('button');
     b.id = `bt-cmd-${cmd.id}`;
     b.className = 'btn-action';
-    b.style.cssText = 'min-height:52px;padding:6px 8px;border-radius:6px;border:1px solid #334155;background:rgba(124,215,255,0.08);color:#c8d4e0;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;';
+    b.style.cssText = 'min-height:52px;padding:6px 8px;border-radius:6px;border:1px solid #334155;background:rgba(124,215,255,0.08);color:#c8d4e0;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;transition:all 0.15s;';
     b.title = cmd.desc;
     b.innerHTML = `
       <div style="font-weight:bold;font-size:13px;display:flex;align-items:center;gap:4px;">
@@ -117,6 +125,7 @@ export function openBattleView(arg1, arg2, arg3) {
         showFloatingFx(res.reason, '#ff6b81', '⚠️');
       } else {
         showFloatingFx(cmd.name + '！', '#7cd7ff', cmd.icon);
+        triggerSkillVisualFx(cmd.id);
       }
       renderView();
     };
@@ -148,6 +157,68 @@ export function openBattleView(arg1, arg2, arg3) {
     }
   }
 
+  // 触发技能全屏或弹道视觉特效
+  function triggerSkillVisualFx(cmdId) {
+    const flash = document.getElementById('bt-screen-flash');
+    const laserLayer = document.getElementById('bt-laser-layer');
+
+    if (cmdId === 'emp') {
+      if (flash) {
+        flash.style.background = 'rgba(96, 165, 250, 0.4)';
+        setTimeout(() => { if (flash) flash.style.background = 'transparent'; }, 400);
+      }
+    } else if (cmdId === 'torpedo') {
+      if (laserLayer) {
+        const torp = document.createElement('div');
+        torp.style.cssText = 'position:absolute;top:50%;left:5%;font-size:20px;z-index:8;animation:torpedo-travel 0.8s ease-in-out forwards;';
+        torp.textContent = '🚀💥';
+        laserLayer.appendChild(torp);
+        setTimeout(() => torp.remove(), 800);
+      }
+    } else if (cmdId === 'focus') {
+      if (flash) {
+        flash.style.background = 'rgba(250, 204, 21, 0.2)';
+        setTimeout(() => { if (flash) flash.style.background = 'transparent'; }, 300);
+      }
+    }
+  }
+
+  // 动态生成伤害跳字
+  function spawnDamageNumber(targetEl, text, color = '#f87171') {
+    if (!targetEl) return;
+    const stageEl = document.getElementById('bt-battle-stage');
+    if (!stageEl) return;
+
+    const tRect = targetEl.getBoundingClientRect();
+    const sRect = stageEl.getBoundingClientRect();
+    const x = tRect.left - sRect.left + (tRect.width / 2) + (Math.random() * 20 - 10);
+    const y = tRect.top - sRect.top + (Math.random() * 15);
+
+    const dmgEl = document.createElement('div');
+    dmgEl.className = 'floating-text-item';
+    dmgEl.style.left = `${x}px`;
+    dmgEl.style.top = `${y}px`;
+    dmgEl.style.color = color;
+    dmgEl.textContent = text;
+    stageEl.appendChild(dmgEl);
+    setTimeout(() => dmgEl.remove(), 900);
+  }
+
+  // 动态生成激光开火光束
+  function spawnLaserTracer(fromPlayer = true) {
+    const laserLayer = document.getElementById('bt-laser-layer');
+    if (!laserLayer) return;
+
+    const line = document.createElement('div');
+    const y = Math.round(15 + Math.random() * 70);
+    const color = fromPlayer ? 'linear-gradient(90deg, #38bdf8, #818cf8)' : 'linear-gradient(90deg, #f43f5e, #fbbf24)';
+    const anim = fromPlayer ? 'laser-shoot-p2e 0.28s ease-out forwards' : 'laser-shoot-e2p 0.28s ease-out forwards';
+
+    line.style.cssText = `position:absolute;top:${y}%;left:0;right:0;height:2px;background:${color};box-shadow:0 0 8px ${fromPlayer ? '#38bdf8' : '#f43f5e'};animation:${anim};pointer-events:none;`;
+    laserLayer.appendChild(line);
+    setTimeout(() => line.remove(), 280);
+  }
+
   // 渲染双方战舰卡片
   function renderShips() {
     const pBox = document.getElementById('bt-player-formation');
@@ -158,8 +229,9 @@ export function openBattleView(arg1, arg2, arg3) {
     pBox.innerHTML = session.playerShips.map((s) => {
       const hullPct = Math.round((s.hull / s.hullMax) * 100);
       const shieldPct = Math.round((s.shield / s.shieldMax) * 100);
+      const isLowHp = s.alive && hullPct <= 25;
       return `
-        <div style="opacity:${s.alive ? 1 : 0.35};border-left:3px solid ${s.alive ? '#38bdf8' : '#64748b'};background:${s.alive ? 'rgba(56,189,248,0.06)' : 'rgba(0,0,0,0.2)'};padding:6px 8px;border-radius:0 6px 6px 0;">
+        <div id="bt-player-${s.id}" class="${isLowHp ? 'ship-low-hp' : ''}" style="opacity:${s.alive ? 1 : 0.35};border-left:3px solid ${s.alive ? '#38bdf8' : '#64748b'};background:${s.alive ? 'rgba(56,189,248,0.06)' : 'rgba(0,0,0,0.2)'};padding:6px 8px;border-radius:0 6px 6px 0;transition:all 0.2s;">
           <div style="font-weight:bold;font-size:12px;color:${s.alive ? '#f1f5f9' : '#94a3b8'};display:flex;justify-content:space-between;align-items:center;">
             <span>${s.roleIcon || '🚀'} ${esc(s.name)}</span>
             <span style="font-size:11px;color:${s.alive ? '#7cd7ff' : '#64748b'};">${s.alive ? esc(s.roleName) : '解体'}</span>
@@ -169,14 +241,14 @@ export function openBattleView(arg1, arg2, arg3) {
             <span>护盾偏转</span><span>${s.shield} / ${s.shieldMax}</span>
           </div>
           <div style="height:4px;background:#1e293b;border-radius:2px;overflow:hidden;margin-bottom:3px;">
-            <div style="height:100%;width:${shieldPct}%;background:#38bdf8;transition:width 0.2s;"></div>
+            <div style="height:100%;width:${shieldPct}%;background:#38bdf8;transition:width 0.25s;"></div>
           </div>
           <!-- 装甲结构条与数值 -->
           <div style="display:flex;justify-content:space-between;font-size:10px;color:${hullPct > 35 ? '#34d399' : '#f87171'};">
             <span>装甲船体</span><span>${s.hull} / ${s.hullMax}</span>
           </div>
           <div style="height:4px;background:#1e293b;border-radius:2px;overflow:hidden;">
-            <div style="height:100%;width:${hullPct}%;background:${hullPct > 35 ? '#10b981' : '#ef4444'};transition:width 0.2s;"></div>
+            <div style="height:100%;width:${hullPct}%;background:${hullPct > 35 ? '#10b981' : '#ef4444'};transition:width 0.25s;"></div>
           </div>
         </div>
       `;
@@ -187,8 +259,9 @@ export function openBattleView(arg1, arg2, arg3) {
       const hullPct = Math.round((s.hull / s.hullMax) * 100);
       const shieldPct = Math.round((s.shield / s.shieldMax) * 100);
       const isTargeted = session.designatedTargetId === s.id && s.alive;
+      const isLowHp = s.alive && hullPct <= 25;
       return `
-        <div id="bt-enemy-${s.id}" data-id="${s.id}" style="cursor:${s.alive ? 'pointer' : 'default'};opacity:${s.alive ? 1 : 0.35};border-right:3px solid ${isTargeted ? '#facc15' : s.alive ? '#f43f5e' : '#64748b'};background:${isTargeted ? 'rgba(250,204,21,0.12)' : s.alive ? 'rgba(244,63,94,0.06)' : 'rgba(0,0,0,0.2)'};padding:6px 8px;border-radius:6px 0 0 6px;text-align:right;transition:all 0.2s;" title="${s.alive ? '点击将此舰锁定为首要集火目标' : ''}">
+        <div id="bt-enemy-${s.id}" data-enemy-id="${s.id}" class="${isTargeted ? 'ship-targeted' : isLowHp ? 'ship-low-hp' : ''}" style="cursor:${s.alive ? 'pointer' : 'default'};opacity:${s.alive ? 1 : 0.35};border-right:3px solid ${isTargeted ? '#facc15' : s.alive ? '#f43f5e' : '#64748b'};background:${isTargeted ? 'rgba(250,204,21,0.15)' : s.alive ? 'rgba(244,63,94,0.06)' : 'rgba(0,0,0,0.2)'};padding:6px 8px;border-radius:6px 0 0 6px;text-align:right;transition:all 0.2s;" title="${s.alive ? '点击将此舰锁定为首要集火目标' : ''}">
           <div style="font-weight:bold;font-size:12px;color:${isTargeted ? '#facc15' : s.alive ? '#f1f5f9' : '#94a3b8'};display:flex;justify-content:space-between;align-items:center;">
             <span style="font-size:11px;color:${isTargeted ? '#facc15' : '#f43f5e'};">${isTargeted ? '🎯[集火锁定]' : s.alive ? esc(s.roleName) : '解体'}</span>
             <span>${esc(s.name)} ${s.roleIcon || '💥'}</span>
@@ -198,24 +271,30 @@ export function openBattleView(arg1, arg2, arg3) {
             <span>${s.shield} / ${s.shieldMax}</span><span>护盾偏转</span>
           </div>
           <div style="height:4px;background:#1e293b;border-radius:2px;overflow:hidden;margin-bottom:3px;">
-            <div style="height:100%;width:${shieldPct}%;background:#f43f5e;float:right;transition:width 0.2s;"></div>
+            <div style="height:100%;width:${shieldPct}%;background:#f43f5e;float:right;transition:width 0.25s;"></div>
           </div>
           <!-- 装甲结构条与数值 -->
           <div style="display:flex;justify-content:space-between;font-size:10px;color:${hullPct > 35 ? '#fbbf24' : '#ef4444'};clear:both;">
             <span>${s.hull} / ${s.hullMax}</span><span>装甲船体</span>
           </div>
           <div style="height:4px;background:#1e293b;border-radius:2px;overflow:hidden;">
-            <div style="height:100%;width:${hullPct}%;background:${hullPct > 35 ? '#f59e0b' : '#ef4444'};float:right;transition:width 0.2s;"></div>
+            <div style="height:100%;width:${hullPct}%;background:${hullPct > 35 ? '#f59e0b' : '#ef4444'};float:right;transition:width 0.25s;"></div>
           </div>
         </div>
       `;
     }).join('');
+  }
 
-    // 绑定点击敌舰手动集火事件
-    session.enemyShips.forEach((s) => {
-      const el = document.getElementById(`bt-enemy-${s.id}`);
-      if (el && s.alive) {
-        el.onclick = () => {
+  // 绑定敌舰容器的事件委托（无论 innerHTML 如何重绘都不会漏掉任何点击）
+  setTimeout(() => {
+    const eBox = document.getElementById('bt-enemy-formation');
+    if (eBox) {
+      eBox.onclick = (e) => {
+        const card = e.target.closest('[data-enemy-id]');
+        if (!card) return;
+        const id = card.getAttribute('data-enemy-id');
+        const s = session.enemyShips.find((x) => x.id === id);
+        if (s && s.alive) {
           session.designatedTargetId = session.designatedTargetId === s.id ? null : s.id;
           if (session.designatedTargetId) {
             showFloatingFx(`已锁定【${s.name}】！`, '#facc15', '🎯');
@@ -224,10 +303,10 @@ export function openBattleView(arg1, arg2, arg3) {
             showFloatingFx('已解除集火锁定', '#94a3b8', '⚡');
           }
           renderShips();
-        };
-      }
-    });
-  }
+        }
+      };
+    }
+  }, 30);
 
   // 刷新状态与日志
   function renderView() {
@@ -303,7 +382,7 @@ export function openBattleView(arg1, arg2, arg3) {
 
     resDiv.innerHTML = `
       <div style="font-size:42px;margin-bottom:8px;">${isWin ? '🏆' : '💥'}</div>
-      <div style="display:inline-block;padding:2px 12px;border-radius:12px;font-weight:bold;font-size:14px;margin-bottom:8px;background:${isWin ? 'rgba(52,211,153,0.2)' : 'rgba(239,68,68,0.2)'};color:${isWin ? '#34d399' : '#f87171'};border:1px solid ${isWin ? '#34d399' : '#f87171'};">
+      <div style="display:inline-block;padding:2px 14px;border-radius:12px;font-weight:bold;font-size:14px;margin-bottom:8px;background:${isWin ? 'rgba(52,211,153,0.2)' : 'rgba(239,68,68,0.2)'};color:${isWin ? '#34d399' : '#f87171'};border:1px solid ${isWin ? '#34d399' : '#f87171'};">
         战术评级：${report.rank} 级 · ${isWin ? (report.rank === 'S' ? '完美歼灭' : '辉煌大捷') : '战损撤退'}
       </div>
       <p style="font-size:13px;color:#94a3b8;line-height:1.6;margin-bottom:14px;">
@@ -346,19 +425,19 @@ export function openBattleView(arg1, arg2, arg3) {
       <button id="bt-close-final" style="width:100%;min-height:44px;border-radius:6px;border:none;background:#7cd7ff;color:#050814;font-weight:bold;font-size:14px;cursor:pointer;">返回指挥中心</button>
     `;
 
+    // 直接在元素上绑定点击事件，无需等待 setTimeout，零延迟更稳固
+    const btnClose = resDiv.querySelector('#bt-close-final');
+    if (btnClose) {
+      btnClose.onclick = () => {
+        closeModal();
+        if (typeof onBattleEnd === 'function') onBattleEnd({ ...session, win: isWin });
+      };
+    }
+
     openModal({ title: isWin ? '胜利结算战报' : '战损评估报告', body: resDiv });
-    setTimeout(() => {
-      const b = document.getElementById('bt-close-final');
-      if (b) {
-        b.onclick = () => {
-          closeModal();
-          if (typeof onBattleEnd === 'function') onBattleEnd({ ...session, win: isWin });
-        };
-      }
-    }, 50);
   }
 
-  // 战斗推演定时器循环
+  // 战斗推演定时器循环（加入动态激光光束与跳字生成）
   function startLoop() {
     stopLoop();
     timer = setInterval(() => {
@@ -367,11 +446,46 @@ export function openBattleView(arg1, arg2, arg3) {
         for (const k of ['focus', 'torpedo', 'emp', 'boarding', 'shield', 'drones']) {
           if (session.energy >= TACTICAL_COMMANDS[k].costEnergy && session.cooldowns[k] <= 0) {
             executeTacticalCommand(session, k);
+            triggerSkillVisualFx(k);
             break;
           }
         }
       }
+
+      // 执行交火运算步进
       tickBattle(session, 0.5 * timeScale);
+
+      // 若双方均有存活舰艇，随机生成弹道视觉效果与跳字
+      const aliveP = session.playerShips.filter((s) => s.alive);
+      const aliveE = session.enemyShips.filter((s) => s.alive);
+
+      if (aliveP.length > 0 && aliveE.length > 0) {
+        // 己方激光射击动画
+        spawnLaserTracer(true);
+        // 敌方激光反击动画
+        if (Math.random() < 0.8) {
+          setTimeout(() => spawnLaserTracer(false), 120);
+        }
+
+        // 随机在目标上方冒出跳字
+        if (session.logs.length > 0) {
+          const latestLog = session.logs[0];
+          if (latestLog.type === 'crit') {
+            const eTarget = (session.designatedTargetId && aliveE.find((x) => x.id === session.designatedTargetId)) || aliveE[0];
+            const el = document.getElementById(`bt-enemy-${eTarget.id}`);
+            if (el) spawnDamageNumber(el, '💥 CRIT!', '#facc15');
+          } else if (latestLog.type === 'fire') {
+            const eTarget = aliveE[Math.floor(Math.random() * aliveE.length)];
+            const el = document.getElementById(`bt-enemy-${eTarget.id}`);
+            if (el) spawnDamageNumber(el, `-${Math.round(20 + Math.random() * 40)}`, '#38bdf8');
+          } else if (latestLog.type === 'enemy-fire') {
+            const pTarget = aliveP[Math.floor(Math.random() * aliveP.length)];
+            const el = document.getElementById(`bt-player-${pTarget.id}`);
+            if (el) spawnDamageNumber(el, `-${Math.round(15 + Math.random() * 30)}`, '#f43f5e');
+          }
+        }
+      }
+
       renderView();
     }, 500);
   }
@@ -402,7 +516,7 @@ export function openBattleView(arg1, arg2, arg3) {
         btnAuto.style.color = autoBattle ? '#34d399' : '#cbd5e1';
       };
     }
-  }, 50);
+  }, 40);
 
   renderView();
   startLoop();

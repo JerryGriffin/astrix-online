@@ -166,3 +166,90 @@ a { color: var(--cyan); }
 .btn-danger { border-color: rgba(255, 107, 129, 0.4); color: var(--danger); }
 .btn-danger:hover { background: rgba(255, 107, 129, 0.12); }
 .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* ===== 太空战术交战动画与视觉特效 ===== */
+
+@keyframes pulse-target {
+  0% { transform: scale(1); box-shadow: 0 0 4px rgba(250, 204, 21, 0.4); border-color: rgba(250, 204, 21, 0.8); }
+  50% { transform: scale(1.02); box-shadow: 0 0 16px rgba(250, 204, 21, 0.85); border-color: #facc15; }
+  100% { transform: scale(1); box-shadow: 0 0 4px rgba(250, 204, 21, 0.4); border-color: rgba(250, 204, 21, 0.8); }
+}
+
+@keyframes laser-shoot-p2e {
+  0% { transform: scaleX(0); opacity: 1; transform-origin: left center; }
+  50% { transform: scaleX(1); opacity: 1; }
+  100% { transform: scaleX(1); opacity: 0; transform-origin: right center; }
+}
+
+@keyframes laser-shoot-e2p {
+  0% { transform: scaleX(0); opacity: 1; transform-origin: right center; }
+  50% { transform: scaleX(1); opacity: 1; }
+  100% { transform: scaleX(1); opacity: 0; transform-origin: left center; }
+}
+
+@keyframes torpedo-travel {
+  0% { left: 10%; opacity: 0; transform: translateY(-50%) scale(0.6); }
+  20% { opacity: 1; transform: translateY(-50%) scale(1.2); }
+  80% { opacity: 1; transform: translateY(-50%) scale(1); }
+  100% { left: 90%; opacity: 0; transform: translateY(-50%) scale(1.5); }
+}
+
+@keyframes shield-hit-pulse {
+  0% { box-shadow: inset 0 0 20px rgba(56, 189, 248, 0.8), 0 0 15px rgba(56, 189, 248, 0.6); }
+  100% { box-shadow: inset 0 0 0px transparent, 0 0 0px transparent; }
+}
+
+@keyframes hull-explosion-spark {
+  0% { filter: brightness(2.2); transform: scale(1.04); }
+  50% { filter: drop-shadow(0 0 10px #f43f5e) brightness(1.5); transform: scale(0.98); }
+  100% { filter: none; transform: scale(1); }
+}
+
+@keyframes float-up-fade {
+  0% { opacity: 1; transform: translateY(0) scale(1.2); }
+  40% { opacity: 1; transform: translateY(-16px) scale(1.1); }
+  100% { opacity: 0; transform: translateY(-36px) scale(0.9); }
+}
+
+@keyframes emp-screen-flash {
+  0% { background: rgba(96, 165, 250, 0.45); }
+  100% { background: transparent; }
+}
+
+@keyframes radar-scan {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+@keyframes warning-red-pulse {
+  0%, 100% { border-color: rgba(239, 68, 68, 0.4); }
+  50% { border-color: rgba(239, 68, 68, 1); box-shadow: 0 0 12px rgba(239, 68, 68, 0.6); }
+}
+
+.ship-targeted {
+  animation: pulse-target 1.2s infinite ease-in-out !important;
+}
+
+.ship-shield-hit {
+  animation: shield-hit-pulse 0.4s ease-out;
+}
+
+.ship-hull-hit {
+  animation: hull-explosion-spark 0.35s ease-out;
+}
+
+.ship-low-hp {
+  animation: warning-red-pulse 1.4s infinite ease-in-out;
+}
+
+.floating-text-item {
+  position: absolute;
+  pointer-events: none;
+  font-weight: 800;
+  font-family: monospace;
+  font-size: 13px;
+  z-index: 10;
+  animation: float-up-fade 0.9s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+  text-shadow: 0 2px 4px rgba(0,0,0,0.8);
+}
+
