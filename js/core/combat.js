@@ -1,5 +1,5 @@
 // 星际舰队战术交战模拟引擎（Astrix v0.2.0）
-// 负责舰队对战的回合/实时推演、护盾与装甲吸收、战术指令冷却与结算。
+// 负责舰队对战的回合/实时推演、多舰种定位、兵种协同、护盾与装甲吸收、战术指令冷却与结算。
 // 纯原生 ES 模块，无任何外部构建依赖。
 
 import { fmtNum } from './format.js?v=20.0';
@@ -11,49 +11,131 @@ function genShipUid() {
 }
 
 /**
+ * 5 大太空战斗舰种定位
+ */
+export const SHIP_ROLES = {
+  interceptor: {
+    id: 'interceptor',
+    name: '突击截击舰',
+    icon: '🚀',
+    desc: '高机动高速度，基础闪避率提升 20%，擅长突袭轻型目标。',
+    dodgeBonus: 0.2,
+    critRateBonus: 0.05,
+    critMul: 1.75,
+  },
+  destroyer: {
+    id: 'destroyer',
+    name: '破盾驱逐舰',
+    icon: '🛡️',
+    desc: '装备高频等离子脉冲炮，对敌方护盾具有 150% 额外破坏力。',
+    shieldMul: 1.5,
+    critMul: 1.8,
+  },
+  cruiser: {
+    id: 'cruiser',
+    name: '导弹巡洋舰',
+    icon: '⚡',
+    desc: '均衡主力战舰核心，搭载全向反舰飞弹与激光阵列，火力持续而稳固。',
+    critMul: 1.9,
+  },
+  battleship: {
+    id: 'battleship',
+    name: '重装战列舰',
+    icon: '💥',
+    desc: '重装甲与巨型轴基磁轨主炮，对护盾附带 25% 真实贯穿伤害，暴击倍率高达 2.3 倍！',
+    pierceRate: 0.25,
+    critMul: 2.3,
+  },
+  carrier: {
+    id: 'carrier',
+    name: '空天蜂群母舰',
+    icon: '🛸',
+    desc: '搭载舰载无人机与轰炸机联队，持续出动机群突袭，为全舰队提供战术充能增益。',
+    energyRegenBonus: 2.0,
+    critMul: 1.8,
+  },
+};
+
+/**
+ * 根据船名与属性智能推导战舰职能
+ */
+export function detectShipRole(ship) {
+  const name = String(ship.name || ship.className || '');
+  const mass = Number(ship.dryMass) || 300;
+  if (name.includes('母舰') || name.includes('航母') || name.includes('载机') || name.includes('Carrier')) {
+    return 'carrier';
+  }
+  if (name.includes('战列') || name.includes('无畏') || mass >= 800 || name.includes('Battleship')) {
+    return 'battleship';
+  }
+  if (name.includes('巡洋') || (mass >= 450 && mass < 800) || name.includes('Cruiser')) {
+    return 'cruiser';
+  }
+  if (name.includes('驱逐') || (mass >= 320 && mass < 450) || name.includes('Destroyer')) {
+    return 'destroyer';
+  }
+  return 'interceptor';
+}
+
+/**
  * 将一艘基础飞船转换为战斗单元数据结构
  */
 export function toCombatShip(ship, side = 'player') {
   const name = ship.name || ship.className || (side === 'player' ? '己方战舰' : '敌方主力舰');
-  const type = ship.type || ship.className || '护卫舰';
-  const dryMass = Number(ship.dryMass) || 300;
-  const thrust = Number(ship.thrust) || 200;
+  const roleId = ship.roleId || ship.role || detectShipRole(ship);
+  const role = SHIP_ROLES[roleId] || SHIP_ROLES.interceptor;
+  const dryMass = Number(ship.dryMass) || (roleId === 'battleship' ? 950 : roleId === 'cruiser' ? 520 : 300);
+  const thrust = Number(ship.thrust) || (roleId === 'interceptor' ? 380 : 250);
   const stats = ship.stats || {};
 
   // 基础战力推导属性
-  const maxHull = Math.max(100, Math.round(dryMass * 1.5 + (stats.mass || 100)));
-  const maxShield = Math.max(80, Math.round(thrust * 1.2));
-  const baseAtk = Math.max(15, Math.round((thrust * 0.35 + dryMass * 0.15)));
-  const speed = Math.max(10, Math.min(60, Math.round(thrust / (dryMass * 0.05 + 1))));
+  let maxHull = Math.max(120, Math.round(dryMass * 1.6 + (stats.mass || 100)));
+  let maxShield = Math.max(80, Math.round(thrust * 1.3));
+  let baseAtk = Math.max(18, Math.round((thrust * 0.38 + dryMass * 0.16)));
+  let speed = Math.max(10, Math.min(65, Math.round(thrust / (dryMass * 0.045 + 1))));
+
+  // 舰种专精修正
+  if (roleId === 'interceptor') {
+    speed = Math.round(speed * 1.35);
+  } else if (roleId === 'battleship') {
+    maxHull = Math.round(maxHull * 1.5);
+    baseAtk = Math.round(baseAtk * 1.45);
+    speed = Math.max(8, Math.round(speed * 0.7));
+  } else if (roleId === 'destroyer') {
+    maxShield = Math.round(maxShield * 1.25);
+  } else if (roleId === 'carrier') {
+    maxHull = Math.round(maxHull * 1.2);
+    baseAtk = Math.round(baseAtk * 0.9);
+  }
 
   return {
     id: ship.id || genShipUid(),
     name,
-    type,
+    type: ship.type || ship.className || role.name,
+    roleId,
+    roleName: role.name,
+    roleIcon: role.icon,
     side, // 'player' | 'enemy'
     hull: maxHull,
     hullMax: maxHull,
     shield: maxShield,
     shieldMax: maxShield,
-    shieldRegen: Math.max(2, Math.round(maxShield * 0.04)), // 每秒/回合回盾
+    shieldRegen: Math.max(2, Math.round(maxShield * 0.05)), // 每秒/回合回盾
     atk: baseAtk,
     speed,
-    critRate: 0.12,
-    critMul: 1.8,
+    critRate: (roleId === 'cruiser' ? 0.18 : 0.12) + (role.critRateBonus || 0),
+    critMul: role.critMul || 1.8,
     alive: true,
+    damageDealt: 0,
+    damageTaken: 0,
+    shieldAbsorbed: 0,
+    kills: 0,
     targetId: null,
-    cooldowns: {
-      focus: 0,
-      shield: 0,
-      torpedo: 0,
-      drones: 0,
-      warp: 0,
-    },
   };
 }
 
 /**
- * 战术指令配置列表
+ * 战术指令配置列表（扩充至 7 种多样化战术体系）
  */
 export const TACTICAL_COMMANDS = {
   focus: {
@@ -62,7 +144,7 @@ export const TACTICAL_COMMANDS = {
     icon: '🎯',
     costEnergy: 25,
     cooldown: 8,
-    desc: '锁定敌核心目标集中轰击，暴击率提升至 60%，攻击破甲伤害大幅提升！',
+    desc: '全员主炮锁定指定敌舰或残血目标，暴击率暴增至 65%，且攻击破甲深度大幅提升！',
   },
   shield: {
     id: 'shield',
@@ -70,7 +152,7 @@ export const TACTICAL_COMMANDS = {
     icon: '🛡️',
     costEnergy: 30,
     cooldown: 12,
-    desc: '瞬间向护盾偏转线圈注入等离子能量，恢复 40% 护盾并降低 50% 所受伤害！',
+    desc: '向护盾偏转线圈注入高能等离子流，瞬时充能 45% 护盾，并获得 4 秒 50% 伤害减免！',
   },
   torpedo: {
     id: 'torpedo',
@@ -78,7 +160,7 @@ export const TACTICAL_COMMANDS = {
     icon: '🚀',
     costEnergy: 35,
     cooldown: 10,
-    desc: '发射穿甲高爆磁轨鱼雷，无视敌方护盾偏转，直接重创敌舰装甲船体！',
+    desc: '发射穿甲高爆磁轨鱼雷，无视敌方护盾偏转力场，直接造成高额装甲贯穿真实伤害！',
   },
   drones: {
     id: 'drones',
@@ -86,15 +168,31 @@ export const TACTICAL_COMMANDS = {
     icon: '🛰️',
     costEnergy: 20,
     cooldown: 6,
-    desc: '弹射全自动战术无人机编队，持续对敌骚扰射击并拦截敌来袭导弹！',
+    desc: '弹射全自动战术无人机编队，穿梭敌阵持续扫射，压制敌方自动回盾系统！',
+  },
+  emp: {
+    id: 'emp',
+    name: '磁暴脉冲',
+    icon: '⚡',
+    costEnergy: 30,
+    cooldown: 11,
+    desc: '释放大范围电磁过载冲击波，瞬间烧毁敌方全员 35% 护盾，并瘫痪其主炮武器 3 秒！',
+  },
+  boarding: {
+    id: 'boarding',
+    name: '跳帮强袭',
+    icon: '🪂',
+    costEnergy: 35,
+    cooldown: 14,
+    desc: '空降陆战队跳帮穿梭机直扑敌方最强战舰，引爆内部能源室并造成致命破损！',
   },
   warp: {
     id: 'warp',
-    name: '紧急跃迁',
+    name: '战术跃迁',
     icon: '🌌',
     costEnergy: 40,
     cooldown: 15,
-    desc: '启动曲率跃迁引擎紧急拉脱，使全舰队闪避提升至 80% 或战术脱离！',
+    desc: '启动曲率跃迁引擎紧急机动拉脱，使全舰队闪避大幅提升至 80%！',
   },
 };
 
@@ -106,41 +204,47 @@ export function createBattleSession(playerFleetShips = [], enemyShips = [], opti
   const eShips = enemyShips.map((s) => toCombatShip(s, 'enemy'));
 
   if (pShips.length === 0) {
-    pShips.push(toCombatShip({ name: '先锋突击舰·刺猬号', dryMass: 400, thrust: 350 }, 'player'));
+    pShips.push(toCombatShip({ name: '先锋截击舰·刺猬号', dryMass: 350, thrust: 400, role: 'interceptor' }, 'player'));
+    pShips.push(toCombatShip({ name: '重装突击巡洋舰', dryMass: 600, thrust: 320, role: 'cruiser' }, 'player'));
   }
   if (eShips.length === 0) {
-    eShips.push(toCombatShip({ name: '星盗掠夺舰', dryMass: 380, thrust: 300 }, 'enemy'));
-    eShips.push(toCombatShip({ name: '哨戒突击艇', dryMass: 200, thrust: 220 }, 'enemy'));
+    eShips.push(toCombatShip({ name: '星盗破盾驱逐舰', dryMass: 420, thrust: 280, role: 'destroyer' }, 'enemy'));
+    eShips.push(toCombatShip({ name: '星盗要塞旗舰', dryMass: 900, thrust: 240, role: 'battleship' }, 'enemy'));
   }
+
+  // 统计母舰提供的能量恢复光环
+  let carrierBonus = 0;
+  for (const s of pShips) {
+    if (s.roleId === 'carrier') carrierBonus += SHIP_ROLES.carrier.energyRegenBonus;
+  }
+
+  const cds = {};
+  for (const k in TACTICAL_COMMANDS) cds[k] = 0;
 
   return {
     id: 'battle_' + Date.now().toString(36),
     title: options.title || '深空遭遇战',
     playerShips: pShips,
     enemyShips: eShips,
+    designatedTargetId: null, // 玩家手动指定集火目标
     round: 1,
     timeSec: 0,
     energy: 50,
     energyMax: 100,
-    energyRegen: 5, // 每秒回能
+    energyRegen: 5 + carrierBonus, // 每秒回能
     activeBuffs: {
       focusActive: 0,
       shieldBuff: 0,
       warpActive: 0,
       droneActive: 0,
+      empParalyze: 0,
     },
     logs: [
       { text: `战备警报！舰队已切入交火航线，战场雷达已捕获 ${eShips.length} 艘敌对舰艇！`, type: 'info' }
     ],
     ended: false,
     winner: null, // 'player' | 'enemy' | 'draw'
-    cooldowns: {
-      focus: 0,
-      shield: 0,
-      torpedo: 0,
-      drones: 0,
-      warp: 0,
-    },
+    cooldowns: cds,
   };
 }
 
@@ -153,8 +257,16 @@ export function fireShip(attacker, defender, buffs = {}) {
   const isFocus = (buffs.focusActive || 0) > 0;
   const isWarp = (buffs.warpActive || 0) > 0;
   const isShieldBuff = (buffs.shieldBuff || 0) > 0;
+  const isEmpParalyzed = (buffs.empParalyze || 0) > 0 && attacker.side === 'enemy';
 
-  // 闪避计算（受速度比影响）
+  if (isEmpParalyzed) {
+    return {
+      attacker, defender, hit: false, paralyzed: true,
+      msg: `⚡ ${attacker.name} 武器系统被 EMP 磁暴脉冲瘫痪中，本轮无法开火！`
+    };
+  }
+
+  // 闪避计算（受速度比与舰种加成影响）
   let dodgeChance = Math.max(0.05, Math.min(0.75, (defender.speed - attacker.speed) * 0.015));
   if (defender.side === 'player' && isWarp) dodgeChance = 0.8;
   const isDodge = Math.random() < dodgeChance;
@@ -162,12 +274,12 @@ export function fireShip(attacker, defender, buffs = {}) {
   if (isDodge) {
     return {
       attacker, defender, hit: false, dodge: true,
-      msg: `${attacker.name} 锁定开火，但被 ${defender.name} 依靠机动战术规避闪过！`
+      msg: `${attacker.name} 锁定开火，但被 ${defender.name} 依靠高速机动战术规避闪过！`
     };
   }
 
   // 暴击判定
-  const critRate = isFocus && attacker.side === 'player' ? 0.6 : attacker.critRate;
+  const critRate = isFocus && attacker.side === 'player' ? 0.65 : attacker.critRate;
   const isCrit = Math.random() < critRate;
   let dmg = attacker.atk * (0.85 + Math.random() * 0.3);
   if (isCrit) dmg *= attacker.critMul;
@@ -175,36 +287,55 @@ export function fireShip(attacker, defender, buffs = {}) {
   if (defender.side === 'player' && isShieldBuff) {
     dmg *= 0.5; // 护盾过载伤害减免
   }
+
+  // 舰种特性：驱逐舰对护盾 1.5 倍加成，战列舰 25% 护盾穿透
+  const role = SHIP_ROLES[attacker.roleId] || {};
+  let pierceDmg = 0;
+  if (role.pierceRate && defender.shield > 0) {
+    pierceDmg = Math.round(dmg * role.pierceRate);
+    dmg -= pierceDmg;
+  }
+  if (role.shieldMul && defender.shield > 0) {
+    dmg = Math.round(dmg * role.shieldMul);
+  }
+
   dmg = Math.round(dmg);
 
-  // 护盾吸收
+  // 护盾吸收与船体损耗
   let shieldDmg = 0;
-  let hullDmg = 0;
+  let hullDmg = pierceDmg;
   if (defender.shield > 0) {
     if (defender.shield >= dmg) {
       defender.shield -= dmg;
       shieldDmg = dmg;
     } else {
       shieldDmg = defender.shield;
-      hullDmg = dmg - defender.shield;
+      hullDmg += (dmg - defender.shield);
       defender.shield = 0;
-      defender.hull = Math.max(0, defender.hull - hullDmg);
     }
   } else {
-    hullDmg = dmg;
-    defender.hull = Math.max(0, defender.hull - hullDmg);
+    hullDmg += dmg;
   }
+
+  defender.hull = Math.max(0, defender.hull - hullDmg);
+
+  // 统计累加
+  const totalDmg = shieldDmg + hullDmg;
+  attacker.damageDealt = (attacker.damageDealt || 0) + totalDmg;
+  defender.damageTaken = (defender.damageTaken || 0) + totalDmg;
+  defender.shieldAbsorbed = (defender.shieldAbsorbed || 0) + shieldDmg;
 
   let destroyed = false;
   if (defender.hull <= 0) {
     defender.alive = false;
     destroyed = true;
+    attacker.kills = (attacker.kills || 0) + 1;
   }
 
   return {
     attacker, defender, hit: true, isCrit,
-    dmg, shieldDmg, hullDmg, destroyed,
-    msg: `${attacker.name} 发动主炮齐射！${isCrit ? '💥【致命暴击】' : ''}击中 ${defender.name}，造成 ${dmg} 伤害（护盾偏转 ${shieldDmg}，装甲船损 ${hullDmg}）${destroyed ? '💥【目标发生灾难性殉爆，已被摧毁！】' : ''}`
+    dmg: totalDmg, shieldDmg, hullDmg, destroyed,
+    msg: `${attacker.roleIcon || '🚀'}${attacker.name} 发动主炮齐射！${isCrit ? '💥【致命暴击】' : ''}击中 ${defender.name}，造成 ${totalDmg} 伤害（护盾偏转 ${shieldDmg}，装甲船损 ${hullDmg}）${destroyed ? '💥【目标发生灾难性殉爆，已被摧毁！】' : ''}`
   };
 }
 
@@ -229,35 +360,48 @@ export function tickBattle(session, dt = 1.0) {
     }
   }
 
-  // 2. 存活战舰护盾微量充能
+  // 2. 存活战舰护盾微量充能（处于无人机压制下护盾无法回复）
   const alivePlayer = session.playerShips.filter((s) => s.alive);
   const aliveEnemy = session.enemyShips.filter((s) => s.alive);
 
   for (const s of alivePlayer) {
     if (s.shield < s.shieldMax) s.shield = Math.min(s.shieldMax, s.shield + s.shieldRegen * dt);
   }
-  for (const s of aliveEnemy) {
-    if (s.shield < s.shieldMax) s.shield = Math.min(s.shieldMax, s.shield + s.shieldRegen * dt);
+  // 敌舰只有在无人机未压制时回盾
+  if (session.activeBuffs.droneActive <= 0) {
+    for (const s of aliveEnemy) {
+      if (s.shield < s.shieldMax) s.shield = Math.min(s.shieldMax, s.shield + s.shieldRegen * dt);
+    }
   }
 
-  // 3. 蜂群无人机持续伤害
+  // 3. 蜂群无人机持续对敌扫射
   if (session.activeBuffs.droneActive > 0 && aliveEnemy.length > 0) {
     const target = aliveEnemy[Math.floor(Math.random() * aliveEnemy.length)];
-    const droneDmg = Math.round(15 + Math.random() * 15);
+    const droneDmg = Math.round(18 + Math.random() * 18);
     target.hull = Math.max(0, target.hull - droneDmg);
     if (target.hull <= 0) target.alive = false;
     session.logs.unshift({
-      text: `🛰️ 友军无人机蜂群对 ${target.name} 实施俯冲扫射，造成 ${droneDmg} 结构损伤！`,
+      text: `🛰️ 友军无人机蜂群对 ${target.name} 实施超低空掠地撕扯，造成 ${droneDmg} 装甲结构损伤！`,
       type: 'drone'
     });
   }
 
   // 4. 双方自动交火射击
-  // 己方舰艇随机/集中攻击敌舰
+  // 己方舰艇攻击（优先指定集火目标）
   for (const p of alivePlayer) {
     const targets = session.enemyShips.filter((s) => s.alive);
     if (!targets.length) break;
-    const target = targets[Math.floor(Math.random() * targets.length)];
+
+    // 若有玩家指定的集火目标且存活，则优先攻击
+    let target = null;
+    if (session.designatedTargetId) {
+      target = targets.find((t) => t.id === session.designatedTargetId);
+    }
+    if (!target) {
+      // 否则优先攻击最残血目标或随机
+      target = targets[Math.floor(Math.random() * targets.length)];
+    }
+
     const res = fireShip(p, target, session.activeBuffs);
     if (res) {
       session.logs.unshift({ text: res.msg, type: res.isCrit ? 'crit' : 'fire' });
@@ -265,18 +409,18 @@ export function tickBattle(session, dt = 1.0) {
   }
 
   // 敌方舰艇反击
-  for (const e of session.enemyShips.filter((s) => s.alive)) {
+  for (const e of aliveEnemy) {
     const targets = session.playerShips.filter((s) => s.alive);
     if (!targets.length) break;
     const target = targets[Math.floor(Math.random() * targets.length)];
     const res = fireShip(e, target, session.activeBuffs);
     if (res) {
-      session.logs.unshift({ text: res.msg, type: 'enemy-fire' });
+      session.logs.unshift({ text: res.msg, type: res.paralyzed ? 'emp' : 'enemy-fire' });
     }
   }
 
   // 限制日志条数
-  if (session.logs.length > 50) session.logs.length = 50;
+  if (session.logs.length > 60) session.logs.length = 60;
 
   // 5. 胜负终局裁决
   const pCount = session.playerShips.filter((s) => s.alive).length;
@@ -323,21 +467,22 @@ export function executeTacticalCommand(session, cmdId) {
   switch (cmdId) {
     case 'focus': {
       session.activeBuffs.focusActive = 6.0; // 持续 6 秒
-      session.logs.unshift({ text: '⚡【指令激活】指挥官下达【全舰主炮集火】！全舰暴击率大幅跃升！', type: 'skill' });
+      session.logs.unshift({ text: '🎯【战术激活】指挥官下达【全舰主炮集火】！全舰暴击率大幅跃升至 65%！', type: 'skill' });
       break;
     }
     case 'shield': {
       session.activeBuffs.shieldBuff = 4.0;
       for (const s of alivePlayer) {
-        s.shield = Math.min(s.shieldMax, s.shield + Math.round(s.shieldMax * 0.4));
+        s.shield = Math.min(s.shieldMax, s.shield + Math.round(s.shieldMax * 0.45));
       }
-      session.logs.unshift({ text: '🛡️【指令激活】等离子偏转护盾已紧急过载充能！全编队获得伤害减免！', type: 'skill' });
+      session.logs.unshift({ text: '🛡️【战术激活】等离子偏转护盾已紧急过载充能！全编队获得 50% 伤害减免！', type: 'skill' });
       break;
     }
     case 'torpedo': {
       if (aliveEnemy.length > 0) {
-        const target = aliveEnemy[0];
-        const torpDmg = Math.round(80 + Math.random() * 80);
+        // 优先攻击玩家手动指定的敌舰，否则攻击最前方的敌舰
+        const target = (session.designatedTargetId && aliveEnemy.find((t) => t.id === session.designatedTargetId)) || aliveEnemy[0];
+        const torpDmg = Math.round(110 + Math.random() * 90);
         target.hull = Math.max(0, target.hull - torpDmg);
         let killed = false;
         if (target.hull <= 0) {
@@ -345,7 +490,7 @@ export function executeTacticalCommand(session, cmdId) {
           killed = true;
         }
         session.logs.unshift({
-          text: `🚀【指令激活】重型反舰高爆鱼雷直接穿透 ${target.name} 装甲，重创 ${torpDmg} 船体！${killed ? '💥目标爆炸解体！' : ''}`,
+          text: `🚀【战术激活】重型反舰高爆鱼雷直接穿透 ${target.name} 装甲，重创 ${torpDmg} 船体！${killed ? '💥目标爆炸解体！' : ''}`,
           type: 'skill'
         });
       }
@@ -353,15 +498,76 @@ export function executeTacticalCommand(session, cmdId) {
     }
     case 'drones': {
       session.activeBuffs.droneActive = 8.0;
-      session.logs.unshift({ text: '🛰️【指令激活】无人战斗机群全数弹射离舱，在敌编队上空展开密集交织打击！', type: 'skill' });
+      session.logs.unshift({ text: '🛰️【战术激活】无人战斗机群全数弹射离舱，展开全域机动压制，阻断敌方护盾恢复！', type: 'skill' });
+      break;
+    }
+    case 'emp': {
+      session.activeBuffs.empParalyze = 3.0;
+      for (const e of aliveEnemy) {
+        e.shield = Math.max(0, Math.round(e.shield * 0.65));
+      }
+      session.logs.unshift({ text: '⚡【战术激活】高能电磁脉冲（EMP）引爆！烧毁敌全员 35% 护盾，并致盲瘫痪敌舰 3 秒！', type: 'skill' });
+      break;
+    }
+    case 'boarding': {
+      if (aliveEnemy.length > 0) {
+        // 挑选敌方当前最强单位执行跳帮突击
+        const sorted = aliveEnemy.slice().sort((a, b) => (b.hull + b.shield) - (a.hull + a.shield));
+        const target = sorted[0];
+        const boardDmg = Math.round(150 + Math.random() * 100);
+        target.hull = Math.max(0, target.hull - boardDmg);
+        let killed = false;
+        if (target.hull <= 0) {
+          target.alive = false;
+          killed = true;
+        }
+        session.logs.unshift({
+          text: `🪂【战术激活】轨道空降突击队完成强行跳帮！渗透突入 ${target.name}，引爆动力室并重创 ${boardDmg} 点装甲结构！${killed ? '💥敌舰已被彻底瘫痪！' : ''}`,
+          type: 'skill'
+        });
+      }
       break;
     }
     case 'warp': {
       session.activeBuffs.warpActive = 5.0;
-      session.logs.unshift({ text: '🌌【指令激活】紧急跃迁与矢量回避启动！全舰大幅提高闪避机动！', type: 'skill' });
+      session.logs.unshift({ text: '🌌【战术激活】紧急跃迁与矢量回避启动！全舰队闪避大幅提升至 80%！', type: 'skill' });
       break;
     }
   }
 
   return { ok: true, msg: `指令「${cmd.name}」已下达！` };
+}
+
+/**
+ * 获取战斗结算详细评估战报（包含 MVP 战舰与评级）
+ */
+export function getBattleReport(session) {
+  let mvp = session.playerShips[0] || null;
+  for (const s of session.playerShips) {
+    if ((s.damageDealt || 0) > ((mvp && mvp.damageDealt) || 0)) {
+      mvp = s;
+    }
+  }
+  const playerDmg = session.playerShips.reduce((acc, s) => acc + (s.damageDealt || 0), 0);
+  const enemyKilled = session.enemyShips.filter((s) => !s.alive).length;
+  const playerLost = session.playerShips.filter((s) => !s.alive).length;
+
+  let rank = 'B';
+  if (session.winner === 'player') {
+    if (playerLost === 0) rank = 'S';
+    else if (playerLost <= 1) rank = 'A';
+    else rank = 'B';
+  } else {
+    rank = enemyKilled > 0 ? 'C' : 'D';
+  }
+
+  return {
+    winner: session.winner,
+    rank,
+    mvp,
+    playerDmg,
+    enemyKilled,
+    playerLost,
+    timeSec: Math.floor(session.timeSec),
+  };
 }

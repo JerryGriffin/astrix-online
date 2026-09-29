@@ -22,6 +22,7 @@ import {
 } from '../core/shop.js?v=20.0';
 import { getPlanetInstance, currentAccount, ownedOf } from '../core/state.js?v=20.0';
 import { openBattleView } from './combat.js?v=20.0';
+import { detectShipRole, SHIP_ROLES } from '../core/combat.js?v=20.0';
 
 // HTML 转义
 function esc(s) {
@@ -254,12 +255,77 @@ export function renderFleet(container, ctx) {
   btnDrill.style.cssText = 'min-height:44px;padding:8px 18px;border-radius:6px;border:1px solid #7cd7ff;background:linear-gradient(135deg, rgba(124,215,255,0.25), rgba(99,102,241,0.25));color:#f1f5f9;font-weight:bold;font-size:13px;cursor:pointer;display:flex;align-items:center;gap:8px;';
   btnDrill.innerHTML = '<span>⚔️ 发起战术交火推演</span>';
   btnDrill.onclick = () => {
-    // 选取当前主力战舰或生成敌我阵容
     const pShips = (account.ships && account.ships.length > 0) ? account.ships.slice(0, 4) : [];
-    openBattleView({ openModal, closeModal, onBattleEnd: () => redraw() }, {
-      title: '深空遭遇战演练',
-      playerShips: pShips,
-    });
+    const div = document.createElement('div');
+    div.innerHTML = `
+      <p style="color:#94a3b8;font-size:13px;line-height:1.5;margin-bottom:14px;">
+        指挥部实时全息推演系统。请选择模拟假想敌作战方案，实战演练舰种配合、手动点选集火与 EMP 磁暴指令：
+      </p>
+      <div style="display:flex;flex-direction:column;gap:10px;">
+        <button id="bt-scen-1" style="padding:10px 14px;border-radius:6px;background:rgba(56,189,248,0.1);border:1px solid #38bdf850;color:#f1f5f9;cursor:pointer;text-align:left;">
+          <div style="font-weight:bold;color:#7cd7ff;">🌌 场景 A：深空哨戒巡逻遭遇战（初级）</div>
+          <div style="font-size:12px;color:#94a3b8;margin-top:2px;">假想敌：2 艘轻型突击截击舰 · 检验基础机动与副炮近防</div>
+        </button>
+        <button id="bt-scen-2" style="padding:10px 14px;border-radius:6px;background:rgba(129,140,248,0.1);border:1px solid #818cf850;color:#f1f5f9;cursor:pointer;text-align:left;">
+          <div style="font-weight:bold;color:#a5b4fc;">🏴‍☠️ 场景 B：星盗劫掠特遣战斗群（进阶）</div>
+          <div style="font-size:12px;color:#94a3b8;margin-top:2px;">假想敌：1 艘破盾驱逐舰 + 1 艘导弹巡洋舰 · 检验护盾过载与反舰鱼雷</div>
+        </button>
+        <button id="bt-scen-3" style="padding:10px 14px;border-radius:6px;background:rgba(244,63,94,0.1);border:1px solid #f43f5e50;color:#f1f5f9;cursor:pointer;text-align:left;">
+          <div style="font-weight:bold;color:#fda4af;">💥 场景 C：深空无畏战列舰要塞决战（终极）</div>
+          <div style="font-size:12px;color:#94a3b8;margin-top:2px;">假想敌：1 艘重装战列舰 + 1 艘空天母舰 + 2 艘护卫舰 · 检验 EMP 磁暴与跳帮强袭</div>
+        </button>
+      </div>
+    `;
+
+    openModal({ title: '选择战术交火推演场景', body: div });
+
+    setTimeout(() => {
+      const b1 = document.getElementById('bt-scen-1');
+      const b2 = document.getElementById('bt-scen-2');
+      const b3 = document.getElementById('bt-scen-3');
+
+      if (b1) {
+        b1.onclick = () => {
+          closeModal();
+          openBattleView({ openModal, closeModal, onBattleEnd: () => redraw() }, {
+            title: '深空哨戒巡逻遭遇战',
+            playerShips: pShips,
+            enemyShips: [
+              { name: '星盗截击侦察艇 Alpha', dryMass: 250, thrust: 360, role: 'interceptor' },
+              { name: '星盗截击侦察艇 Beta', dryMass: 260, thrust: 350, role: 'interceptor' },
+            ],
+          });
+        };
+      }
+      if (b2) {
+        b2.onclick = () => {
+          closeModal();
+          openBattleView({ openModal, closeModal, onBattleEnd: () => redraw() }, {
+            title: '星盗劫掠特遣战斗群',
+            playerShips: pShips,
+            enemyShips: [
+              { name: '星盗掠夺驱逐舰', dryMass: 450, thrust: 280, role: 'destroyer' },
+              { name: '铁血打击巡洋舰', dryMass: 650, thrust: 260, role: 'cruiser' },
+            ],
+          });
+        };
+      }
+      if (b3) {
+        b3.onclick = () => {
+          closeModal();
+          openBattleView({ openModal, closeModal, onBattleEnd: () => redraw() }, {
+            title: '深空无畏战列舰要塞决战',
+            playerShips: pShips,
+            enemyShips: [
+              { name: '要塞无畏重装战列舰', dryMass: 1100, thrust: 220, role: 'battleship' },
+              { name: '深空幽灵空天母舰', dryMass: 850, thrust: 240, role: 'carrier' },
+              { name: '近防护卫哨舰 A', dryMass: 280, thrust: 320, role: 'interceptor' },
+              { name: '近防护卫哨舰 B', dryMass: 280, thrust: 320, role: 'interceptor' },
+            ],
+          });
+        };
+      }
+    }, 50);
   };
 
   summary.appendChild(btnDrill);
@@ -309,9 +375,13 @@ export function renderFleet(container, ctx) {
 
     for (const sid of fleet.shipIds) {
       const s = (account.ships || []).find((x) => x && x.id === sid);
+      const roleId = detectShipRole(s || {});
+      const roleMeta = SHIP_ROLES[roleId] || {};
       const line = el('div', 'fleet-ship');
       line.style.cssText = 'display:flex;justify-content:space-between;align-items:center;padding:4px 8px;background:rgba(0,0,0,0.2);border-radius:4px;margin-bottom:4px;';
-      line.appendChild(el('span', null, s ? (s.className || s.name || '飞船') : sid));
+      const label = document.createElement('span');
+      label.innerHTML = `<span style="margin-right:6px;">${roleMeta.icon || '🚀'}</span><span style="font-weight:500;">${esc(s ? (s.className || s.name || '飞船') : sid)}</span> <span style="font-size:11px;color:#7cd7ff;margin-left:4px;">[${roleMeta.name || '战舰'}]</span>`;
+      line.appendChild(label);
       const rm = btn('移出', 'btn-sm');
       rm.addEventListener('click', () => {
         const r = removeShipFromFleet(account, fleet.id, sid);

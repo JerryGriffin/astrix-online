@@ -352,12 +352,15 @@ export function renderGalaxy(root, ctx) {
     const ships = [];
     for (let i = 0; i < count; i++) {
       const isCapital = i === 0;
+      const roleId = isCapital ? (p >= 3000 ? 'battleship' : 'cruiser') : (i % 2 === 0 ? 'destroyer' : 'interceptor');
       const hp = isCapital ? Math.round(p * 0.7 + 600) : Math.round(p * 0.25 + 250);
       const shield = isCapital ? Math.round(p * 0.5 + 400) : Math.round(p * 0.15 + 150);
       const firepower = isCapital ? Math.round(p * 0.1 + 60) : Math.round(p * 0.05 + 30);
       ships.push({
         id: `def_${sys.id || 'planet'}_${i}`,
-        name: isCapital ? `${sys.planetNameCn}·轨道要塞核心舰` : `${sys.planetNameCn}·护卫巡逻艇 #${i}`,
+        name: isCapital ? `${sys.planetNameCn}·轨道要塞核心舰` : `${sys.planetNameCn}·护卫哨艇 #${i}`,
+        roleId,
+        role: roleId,
         hullMax: hp,
         shieldMax: shield,
         firepower: firepower,
