@@ -2,7 +2,7 @@
 // 负责舰队对战的回合/实时推演、多舰种定位、兵种协同、护盾与装甲吸收、战术指令冷却与结算。
 // 纯原生 ES 模块，无任何外部构建依赖。
 
-import { fmtNum } from './format.js?v=21.6';
+import { fmtNum } from './format.js?v=21.7';
 
 let _combatSeq = 0;
 function genShipUid() {
@@ -193,6 +193,22 @@ export const TACTICAL_COMMANDS = {
     costEnergy: 40,
     cooldown: 15,
     desc: '启动曲率跃迁引擎紧急机动拉脱，使全舰队闪避大幅提升至 80%！',
+  },
+  orbital_bombard: {
+    id: 'orbital_bombard',
+    name: '天基湮灭轰炸',
+    icon: '☄️',
+    costEnergy: 45,
+    cooldown: 16,
+    desc: '引导轨道高能聚能等离子光束群进行全图饱和地毯式轰炸，对敌方全舰队造成毁灭性真实面杀伤！',
+  },
+  overclock_repair: {
+    id: 'overclock_repair',
+    name: '纳米战地抢修',
+    icon: '🔧',
+    costEnergy: 30,
+    cooldown: 12,
+    desc: '释放数以亿计的战地纳米工程机械虫群，紧急重构我方所有存活舰艇的装甲与受损龙骨（修复 35% 船体）！',
   },
 };
 
@@ -531,6 +547,39 @@ export function executeTacticalCommand(session, cmdId) {
     case 'warp': {
       session.activeBuffs.warpActive = 5.0;
       session.logs.unshift({ text: '🌌【战术激活】紧急跃迁与矢量回避启动！全舰队闪避大幅提升至 80%！', type: 'skill' });
+      break;
+    }
+    case 'orbital_bombard': {
+      if (aliveEnemy.length > 0) {
+        let totalBombDmg = 0;
+        let killedCount = 0;
+        for (const e of aliveEnemy) {
+          const dmg = Math.round(90 + Math.random() * 70);
+          e.hull = Math.max(0, e.hull - dmg);
+          totalBombDmg += dmg;
+          if (e.hull <= 0) {
+            e.alive = false;
+            killedCount++;
+          }
+        }
+        session.logs.unshift({
+          text: `☄️【战术激活】轨道战备舰队下达【天基湮灭轰炸】！高能等离子流地毯式倾泻，对敌方全舰队造成 ${totalBombDmg} 点毁灭性面杀伤！${killedCount > 0 ? `💥当场击沉 ${killedCount} 艘敌舰！` : ''}`,
+          type: 'skill'
+        });
+      }
+      break;
+    }
+    case 'overclock_repair': {
+      let totalHealed = 0;
+      for (const p of alivePlayer) {
+        const heal = Math.round(p.hullMax * 0.35);
+        p.hull = Math.min(p.hullMax, p.hull + heal);
+        totalHealed += heal;
+      }
+      session.logs.unshift({
+        text: `🔧【战术激活】纳米战地工程机械虫群全域部署！战地修复完成，为我方各战舰共计抢修抢固 ${totalHealed} 点装甲船体结构！`,
+        type: 'skill'
+      });
       break;
     }
   }

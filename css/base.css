@@ -340,4 +340,22 @@ a { color: var(--cyan); }
   animation: warp-tunnel-flash 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
+@keyframes crop-sprout-sway {
+  0%, 100% { transform: rotate(-3deg) scale(1); }
+  50% { transform: rotate(3deg) scale(1.05); filter: drop-shadow(0 0 6px rgba(52, 211, 153, 0.5)); }
+}
+
+.agri-crop-sway {
+  animation: crop-sprout-sway 2.4s infinite ease-in-out;
+}
+
+@keyframes bio-dome-pulse {
+  0%, 100% { border-color: rgba(52, 211, 153, 0.35); box-shadow: 0 0 10px rgba(52, 211, 153, 0.15); }
+  50% { border-color: rgba(52, 211, 153, 0.85); box-shadow: 0 0 22px rgba(52, 211, 153, 0.35); }
+}
+
+.bio-dome-active {
+  animation: bio-dome-pulse 2.2s infinite ease-in-out;
+}
+
 

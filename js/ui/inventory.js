@@ -24,15 +24,15 @@
 // 所有数字显示一律走 format.js 的 fmtNum / fmtRate / fmtRateBody / fmtSci。
 // 样式集中在 css/planet.css。
 
-import { MATERIALS } from '../data/materials.js?v=21.6';
-import { fmtNum, fmtRate, fmtSci } from '../core/format.js?v=21.6';
-import { getPlanetInstance, tick, currentAccount, atmosphereOf, ownedOf, rateOf } from '../core/state.js?v=21.6';
-import { computePower } from '../core/power.js?v=21.6';
-import { equipmentList } from '../core/shipyard.js?v=21.6';
-import { materialLabel, productionRates } from '../core/production.js?v=21.6';
-import { BUILDING_BY_ID } from '../data/buildings.js?v=21.6';
-import { NUTRIENT_NAMES, METABOLITE_NAMES, consumptionPerSec, metabolitePerSec } from '../core/population.js?v=21.6';
-import { playPing } from '../core/sound.js?v=21.6';
+import { MATERIALS } from '../data/materials.js?v=21.7';
+import { fmtNum, fmtRate, fmtSci } from '../core/format.js?v=21.7';
+import { getPlanetInstance, tick, currentAccount, atmosphereOf, ownedOf, rateOf } from '../core/state.js?v=21.7';
+import { computePower } from '../core/power.js?v=21.7';
+import { equipmentList } from '../core/shipyard.js?v=21.7';
+import { materialLabel, productionRates } from '../core/production.js?v=21.7';
+import { BUILDING_BY_ID } from '../data/buildings.js?v=21.7';
+import { NUTRIENT_NAMES, METABOLITE_NAMES, consumptionPerSec, metabolitePerSec } from '../core/population.js?v=21.7';
+import { playPing } from '../core/sound.js?v=21.7';
 
 // 地层扫描雷达配置
 const STRATA_CONFIG = [
@@ -176,6 +176,82 @@ export function renderInventory(container, planetOrCtx) {
   equipGrid.className = 'inv-grid';
   equipWrap.append(equipTitle, equipGrid);
 
+  // 生态农场与水培生化穹顶 HUD (v0.2.1-rev7 种田农牧系统丰富)
+  const bioDomeSection = document.createElement('section');
+  bioDomeSection.className = 'inv-block bio-dome-section';
+  const bioDomeTitle = document.createElement('div');
+  bioDomeTitle.className = 'inv-block-title';
+  bioDomeTitle.innerHTML = '🌿 生态农场与水培生化穹顶<span class="inv-block-sub muted"> · 全息光合调控、营养液微循环与有机质栽培</span>';
+
+  const bioDomeHud = document.createElement('div');
+  bioDomeHud.className = 'bio-dome-active glass';
+  bioDomeHud.style.cssText = 'margin:8px 0 14px 0;padding:12px;border-radius:8px;border:1px solid rgba(52,211,153,0.35);background:rgba(6,78,59,0.18);';
+
+  const bioHeader = document.createElement('div');
+  bioHeader.style.cssText = 'display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:8px;margin-bottom:10px;';
+
+  const bioStatus = document.createElement('div');
+  bioStatus.style.cssText = 'font-size:13px;font-weight:bold;color:#6ee7b7;display:flex;align-items:center;gap:6px;';
+  bioStatus.innerHTML = '<span class="agri-crop-sway" style="display:inline-block;">🌱</span><span>生化穹顶微环境环控</span><span style="font-size:11px;color:#a7f3d0;font-weight:normal;background:rgba(16,185,129,0.2);padding:2px 6px;border-radius:4px;">光合通量 98.4%</span>';
+
+  const bioBtnGroup = document.createElement('div');
+  bioBtnGroup.style.cssText = 'display:flex;gap:6px;';
+
+  const sprayBtn = document.createElement('button');
+  sprayBtn.type = 'button';
+  sprayBtn.className = 'btn-action';
+  sprayBtn.style.cssText = 'padding:4px 10px;min-height:30px;font-size:12px;border-radius:6px;border:1px solid #10b981;background:rgba(16,185,129,0.18);color:#a7f3d0;cursor:pointer;';
+  sprayBtn.innerHTML = '💧 喷灌纳米营养液';
+
+  const lightBtn = document.createElement('button');
+  lightBtn.type = 'button';
+  lightBtn.className = 'btn-action';
+  lightBtn.style.cssText = 'padding:4px 10px;min-height:30px;font-size:12px;border-radius:6px;border:1px solid #3b82f6;background:rgba(59,130,246,0.18);color:#93c5fd;cursor:pointer;';
+  lightBtn.innerHTML = '🔆 调谐全光谱';
+
+  bioBtnGroup.append(sprayBtn, lightBtn);
+  bioHeader.append(bioStatus, bioBtnGroup);
+
+  const bioTelemetry = document.createElement('div');
+  bioTelemetry.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;margin-bottom:8px;font-size:12px;';
+
+  const crops = [
+    { icon: '🌾', name: '高产抗辐射小麦', cycle: '生长期 92%', state: '优良', color: '#fde047' },
+    { icon: '🥬', name: '水培多糖螺旋藻', cycle: '采收期 100%', state: '饱满', color: '#86efac' },
+    { icon: '🍄', name: '深岩仿生工程菌', cycle: '繁育期 85%', state: '活跃', color: '#c084fc' },
+    { icon: '🍇', name: '低重力无土藤蔓', cycle: '萌芽期 76%', state: '旺盛', color: '#f472b6' }
+  ];
+
+  crops.forEach(c => {
+    const card = document.createElement('div');
+    card.style.cssText = 'background:rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.08);padding:8px;border-radius:6px;display:flex;align-items:center;gap:8px;';
+    card.innerHTML = `<div class="agri-crop-sway" style="font-size:20px;">${c.icon}</div><div><div style="font-weight:bold;color:${c.color};font-size:11px;">${c.name}</div><div style="font-size:10px;color:#94a3b8;">${c.cycle} · <span style="color:#6ee7b7;">${c.state}</span></div></div>`;
+    bioTelemetry.appendChild(card);
+  });
+
+  const bioLog = document.createElement('div');
+  bioLog.style.cssText = 'font-size:11px;color:#94a3b8;font-family:monospace;background:rgba(0,0,0,0.25);padding:6px 10px;border-radius:6px;';
+  bioLog.textContent = '农牧遥测：二氧化碳固定率 99.1% · 根系渗透压平衡 · 培养基微量元素储备充足';
+
+  sprayBtn.onclick = () => {
+    playPing();
+    const humid = Math.floor(75 + Math.random() * 20);
+    bioLog.textContent = `喷灌完毕：基质相对湿度跃升至 ${humid}% · 根系养分吸收率提高 14.5% · 微生物活性增强`;
+    bioLog.style.color = '#34d399';
+    setTimeout(() => { bioLog.style.color = '#94a3b8'; }, 2200);
+  };
+
+  lightBtn.onclick = () => {
+    playPing();
+    const wave = [660, 450, 730, 430][Math.floor(Math.random() * 4)];
+    bioLog.textContent = `光谱调谐：激发主吸收峰 λ=${wave}nm · 叶绿素荧光产额提升 · 净同化速率达峰值`;
+    bioLog.style.color = '#60a5fa';
+    setTimeout(() => { bioLog.style.color = '#94a3b8'; }, 2200);
+  };
+
+  bioDomeHud.append(bioHeader, bioTelemetry, bioLog);
+  bioDomeSection.append(bioDomeTitle, bioDomeHud);
+
   const storeWrap = document.createElement('section');
   storeWrap.className = 'inv-block inv-block-store';
   const storeTitle = document.createElement('div');
@@ -272,7 +348,7 @@ export function renderInventory(container, planetOrCtx) {
   strataHud.append(radarHeader, waveContainer, strataRow);
   storeWrap.append(storeTitle, strataHud, storeGrid);
 
-  container.append(ownedWrap, equipWrap, storeWrap);
+  container.append(ownedWrap, equipWrap, bioDomeSection, storeWrap);
 
   // ========================================================================
   // 行集合动态重建（v0.0.62）

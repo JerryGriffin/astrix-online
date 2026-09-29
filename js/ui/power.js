@@ -8,14 +8,14 @@ import {
   computePower, energyOf,
   installedFacilities, installFacility, uninstallFacility, facilityStockOf,
   panelEffOf, facilityFuelOf, buildingCountBonus,
-} from '../core/power.js?v=21.6';
-import { POWER_FACILITIES, POWER_FACILITY_BY_ID } from '../data/facilities.js?v=21.6';
-import { BUILDING_BY_ID } from '../data/buildings.js?v=21.6';
-import { RECIPES } from '../data/recipes.js?v=21.6';
-import { linesOf } from '../core/production.js?v=21.6';
-import { jobsOfBuilding, jobOutput, assignedToBuilding, buildingSlots } from '../core/population.js?v=21.6';
-import { fmtNum, fmtRate, fmtRateBody } from '../core/format.js?v=21.6';
-import { playPing, playLaser, playShield } from '../core/sound.js?v=21.6';
+} from '../core/power.js?v=21.7';
+import { POWER_FACILITIES, POWER_FACILITY_BY_ID } from '../data/facilities.js?v=21.7';
+import { BUILDING_BY_ID } from '../data/buildings.js?v=21.7';
+import { RECIPES } from '../data/recipes.js?v=21.7';
+import { linesOf } from '../core/production.js?v=21.7';
+import { jobsOfBuilding, jobOutput, assignedToBuilding, buildingSlots } from '../core/population.js?v=21.7';
+import { fmtNum, fmtRate, fmtRateBody } from '../core/format.js?v=21.7';
+import { playPing, playLaser, playShield } from '../core/sound.js?v=21.7';
 
 const CSS = `
   .pwr-panel { font-family: system-ui, sans-serif; color: #e8eef2; padding: 12px; box-sizing: border-box; }

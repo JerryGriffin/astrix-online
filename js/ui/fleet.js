@@ -2,7 +2,7 @@
 // 提供编队战备管理、实时战术交互交战视窗、船载物流、殖民地政令与星港贸易。
 // 纯原生 ES 模块，深空玻璃拟态风格，移动端与 PC 端自适应（点击区 >= 44px）。
 
-import { fmtNum, fmtRate, fmtTime } from '../core/format.js?v=21.6';
+import { fmtNum, fmtRate, fmtTime } from '../core/format.js?v=21.7';
 import {
   listFleets, createFleet, disbandFleet, addShipToFleet, removeShipFromFleet,
   fleetSpeedOf, fleetPowerOf, executeCommand,
@@ -10,21 +10,21 @@ import {
   shipCargoOf, loadShipCargo, unloadShipCargo,
   shipCargoMassOf, shipCargoCellsOf, shipCargoCellsMax, effectiveSpeedOf,
   resolveFleetAnomaly,
-} from '../core/fleet.js?v=21.6';
-import { equipmentList } from '../core/shipyard.js?v=21.6';
+} from '../core/fleet.js?v=21.7';
+import { equipmentList } from '../core/shipyard.js?v=21.7';
 import {
   MANAGEMENT_MODES, MANAGEMENT_BY_ID, modeOf, setManagement,
   TERRITORY_ASSIMILATE_SEC, TERRITORY_HAPPY_THRESHOLD,
-} from '../core/planetgen.js?v=21.6';
+} from '../core/planetgen.js?v=21.7';
 import {
   SHOP_PLANET, shopPrices, sell, pendingOrders, deliverOrder, ascoinBalance,
   suggestPriceOf, listForSale, marketListings, cancelListing, buyListing, priceOf, shopStateOf,
   MARKET_FEE,
-} from '../core/shop.js?v=21.6';
-import { getPlanetInstance, currentAccount, ownedOf } from '../core/state.js?v=21.6';
-import { openBattleView } from './combat.js?v=21.6';
-import { detectShipRole, SHIP_ROLES } from '../core/combat.js?v=21.6';
-import { isSoundEnabled, toggleSound, playPing, playVictory, playWarp, playExplosion } from '../core/sound.js?v=21.6';
+} from '../core/shop.js?v=21.7';
+import { getPlanetInstance, currentAccount, ownedOf } from '../core/state.js?v=21.7';
+import { openBattleView } from './combat.js?v=21.7';
+import { detectShipRole, SHIP_ROLES } from '../core/combat.js?v=21.7';
+import { isSoundEnabled, toggleSound, playPing, playVictory, playWarp, playExplosion } from '../core/sound.js?v=21.7';
 
 // HTML 转义
 function esc(s) {
@@ -274,7 +274,7 @@ export function renderFleet(container, ctx) {
         </button>
         <button id="bt-scen-3" style="padding:10px 14px;border-radius:6px;background:rgba(244,63,94,0.1);border:1px solid #f43f5e50;color:#f1f5f9;cursor:pointer;text-align:left;">
           <div style="font-weight:bold;color:#fda4af;">💥 场景 C：深空无畏战列舰要塞决战（终极）</div>
-          <div style="font-size:12px;color:#94a3b8;margin-top:2px;">假想敌：1 艘重装战列舰 + 1 艘空天母舰 + 2 艘护卫舰 · 检验 EMP 磁暴与跳帮强袭</div>
+          <div style="font-size:12px;color:#94a3b8;margin-top:2px;">假想敌：1 艘重装战列舰 + 1 艘空天母舰 + 2 艘护卫舰 · 检验天基湮灭轰炸、纳米抢修与 EMP 磁暴</div>
         </button>
       </div>
     `;

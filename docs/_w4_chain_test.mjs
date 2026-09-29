@@ -1,9 +1,9 @@
 // w4-ship 验收推演（临时脚本，跑完即删）：
 // dock 线创建 → shipBuildTick 推进 → 满进度下水扣装备 全链路（core 层，模拟 state.js 接线契约）
-import * as Y from '../js/core/shipyard.js?v=21.6';
-import * as SP from '../js/data/ship_parts.js?v=21.6';
-import * as PR from '../js/core/production.js?v=21.6';
-import * as POP from '../js/core/population.js?v=21.6';
+import * as Y from '../js/core/shipyard.js?v=21.7';
+import * as SP from '../js/data/ship_parts.js?v=21.7';
+import * as PR from '../js/core/production.js?v=21.7';
+import * as POP from '../js/core/population.js?v=21.7';
 
 let pass = 0, fail = 0;
 const ok = (c, msg) => { if (c) { pass++; console.log('  ok ' + msg); } else { fail++; console.log('  x  ' + msg); } };

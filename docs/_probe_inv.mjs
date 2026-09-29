@@ -2,14 +2,14 @@
 // 所有导入一律带 ?v=11.0（与游戏契约一致，避免双实例）。
 // 运行：node docs/_probe_inv.mjs
 
-import { productionRates } from '../js/core/production.js?v=21.6';
-import { BUILDING_BY_ID } from '../js/data/buildings.js?v=21.6';
+import { productionRates } from '../js/core/production.js?v=21.7';
+import { BUILDING_BY_ID } from '../js/data/buildings.js?v=21.7';
 import {
   NUTRIENT_NAMES,
   METABOLITE_NAMES,
   consumptionPerSec,
   metabolitePerSec,
-} from '../js/core/population.js?v=21.6';
+} from '../js/core/population.js?v=21.7';
 
 // LAYER_LABEL 仅为探针展示用，照抄 inventory.js 的本地常量（避免 import 整个 UI 模块图在 Node 下崩）。
 const LAYER_LABEL = { surface: '地表', underground: '浅层', deep: '深层', core: '地核', gas: '气体' };

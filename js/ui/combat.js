@@ -4,9 +4,9 @@
 import {
   createBattleSession, tickBattle, executeTacticalCommand, TACTICAL_COMMANDS,
   SHIP_ROLES, getBattleReport
-} from '../core/combat.js?v=21.6';
-import { fmtNum } from '../core/format.js?v=21.6';
-import { playLaser, playExplosion, playShield, playWarp, playVictory } from '../core/sound.js?v=21.6';
+} from '../core/combat.js?v=21.7';
+import { fmtNum } from '../core/format.js?v=21.7';
+import { playLaser, playExplosion, playShield, playWarp, playVictory } from '../core/sound.js?v=21.7';
 
 function esc(s) {
   return String(s ?? '').replace(/[&<>"']/g, (c) => (
@@ -197,6 +197,23 @@ export function openBattleView(arg1, arg2, arg3) {
       }
     } else if (cmdId === 'boarding') {
       playExplosion(false);
+    } else if (cmdId === 'orbital_bombard') {
+      playExplosion(true);
+      if (flash) {
+        flash.style.background = 'rgba(239, 68, 68, 0.45)';
+        setTimeout(() => { if (flash) flash.style.background = 'transparent'; }, 500);
+      }
+      const stageEl = document.getElementById('bt-battle-stage');
+      if (stageEl) {
+        stageEl.classList.add('screen-shake');
+        setTimeout(() => stageEl.classList.remove('screen-shake'), 400);
+      }
+    } else if (cmdId === 'overclock_repair') {
+      playShield();
+      if (flash) {
+        flash.style.background = 'rgba(52, 211, 153, 0.25)';
+        setTimeout(() => { if (flash) flash.style.background = 'transparent'; }, 400);
+      }
     }
   }
 
@@ -465,7 +482,7 @@ export function openBattleView(arg1, arg2, arg3) {
     timer = setInterval(() => {
       // 自动战斗模式：有能量就自动释放可用技能
       if (autoBattle && !session.ended) {
-        for (const k of ['focus', 'torpedo', 'emp', 'boarding', 'shield', 'drones']) {
+        for (const k of ['orbital_bombard', 'focus', 'torpedo', 'emp', 'boarding', 'shield', 'overclock_repair', 'drones']) {
           if (session.energy >= TACTICAL_COMMANDS[k].costEnergy && session.cooldowns[k] <= 0) {
             executeTacticalCommand(session, k);
             triggerSkillVisualFx(k);
