@@ -13,22 +13,22 @@
 // 3. **新增人数输入栏**：每行都有 −/输入框/＋/满员，方便大规模分配（人数很多时不用点几百次）。
 // 4. 顶部营养区改为 3 消耗（氧气/有机质/水）+ 3 产出（二氧化碳/甲烷/氨气）。
 
-import { fmtNum, fmtRate } from '../core/format.js?v=20.0';
-import { BUILDINGS, BUILDING_BY_ID } from '../data/buildings.js?v=20.0';
+import { fmtNum, fmtRate } from '../core/format.js?v=21.0';
+import { BUILDINGS, BUILDING_BY_ID } from '../data/buildings.js?v=21.0';
 import {
   createPopulation, assignWorkers, setJobIntensity, getIntensity,
   getTotalLabor, getAssigned, getAvailable, consumptionPerSec, metabolitePerSec,
   JOBS, JOBS_BY_BUILDING, WORK_INTENSITY,
   assignedToBuilding, freeSlots, jobCapacity, hiddenJobCount, getJobCount,
-} from '../core/population.js?v=20.0';
-import { getBuildingCounts, currentAccount } from '../core/state.js?v=20.0';
+} from '../core/population.js?v=21.0';
+import { getBuildingCounts, currentAccount } from '../core/state.js?v=21.0';
 // v0.1.1（需求 20）：殖民管理模式——判断本星球是否由电脑接管发展
-import { modeOf } from '../core/planetgen.js?v=20.0';
+import { modeOf } from '../core/planetgen.js?v=21.0';
 // v0.1.4（需求 4）：殖民地报告历史区块（浮动提示条在 main.js 里启动）
-import { buildReportHistory } from './reports.js?v=20.0';
+import { buildReportHistory } from './reports.js?v=21.0';
 // v0.0.7：生产线接口（核心模块正在实现中）。用命名空间导入 + 函数存在性守卫，
 //   若接口尚未落地（addLine 等不是函数），本文件不会报错，也不渲染生产线区块。
-import * as PR from '../core/production.js?v=20.0';
+import * as PR from '../core/production.js?v=21.0';
 
 // 取/建星球上的人口对象（挂在 planet.pop，首次访问惰性创建）
 function ensurePop(planet) {

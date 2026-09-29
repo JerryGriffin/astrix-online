@@ -4,8 +4,8 @@
 import {
   createBattleSession, tickBattle, executeTacticalCommand, TACTICAL_COMMANDS,
   SHIP_ROLES, getBattleReport
-} from '../core/combat.js?v=20.0';
-import { fmtNum } from '../core/format.js?v=20.0';
+} from '../core/combat.js?v=21.0';
+import { fmtNum } from '../core/format.js?v=21.0';
 
 function esc(s) {
   return String(s ?? '').replace(/[&<>"']/g, (c) => (

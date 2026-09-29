@@ -2,27 +2,27 @@
 // 提供编队战备管理、实时战术交互交战视窗、船载物流、殖民地政令与星港贸易。
 // 纯原生 ES 模块，深空玻璃拟态风格，移动端与 PC 端自适应（点击区 >= 44px）。
 
-import { fmtNum, fmtRate, fmtTime } from '../core/format.js?v=20.0';
+import { fmtNum, fmtRate, fmtTime } from '../core/format.js?v=21.0';
 import {
   listFleets, createFleet, disbandFleet, addShipToFleet, removeShipFromFleet,
   fleetSpeedOf, fleetPowerOf, executeCommand,
   startMission, cancelMission, fleetMissionLabel, defenseBonusOf,
   shipCargoOf, loadShipCargo, unloadShipCargo,
   shipCargoMassOf, shipCargoCellsOf, shipCargoCellsMax, effectiveSpeedOf,
-} from '../core/fleet.js?v=20.0';
-import { equipmentList } from '../core/shipyard.js?v=20.0';
+} from '../core/fleet.js?v=21.0';
+import { equipmentList } from '../core/shipyard.js?v=21.0';
 import {
   MANAGEMENT_MODES, MANAGEMENT_BY_ID, modeOf, setManagement,
   TERRITORY_ASSIMILATE_SEC, TERRITORY_HAPPY_THRESHOLD,
-} from '../core/planetgen.js?v=20.0';
+} from '../core/planetgen.js?v=21.0';
 import {
   SHOP_PLANET, shopPrices, sell, pendingOrders, deliverOrder, ascoinBalance,
   suggestPriceOf, listForSale, marketListings, cancelListing, buyListing, priceOf, shopStateOf,
   MARKET_FEE,
-} from '../core/shop.js?v=20.0';
-import { getPlanetInstance, currentAccount, ownedOf } from '../core/state.js?v=20.0';
-import { openBattleView } from './combat.js?v=20.0';
-import { detectShipRole, SHIP_ROLES } from '../core/combat.js?v=20.0';
+} from '../core/shop.js?v=21.0';
+import { getPlanetInstance, currentAccount, ownedOf } from '../core/state.js?v=21.0';
+import { openBattleView } from './combat.js?v=21.0';
+import { detectShipRole, SHIP_ROLES } from '../core/combat.js?v=21.0';
 
 // HTML 转义
 function esc(s) {

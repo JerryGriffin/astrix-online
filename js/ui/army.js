@@ -1,15 +1,15 @@
 // 军队系统用户界面（Astrix v0.2.0）
 // 纯原生 ES 模块，深空玻璃拟态风格，移动端与 PC 端自适应（点击区 >= 44px）
 
-import { currentAccount, getPlanetInstance } from '../core/state.js?v=20.0';
+import { currentAccount, getPlanetInstance } from '../core/state.js?v=21.0';
 import {
   ARMY_BLUEPRINTS, ARMY_BP_BY_ID, ARMY_PART_BY_ID, armyBpPartNeeds, armyBpMaterialNeeds
-} from '../data/army_parts.js?v=20.0';
+} from '../data/army_parts.js?v=21.0';
 import {
   listArmies, ensureArmies, armyStatsOf, stationedArmyPower, toggleStationed, disbandArmy,
   getArmyPartStock, canAssembleArmy, startArmyAssemble, cancelArmyAssemble
-} from '../core/army.js?v=20.0';
-import { fmtNum } from '../core/format.js?v=20.0';
+} from '../core/army.js?v=21.0';
+import { fmtNum } from '../core/format.js?v=21.0';
 
 function escapeHtml(s) {
   return String(s ?? '').replace(/[&<>"']/g, (c) => (

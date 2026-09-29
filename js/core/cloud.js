@@ -2,11 +2,11 @@
 // 提供指挥官云身份、星系注册表、异步贸易与远征进攻、战报收件箱系统。
 // 遵循零构建原生 ES 模块规范，具备离线/断网平滑降级（自动混入 NPC 星系）。
 
-import { currentAccount, ownedOf, spendOwned, getPlanetInstance } from './state.js?v=20.0';
-import { listFleets, ensureFleets } from './fleet.js?v=20.0';
-import { fmtNum } from './format.js?v=20.0';
-import { ensureEntry } from './production.js?v=20.0';
-import { stationedArmyPower } from './army.js?v=20.0';
+import { currentAccount, ownedOf, spendOwned, getPlanetInstance } from './state.js?v=21.0';
+import { listFleets, ensureFleets } from './fleet.js?v=21.0';
+import { fmtNum } from './format.js?v=21.0';
+import { ensureEntry } from './production.js?v=21.0';
+import { stationedArmyPower } from './army.js?v=21.0';
 
 export function addMaterial(inst, matName, amount) {
   const e = ensureEntry(inst, matName);
@@ -694,4 +694,153 @@ export async function sendOnlineChatMessage(acc, text) {
     return { ok: false, reason: '网络连接异常' };
   }
 }
+
+export async function fetchOnlineMarketListings() {
+  try {
+    const res = await fetch('/api/online/market');
+    if (res.ok) {
+      const data = await res.json();
+      return (data && data.listings) || [];
+    }
+  } catch (e) {}
+  return [];
+}
+
+export async function listOnlineMarketItem(acc, { mat, nameCn, qty, priceAscoin }) {
+  const profile = ensureCloudProfile(acc);
+  try {
+    const res = await fetch('/api/online/market/list', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        sellerId: profile.commanderId,
+        sellerCallsign: profile.callsign,
+        mat,
+        nameCn,
+        qty,
+        priceAscoin,
+      }),
+    });
+    return await res.json();
+  } catch (e) {
+    return { ok: false, reason: '网络连接异常' };
+  }
+}
+
+export async function buyOnlineMarketItem(acc, listingId) {
+  const profile = ensureCloudProfile(acc);
+  try {
+    const res = await fetch('/api/online/market/buy', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        buyerId: profile.commanderId,
+        buyerCallsign: profile.callsign,
+        listingId,
+      }),
+    });
+    return await res.json();
+  } catch (e) {
+    return { ok: false, reason: '网络连接异常' };
+  }
+}
+
+export async function buyOnlineMarketListing(acc, listingId) {
+  if (!acc || !listingId) return { ok: false, reason: '参数缺失' };
+  const homeCode = acc.homePlanetCode || 'syl';
+  const inst = getPlanetInstance(homeCode) || getPlanetInstance(homeCode.replace(/\d+$/, ''));
+  if (!inst) return { ok: false, reason: '母星实例未就绪' };
+
+  // 1. 先查验远程订单
+  const listings = await fetchOnlineMarketListings();
+  const listing = listings.find((item) => item.id === listingId);
+  if (!listing) {
+    return { ok: false, reason: '该货单不存在或已被其他指挥官抢购' };
+  }
+
+  const profile = ensureCloudProfile(acc);
+  if (listing.sellerId === profile.commanderId) {
+    return { ok: false, reason: '不能采购自己挂售的货单' };
+  }
+
+  const totalCost = listing.priceAscoin * listing.qty;
+  const curAscoin = Math.max(0, Number(acc.ascoin) || 0);
+  const goldOwned = ownedOf(inst, '粗金') + ownedOf(inst, '金');
+  const goldAscoinEq = goldOwned * 1048576;
+  const totalFunds = curAscoin + goldAscoinEq;
+
+  if (totalFunds < totalCost) {
+    const goldNeeded = (totalCost / 1048576).toFixed(4);
+    return {
+      ok: false,
+      reason: `总货款 ${totalCost} Ascoin（折合 ${goldNeeded} 纯金），当前资金不足`,
+    };
+  }
+
+  // 2. 向服务端发起真实交割核验
+  const remoteRes = await buyOnlineMarketItem(acc, listingId);
+  if (!remoteRes.ok) {
+    return { ok: false, reason: remoteRes.reason || '远端交割失败' };
+  }
+
+  // 3. 扣除本地货币
+  if (curAscoin >= totalCost) {
+    acc.ascoin = curAscoin - totalCost;
+  } else {
+    acc.ascoin = 0;
+    const remainAscoin = totalCost - curAscoin;
+    const paidGold = Math.max(0.0001, remainAscoin / 1048576);
+    if (ownedOf(inst, '金') >= paidGold) {
+      spendOwned(inst, '金', paidGold);
+    } else {
+      spendOwned(inst, '粗金', paidGold);
+    }
+  }
+
+  // 4. 物资入库
+  addMaterial(inst, listing.mat, listing.qty);
+
+  // 5. 写入本地信箱
+  addInboxMessage(acc, {
+    type: 'market_buy',
+    title: `🛒【集市成交】成功采购 ${listing.nameCn}`,
+    body: `你从星际集市成功采购了指挥官 ${listing.sellerCallsign} 挂售的 ${listing.nameCn} ×${listing.qty}。`,
+    details: `交割单号：${listing.id}\n总支付款项：${totalCost} Ascoin\n物资已移交星际物流并入库母星！`,
+  });
+
+  return { ok: true, listing, totalCost, msg: `成功采购 ${listing.nameCn} ×${listing.qty}！物资已入库母星。` };
+}
+
+export async function createOnlineMarketListing(acc, { mat, nameCn, qty, priceAscoin }) {
+  if (!acc || !mat || qty <= 0 || priceAscoin <= 0) {
+    return { ok: false, reason: '挂售参数不全' };
+  }
+  const homeCode = acc.homePlanetCode || 'syl';
+  const inst = getPlanetInstance(homeCode) || getPlanetInstance(homeCode.replace(/\d+$/, ''));
+  if (!inst) return { ok: false, reason: '母星实例未就绪' };
+
+  if (ownedOf(inst, mat) < qty) {
+    return { ok: false, reason: `母星物资储备不足（当前拥有 ${ownedOf(inst, mat)}）` };
+  }
+
+  // 扣减本地仓储
+  spendOwned(inst, mat, qty);
+
+  const res = await listOnlineMarketItem(acc, { mat, nameCn, qty, priceAscoin });
+  if (!res.ok) {
+    // 恢复物资
+    addMaterial(inst, mat, qty);
+    return { ok: false, reason: res.reason || '远端挂售失败' };
+  }
+
+  addInboxMessage(acc, {
+    type: 'market_list',
+    title: `📦【货单上架】${nameCn} ×${qty} 挂售成功`,
+    body: `你的 ${nameCn} ×${qty} 已成功发布至全星区跳蚤集市，单价 ${priceAscoin} Ascoin。`,
+    details: `挂单编号：${res.listing.id}\n当其他指挥官采购时，结算货款将自动存入信箱。`,
+  });
+
+  return { ok: true, listing: res.listing, msg: `成功挂售 ${nameCn} ×${qty}！` };
+}
+
 

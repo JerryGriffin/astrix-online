@@ -1,16 +1,17 @@
 // 星际大厅与在线星图界面（Astrix v0.2.0）
 // 纯原生 ES 模块，深空玻璃拟态风格，移动端与 PC 端自适应（点击区 >= 44px）
 
-import { currentAccount, getPlanetInstance } from '../core/state.js?v=20.0';
+import { currentAccount, getPlanetInstance, ownedOf } from '../core/state.js?v=21.0';
 import {
   ensureCloudProfile, bindEmail, getShieldStatus, fetchGalaxyRegistry,
   getInbox, markMessageRead, markAllMessagesRead, unreadCount,
   sendGalaxyRaid, sendGalaxyTrade, evaluateFleetPower,
-  syncOnlineServer, fetchRemoteGalaxyRegistry, fetchOnlineChatMessages, sendOnlineChatMessage
-} from '../core/cloud.js?v=20.0';
-import { listFleets } from '../core/fleet.js?v=20.0';
-import { fmtNum } from '../core/format.js?v=20.0';
-import { openBattleView } from './combat.js?v=20.0';
+  syncOnlineServer, fetchRemoteGalaxyRegistry, fetchOnlineChatMessages, sendOnlineChatMessage,
+  fetchOnlineMarketListings, buyOnlineMarketListing, createOnlineMarketListing
+} from '../core/cloud.js?v=21.0';
+import { listFleets } from '../core/fleet.js?v=21.0';
+import { fmtNum } from '../core/format.js?v=21.0';
+import { openBattleView } from './combat.js?v=21.0';
 
 function escapeHtml(s) {
   return String(s ?? '').replace(/[&<>"']/g, (c) => (
@@ -90,6 +91,14 @@ export function renderGalaxy(root, ctx) {
     btnChat.innerHTML = '💬 星区广播通信';
     btnChat.onclick = () => openChatModal();
     btnGroup.appendChild(btnChat);
+
+    // 全星区在线集市入口
+    const btnMarket = document.createElement('button');
+    btnMarket.className = 'btn-action';
+    btnMarket.style.cssText = 'padding:6px 14px;min-height:44px;border:1px solid #10b98150;border-radius:6px;background:rgba(16,185,129,0.15);color:#6ee7b7;cursor:pointer;';
+    btnMarket.innerHTML = '🌐 全星区集市';
+    btnMarket.onclick = () => openMarketModal();
+    btnGroup.appendChild(btnMarket);
 
     header.appendChild(idBox);
     header.appendChild(btnGroup);
@@ -441,6 +450,218 @@ export function renderGalaxy(root, ctx) {
           doSend();
         }
       };
+    }, 50);
+  }
+
+  async function openMarketModal() {
+    const homeCode = acc.homePlanetCode || 'syl';
+    const inst = getPlanetInstance(homeCode) || getPlanetInstance(homeCode.replace(/\d+$/, ''));
+    let activeTab = 'browse'; // 'browse' | 'list'
+
+    const div = document.createElement('div');
+    div.style.cssText = 'display:flex;flex-direction:column;gap:12px;height:480px;max-height:75vh;';
+    div.innerHTML = `
+      <div style="display:flex;gap:8px;border-bottom:1px solid #22354c;padding-bottom:8px;">
+        <button id="market-tab-browse" style="flex:1;min-height:40px;background:rgba(16,185,129,0.2);color:#6ee7b7;font-weight:bold;border:1px solid #10b98160;border-radius:6px;cursor:pointer;">
+          🛒 浏览在售货单
+        </button>
+        <button id="market-tab-post" style="flex:1;min-height:40px;background:rgba(255,255,255,0.05);color:#94a3b8;font-weight:bold;border:1px solid #22354c;border-radius:6px;cursor:pointer;">
+          📦 上架挂售物资
+        </button>
+      </div>
+      <div id="market-content" style="flex:1;overflow-y:auto;display:flex;flex-direction:column;">
+      </div>
+    `;
+
+    openModal({ title: '🌐 全星区跳蚤集市 (Live Market)', body: div });
+
+    setTimeout(() => {
+      const tabBrowse = document.getElementById('market-tab-browse');
+      const tabPost = document.getElementById('market-tab-post');
+      const content = document.getElementById('market-content');
+      if (!tabBrowse || !tabPost || !content) return;
+
+      function switchTab(tab) {
+        activeTab = tab;
+        if (tab === 'browse') {
+          tabBrowse.style.background = 'rgba(16,185,129,0.2)';
+          tabBrowse.style.color = '#6ee7b7';
+          tabBrowse.style.borderColor = '#10b98160';
+          tabPost.style.background = 'rgba(255,255,255,0.05)';
+          tabPost.style.color = '#94a3b8';
+          tabPost.style.borderColor = '#22354c';
+          renderBrowse();
+        } else {
+          tabPost.style.background = 'rgba(16,185,129,0.2)';
+          tabPost.style.color = '#6ee7b7';
+          tabPost.style.borderColor = '#10b98160';
+          tabBrowse.style.background = 'rgba(255,255,255,0.05)';
+          tabBrowse.style.color = '#94a3b8';
+          tabBrowse.style.borderColor = '#22354c';
+          renderPost();
+        }
+      }
+
+      tabBrowse.onclick = () => switchTab('browse');
+      tabPost.onclick = () => switchTab('list');
+
+      async function renderBrowse() {
+        content.innerHTML = '<div style="color:#64748b;text-align:center;padding:30px;">正在连接星际集市数据库...</div>';
+        const listings = await fetchOnlineMarketListings();
+        if (listings.length === 0) {
+          content.innerHTML = `
+            <div style="padding:30px;text-align:center;color:#64748b;">
+              当前全星区集市暂无挂单。<br>
+              <span style="font-size:12px;color:#94a3b8;margin-top:6px;display:inline-block;">你可以点击上方「上架挂售物资」成为第一个星际大亨！</span>
+            </div>
+          `;
+          return;
+        }
+
+        const curAscoin = Math.floor(Number(acc.ascoin) || 0);
+        content.innerHTML = `
+          <div style="display:flex;justify-content:space-between;align-items:center;font-size:12px;color:#94a3b8;margin-bottom:8px;">
+            <span>当前持有：<b style="color:#7cd7ff">${curAscoin}</b> Ascoin</span>
+            <button id="btn-refresh-market" style="padding:4px 10px;background:rgba(255,255,255,0.06);border:1px solid #334155;color:#c8d4e0;border-radius:4px;cursor:pointer;">🔄 刷新集市</button>
+          </div>
+          <div id="market-items-list" style="display:flex;flex-direction:column;gap:8px;"></div>
+        `;
+
+        const refreshBtn = document.getElementById('btn-refresh-market');
+        if (refreshBtn) refreshBtn.onclick = () => renderBrowse();
+
+        const itemsList = document.getElementById('market-items-list');
+        for (const item of listings) {
+          const isMyListing = item.sellerId === profile.commanderId;
+          const totalCost = item.priceAscoin * item.qty;
+          const card = document.createElement('div');
+          card.style.cssText = 'padding:10px 12px;border-radius:6px;background:rgba(0,0,0,0.3);border:1px solid #22354c;display:flex;justify-content:space-between;align-items:center;gap:10px;';
+          card.innerHTML = `
+            <div style="flex:1;">
+              <div style="font-size:14px;font-weight:bold;color:#f1f5f9;display:flex;align-items:center;gap:6px;">
+                <span>${escapeHtml(item.nameCn)}</span>
+                <span style="font-size:12px;color:#6ee7b7;background:rgba(16,185,129,0.15);padding:1px 6px;border-radius:4px;">×${item.qty}</span>
+              </div>
+              <div style="font-size:11px;color:#94a3b8;margin-top:2px;">
+                卖家：<span style="color:#c8d4e0;">${escapeHtml(item.sellerCallsign)}</span>
+                ${isMyListing ? '<span style="color:#ffc46b;margin-left:4px;">(我的货单)</span>' : ''}
+              </div>
+              <div style="font-size:12px;color:#7cd7ff;margin-top:2px;">
+                单价 <b>${item.priceAscoin}</b> ₳ | 总计 <b>${totalCost}</b> Ascoin
+              </div>
+            </div>
+            <div>
+              <button class="btn-buy-listing" data-id="${item.id}" ${isMyListing ? 'disabled' : ''} style="min-height:38px;padding:0 14px;border:none;border-radius:6px;background:${isMyListing ? '#334155' : '#10b981'};color:${isMyListing ? '#64748b' : '#0b101c'};font-weight:bold;cursor:${isMyListing ? 'not-allowed' : 'pointer'};">
+                ${isMyListing ? '自挂货单' : '采购交割'}
+              </button>
+            </div>
+          `;
+          itemsList.appendChild(card);
+        }
+
+        itemsList.querySelectorAll('.btn-buy-listing').forEach((btn) => {
+          btn.addEventListener('click', async () => {
+            const listingId = btn.getAttribute('data-id');
+            btn.disabled = true;
+            btn.textContent = '交割中...';
+            const res = await buyOnlineMarketListing(acc, listingId);
+            if (!res.ok) {
+              alert(res.reason || '采购失败');
+              btn.disabled = false;
+              btn.textContent = '采购交割';
+            } else {
+              alert(res.msg);
+              refresh();
+              renderBrowse();
+            }
+          });
+        });
+      }
+
+      function renderPost() {
+        if (!inst || !Array.isArray(inst.inventory)) {
+          content.innerHTML = '<div style="padding:20px;text-align:center;color:#64748b;">母星仓储数据暂不可用。</div>';
+          return;
+        }
+
+        const availableMats = inst.inventory.filter((e) => (Number(e.owned) || 0) >= 1);
+        if (availableMats.length === 0) {
+          content.innerHTML = `
+            <div style="padding:30px;text-align:center;color:#64748b;">
+              母星仓储中暂无可挂售的物资。<br>
+              <span style="font-size:12px;color:#94a3b8;margin-top:6px;display:inline-block;">请先在工厂或矿区采集生产一些物资后再来挂单！</span>
+            </div>
+          `;
+          return;
+        }
+
+        content.innerHTML = `
+          <div style="background:rgba(0,0,0,0.25);border:1px solid #22354c;border-radius:8px;padding:14px;display:flex;flex-direction:column;gap:10px;">
+            <div>
+              <label style="font-size:12px;color:#94a3b8;display:block;margin-bottom:4px;">选择出售物资：</label>
+              <select id="post-mat-sel" style="width:100%;min-height:44px;background:#0b101c;border:1px solid #22354c;color:#c8d4e0;border-radius:6px;padding:8px 12px;font-size:14px;">
+                ${availableMats.map((e) => `<option value="${escapeHtml(e.mat)}">${escapeHtml(e.mat)} (当前存量: ${Math.floor(e.owned)})</option>`).join('')}
+              </select>
+            </div>
+            <div>
+              <label style="font-size:12px;color:#94a3b8;display:block;margin-bottom:4px;">上架数量：</label>
+              <input type="number" id="post-qty-inp" min="1" max="10000" value="10"
+                     style="width:100%;min-height:44px;box-sizing:border-box;background:#0b101c;border:1px solid #22354c;color:#c8d4e0;border-radius:6px;padding:8px 12px;font-size:14px;">
+            </div>
+            <div>
+              <label style="font-size:12px;color:#94a3b8;display:block;margin-bottom:4px;">出售单价 (Ascoin)：</label>
+              <input type="number" id="post-price-inp" min="1" max="100000" value="50"
+                     style="width:100%;min-height:44px;box-sizing:border-box;background:#0b101c;border:1px solid #22354c;color:#c8d4e0;border-radius:6px;padding:8px 12px;font-size:14px;">
+            </div>
+            <div id="post-summary" style="font-size:12px;color:#6ee7b7;margin-top:2px;"></div>
+            <div id="post-err" style="color:#ff6b81;font-size:12px;"></div>
+            <button id="btn-submit-post" style="width:100%;min-height:44px;background:#10b981;color:#0b101c;font-weight:bold;border:none;border-radius:6px;cursor:pointer;margin-top:4px;">
+              🚀 确认发布到全星区集市
+            </button>
+          </div>
+        `;
+
+        const matSel = document.getElementById('post-mat-sel');
+        const qtyInp = document.getElementById('post-qty-inp');
+        const priceInp = document.getElementById('post-price-inp');
+        const summary = document.getElementById('post-summary');
+        const err = document.getElementById('post-err');
+        const btnSubmit = document.getElementById('btn-submit-post');
+
+        function updatePostSum() {
+          const q = parseInt(qtyInp.value, 10) || 0;
+          const p = parseInt(priceInp.value, 10) || 0;
+          summary.innerHTML = `预计回款总额：<b>${q * p}</b> Ascoin`;
+        }
+        matSel.onchange = updatePostSum;
+        qtyInp.oninput = updatePostSum;
+        priceInp.oninput = updatePostSum;
+        updatePostSum();
+
+        btnSubmit.onclick = async () => {
+          const mat = matSel.value;
+          const qty = parseInt(qtyInp.value, 10) || 0;
+          const priceAscoin = parseInt(priceInp.value, 10) || 0;
+          if (qty <= 0 || priceAscoin <= 0) {
+            err.textContent = '数量与单价必须大于 0';
+            return;
+          }
+          btnSubmit.disabled = true;
+          btnSubmit.textContent = '正在挂单...';
+          const res = await createOnlineMarketListing(acc, { mat, nameCn: mat, qty, priceAscoin });
+          if (!res.ok) {
+            err.textContent = res.reason || '挂单失败';
+            btnSubmit.disabled = false;
+            btnSubmit.textContent = '🚀 确认发布到全星区集市';
+          } else {
+            alert(res.msg);
+            refresh();
+            switchTab('browse');
+          }
+        };
+      }
+
+      renderBrowse();
     }, 50);
   }
 

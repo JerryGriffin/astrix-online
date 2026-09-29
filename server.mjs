@@ -32,7 +32,38 @@ const ONLINE_STORE = {
     { id: 'm_init1', from: '星际深空广播', text: '【星区公频已接通】欢迎全星系开拓指挥官进入实时深空网络。', at: Date.now() - 3600000 },
     { id: 'm_init2', from: '织女四·重工枢纽', text: '【商会公报】大量高纯特种精炼钢已就绪，欢迎各星系船队前来洽谈采购。', at: Date.now() - 1800000 },
   ],
-  tradeListings: [],
+  tradeListings: [
+    {
+      id: 'trade_init_1',
+      sellerId: 'NPC-SRB',
+      sellerCallsign: '铁胡子船长 [深空拾荒团]',
+      mat: '钛',
+      nameCn: '钛合金粗胚',
+      qty: 200,
+      priceAscoin: 95,
+      listedAt: Date.now() - 1200000,
+    },
+    {
+      id: 'trade_init_2',
+      sellerId: 'NPC-CEN',
+      sellerCallsign: '阿加莎女执政官 [极光帝国]',
+      mat: '硅',
+      nameCn: '高纯硅晶',
+      qty: 150,
+      priceAscoin: 140,
+      listedAt: Date.now() - 600000,
+    },
+    {
+      id: 'trade_init_3',
+      sellerId: 'NPC-VG4',
+      sellerCallsign: '维加斯督军 [泛星际商会]',
+      mat: '钢',
+      nameCn: '精炼特种钢',
+      qty: 300,
+      priceAscoin: 80,
+      listedAt: Date.now() - 300000,
+    },
+  ],
   inbox: new Map(), // commanderId -> [ { id, type, title, body, details, at, read } ]
 };
 
@@ -207,6 +238,55 @@ async function handleApi(req, res, pathname) {
       shieldUntil: target.shieldUntil,
       msg: win ? '远征突击取得大捷！' : '攻势遭遇敌方顽强抵抗，已被击退。',
     });
+  }
+
+  // 6. 全星区跨玩家物资交易市场
+  if (pathname === '/api/online/market' && req.method === 'GET') {
+    return jsonRes(res, { ok: true, listings: ONLINE_STORE.tradeListings });
+  }
+  if (pathname === '/api/online/market/list' && req.method === 'POST') {
+    const data = await parseBody(req);
+    const { sellerId, sellerCallsign, mat, nameCn, qty, priceAscoin } = data;
+    if (!sellerId || !mat || !qty || !priceAscoin) {
+      return jsonRes(res, { ok: false, reason: '缺少必填字段' }, 400);
+    }
+    const listing = {
+      id: 'trade_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 6),
+      sellerId,
+      sellerCallsign: sellerCallsign || '匿名商人',
+      mat,
+      nameCn: nameCn || mat,
+      qty: Math.max(1, parseInt(qty, 10)),
+      priceAscoin: Math.max(1, parseInt(priceAscoin, 10)),
+      listedAt: Date.now(),
+    };
+    ONLINE_STORE.tradeListings.unshift(listing);
+    if (ONLINE_STORE.tradeListings.length > 50) ONLINE_STORE.tradeListings.pop();
+    return jsonRes(res, { ok: true, listing });
+  }
+  if (pathname === '/api/online/market/buy' && req.method === 'POST') {
+    const data = await parseBody(req);
+    const { buyerId, buyerCallsign, listingId } = data;
+    const idx = ONLINE_STORE.tradeListings.findIndex((item) => item.id === listingId);
+    if (idx === -1) {
+      return jsonRes(res, { ok: false, reason: '该货单已被其他指挥官采购或已下架' }, 404);
+    }
+    const item = ONLINE_STORE.tradeListings.splice(idx, 1)[0];
+    
+    // 给卖家发送货款结算战报/信件
+    const sellerInbox = ONLINE_STORE.inbox.get(item.sellerId) || [];
+    const totalEarn = item.priceAscoin * item.qty;
+    sellerInbox.unshift({
+      id: 'earn_' + Date.now().toString(36),
+      type: 'trade_earn',
+      title: `💰【贸易交割】你的 ${item.nameCn} 已售出！`,
+      body: `指挥官 ${buyerCallsign || buyerId} 采购了你挂售的 ${item.nameCn} ×${item.qty}，结算货款 +${totalEarn} Ascoin！`,
+      at: Date.now(),
+      read: false,
+    });
+    ONLINE_STORE.inbox.set(item.sellerId, sellerInbox.slice(0, 30));
+
+    return jsonRes(res, { ok: true, item, msg: '成功交割，物资已移交星际物流！' });
   }
 
   return false;
