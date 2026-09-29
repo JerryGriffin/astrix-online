@@ -13,17 +13,17 @@
 //   * 不修改 state.js / ui/* / data/buildings.js / data/materials.js / data/facilities.js /
 //     data/techs.js / version.js / index.html。
 
-import { RECIPES, RECIPE_BY_ID, recipesOfBuilding, getRecipe } from '../data/recipes.js?v=21.1';
-import { jobsOfBuilding, getIntensity, getAvailable, buildingSlots, jobOutput } from './population.js?v=21.1';
-import { MATERIALS } from '../data/materials.js?v=21.1';
-import { PART_BY_ID, craftableParts, craftWorkOf } from '../data/ship_parts.js?v=21.1';
-import { POWER_FACILITY_BY_ID } from '../data/facilities.js?v=21.1';
+import { RECIPES, RECIPE_BY_ID, recipesOfBuilding, getRecipe } from '../data/recipes.js?v=21.2';
+import { jobsOfBuilding, getIntensity, getAvailable, buildingSlots, jobOutput } from './population.js?v=21.2';
+import { MATERIALS } from '../data/materials.js?v=21.2';
+import { PART_BY_ID, craftableParts, craftWorkOf } from '../data/ship_parts.js?v=21.2';
+import { POWER_FACILITY_BY_ID } from '../data/facilities.js?v=21.2';
 // v0.0.92：殖民管理模式对产出的倍率（自由 1.25 / 剥削 1.60 / 领土 0.85 …）
-import { outputMulOf } from './planetgen.js?v=21.1';
-import { addEquipment } from './shipyard.js?v=21.1';
+import { outputMulOf } from './planetgen.js?v=21.2';
+import { addEquipment } from './shipyard.js?v=21.2';
 // v0.1.2（需求 18/19）：永久升级「冶炼 / 人力」的乘方效果，唯一实现在 data/upgrades.js#upgradeMul
-import { upgradeMul } from '../data/upgrades.js?v=21.1';
-import { ARMY_PARTS, ARMY_PART_BY_ID } from '../data/army_parts.js?v=21.1';
+import { upgradeMul } from '../data/upgrades.js?v=21.2';
+import { ARMY_PARTS, ARMY_PART_BY_ID } from '../data/army_parts.js?v=21.2';
 
 // nameCn → 材料对象（供 derivedStatsOf 查属性，纯查表不读 inst）
 const MATERIAL_BY_NAME = Object.fromEntries(MATERIALS.map((m) => [m.nameCn, m]));

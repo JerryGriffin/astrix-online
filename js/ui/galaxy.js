@@ -1,17 +1,17 @@
 // 星际大厅与在线星图界面（Astrix v0.2.0）
 // 纯原生 ES 模块，深空玻璃拟态风格，移动端与 PC 端自适应（点击区 >= 44px）
 
-import { currentAccount, getPlanetInstance, ownedOf } from '../core/state.js?v=21.1';
+import { currentAccount, getPlanetInstance, ownedOf } from '../core/state.js?v=21.2';
 import {
   ensureCloudProfile, bindEmail, getShieldStatus, fetchGalaxyRegistry,
   getInbox, markMessageRead, markAllMessagesRead, unreadCount,
   sendGalaxyRaid, sendGalaxyTrade, evaluateFleetPower,
   syncOnlineServer, fetchRemoteGalaxyRegistry, fetchOnlineChatMessages, sendOnlineChatMessage,
   fetchOnlineMarketListings, buyOnlineMarketListing, createOnlineMarketListing
-} from '../core/cloud.js?v=21.1';
-import { listFleets } from '../core/fleet.js?v=21.1';
-import { fmtNum } from '../core/format.js?v=21.1';
-import { openBattleView } from './combat.js?v=21.1';
+} from '../core/cloud.js?v=21.2';
+import { listFleets } from '../core/fleet.js?v=21.2';
+import { fmtNum } from '../core/format.js?v=21.2';
+import { openBattleView } from './combat.js?v=21.2';
 
 function escapeHtml(s) {
   return String(s ?? '').replace(/[&<>"']/g, (c) => (

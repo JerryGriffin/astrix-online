@@ -16,14 +16,14 @@
 // 与人力系统的关系：
 //   建筑提供工位 → 人力面板按建筑分组分配人 → 分配了「建筑工」才有人施工（硬门槛）。
 
-import { BUILDINGS, BUILDING_BY_ID, CATEGORIES, buildingCost } from '../data/buildings.js?v=21.1';
-import { fmtNum, fmtTime, fmtRateBody } from '../core/format.js?v=21.1';
+import { BUILDINGS, BUILDING_BY_ID, CATEGORIES, buildingCost } from '../data/buildings.js?v=21.2';
+import { fmtNum, fmtTime, fmtRateBody } from '../core/format.js?v=21.2';
 import {
   getBuildingCounts, buildingCount, costOfNext, isBuildingUnlocked,
   startBuild, cancelBuild, buildQueueOf, BUILD_QUEUE_MAX, currentAccount,
-} from '../core/state.js?v=21.1';
-import { buildingSlots, assignedToBuilding, freeSlots } from '../core/population.js?v=21.1';
-import { buildRateOf, buildBlockReason } from '../core/construction.js?v=21.1';
+} from '../core/state.js?v=21.2';
+import { buildingSlots, assignedToBuilding, freeSlots } from '../core/population.js?v=21.2';
+import { buildRateOf, buildBlockReason } from '../core/construction.js?v=21.2';
 
 const CSS = `
   .bld-panel { font-family: system-ui, sans-serif; color: #e8eef2; padding: 12px; box-sizing: border-box; }
@@ -134,13 +134,18 @@ export function renderBuildings(root, ctx) {
     // ---- 施工队列 ----
     if (queue.length) {
       const box = el('div', { class: 'bld-queue' });
-      box.appendChild(el('div', { class: 'bld-qhead', text: '正在施工' }));
+      box.appendChild(el('div', { class: 'bld-qhead', text: '正在施工（工程总装序列）' }));
       queue.forEach((item, i) => {
         const pct = Math.min(100, item.work > 0 ? (item.progress / item.work * 100) : 0);
         const left = rate > 0 ? (item.work - item.progress) / rate : Infinity;
         const row = el('div', { class: 'bld-qitem' });
+
+        let stage = '🏗️ 阶段 I：地质勘探与耐压地基开挖';
+        if (pct >= 75) stage = '⚡ 阶段 III：超导管网并网与设备总调测';
+        else if (pct >= 35) stage = '⚙️ 阶段 II：合金骨架吊装与抗辐射封装';
+
         row.appendChild(el('div', { class: 'bld-qrow' }, [
-          el('span', { class: 'qname', text: `${item.nameCn}　${pct.toFixed(1)}%　剩余 ${Number.isFinite(left) ? fmtTime(left) : '∞（无人施工）'}` }),
+          el('span', { class: 'qname', text: `${item.nameCn} · ${stage} (${pct.toFixed(1)}%) · 剩余 ${Number.isFinite(left) ? fmtTime(left) : '∞（无人施工）'}` }),
           (() => {
             const b = el('button', { text: '取消' });
             b.addEventListener('click', () => { cancelBuild(planet, i); draw(); });
@@ -148,7 +153,7 @@ export function renderBuildings(root, ctx) {
           })(),
         ]));
         const bar = el('div', { class: 'bld-bar' });
-        bar.appendChild(el('i', { style: `width:${pct}%` }));
+        bar.appendChild(el('i', { style: `width:${pct}%;background:linear-gradient(90deg, #5DCAA5, #38bdf8);box-shadow:0 0 6px #5DCAA5;` }));
         row.appendChild(bar);
         box.appendChild(row);
       });

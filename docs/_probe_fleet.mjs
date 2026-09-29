@@ -4,9 +4,9 @@
 import {
   MISSION_DISTANCE, EXPLORE_FUEL_PER_DIST, startMission,
   createFleet, addShipToFleet, ensureFleets,
-} from '../js/core/fleet.js?v=21.1';
-import { STATE } from '../js/core/state.js?v=21.1';
-import { renderFleet } from '../js/ui/fleet.js?v=21.1';
+} from '../js/core/fleet.js?v=21.2';
+import { STATE } from '../js/core/state.js?v=21.2';
+import { renderFleet } from '../js/ui/fleet.js?v=21.2';
 
 // ---------------------------------------------------------------------------
 // 极简 DOM 桩：仅实现 renderFleet / openTransportForm 用到的子集

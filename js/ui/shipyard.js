@@ -12,31 +12,33 @@
 //
 // 全部数值计算都在 js/core/shipyard.js，本文件只负责渲染与交互。
 
-import { MATERIALS } from '../data/materials.js?v=21.1';
+import { MATERIALS } from '../data/materials.js?v=21.2';
 import {
   HULLS, ENGINES, WEAPONS, FACILITIES,
   MATERIAL_SLOTS, DEFAULT_MATERIAL,
   isPartUnlocked,
-} from '../data/ship_parts.js?v=21.1';
-import { POWER_FACILITIES, POWER_FACILITY_BY_ID } from '../data/facilities.js?v=21.1';
-import { FUELS } from '../data/fuels.js?v=21.1';
+} from '../data/ship_parts.js?v=21.2';
+import { POWER_FACILITIES, POWER_FACILITY_BY_ID } from '../data/facilities.js?v=21.2';
+import { FUELS } from '../data/fuels.js?v=21.2';
 import {
   emptyBlueprint, evaluateBlueprint, launchShip, tickShip,
   resolvePart, materialMul, safeTempBand, tempStatus, envTempK, equilibriumTemp,
   ensureBlueprints, shipBuildCheck, findBlueprint, blueprintBuildCost,
-} from '../core/shipyard.js?v=21.1';
-import { BUILDING_BY_ID } from '../data/buildings.js?v=21.1';
-import { fmtNum, fmtTime } from '../core/format.js?v=21.1';
+} from '../core/shipyard.js?v=21.2';
+import { BUILDING_BY_ID } from '../data/buildings.js?v=21.2';
+import { fmtNum, fmtTime } from '../core/format.js?v=21.2';
 // v0.0.5：建筑计数已迁到星球实例（inst.buildings），船坞工占用来自人力系统
-import { getPlanetInstance, getBuildingCounts } from '../core/state.js?v=21.1';
-import { jobsOfBuilding, getJobCount, buildingSlots, assignedToBuilding, freeSlots, getIntensity } from '../core/population.js?v=21.1';
+import { getPlanetInstance, getBuildingCounts } from '../core/state.js?v=21.2';
+import { jobsOfBuilding, getJobCount, buildingSlots, assignedToBuilding, freeSlots, getIntensity } from '../core/population.js?v=21.2';
 // v0.1.1（需求 3）：建造按钮改为创建 dock 造船线，走生产线的工位与人力结算
-import { addLine, ensureLines, linesOf, removeLine, lineSlotInfo, freeLaborOf } from '../core/production.js?v=21.1';
+import { addLine, ensureLines, linesOf, removeLine, lineSlotInfo, freeLaborOf } from '../core/production.js?v=21.2';
 // R19-2：造船除装备外按部件扣材料（spendOwned 整笔扣，ownedOf 查库存），不碰 core/state.js
-import { ownedOf, spendOwned } from '../core/state.js?v=21.1';
+import { ownedOf, spendOwned } from '../core/state.js?v=21.2';
 
 const SHIP_BUILDING_ID = 'dock';
 const SHIP_TECH_ID = 't_e3';
+
+import { playPing, playVictory } from '../core/sound.js?v=21.2';
 
 function esc(s) {
   return String(s).replace(/[&<>"']/g, (c) => (
@@ -253,17 +255,33 @@ function buildDockLinesSection(account, inst, rerender) {
     const card = el('div', 'bp-bp-card glass');
     const head = el('div', 'bp-bp-head');
     head.appendChild(el('span', 'bp-bp-name', name));
-    head.appendChild(el('span', 'bp-bp-kind muted', '造船线 · ' + workers + ' 人'));
+    head.appendChild(el('span', 'bp-bp-kind muted', '轨道船坞龙门工位 · ' + workers + ' 人'));
     card.appendChild(head);
 
-    // 进度条（内联样式，避免依赖额外 CSS）
+    // 动态工程总装龙门架与阶段指示
+    let stageText = '🏗️ 阶段 I：龙骨铺设与耐压骨架焊接';
+    if (prog >= 0.9) stageText = '🚀 阶段 IV：微重力气密检漏与深空首航试注';
+    else if (prog >= 0.6) stageText = '🛡️ 阶段 III：偏转护盾谐振网与火控雷达标定';
+    else if (prog >= 0.25) stageText = '⚡ 阶段 II：次临界动力堆与脉冲引擎总装';
+
+    const gantry = el('div', 'bp-gantry-box');
+    gantry.style.cssText = 'background:rgba(0,0,0,0.35);border:1px solid #1e293b;border-radius:6px;padding:8px 10px;margin:8px 0;font-size:12px;';
+    gantry.innerHTML = `
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+        <span style="color:#7cd7ff;font-weight:bold;">${stageText}</span>
+        ${rate > 0 ? '<span class="assembly-spark" style="font-size:11px;color:#38bdf8;">⚡ 龙门总装中</span>' : '<span style="font-size:11px;color:#64748b;">工位待命</span>'}
+      </div>
+    `;
+
+    // 进度条（升级渐变发光与阴影）
     const bar = el('div', 'bp-line-bar');
-    bar.style.cssText = 'height:8px;border-radius:4px;background:#18222e;overflow:hidden;margin:6px 0;';
+    bar.style.cssText = 'height:10px;border-radius:5px;background:#0d1520;overflow:hidden;position:relative;border:1px solid #22354c;';
     const fill = el('div', 'bp-line-fill');
-    fill.style.cssText = 'height:100%;background:#3fb6ff;border-radius:4px;';
+    fill.style.cssText = 'height:100%;background:linear-gradient(90deg, #38bdf8, #818cf8);border-radius:4px;box-shadow:0 0 8px rgba(56,189,248,0.5);transition:width 0.4s ease;';
     fill.style.width = Math.round(prog * 100) + '%';
     bar.appendChild(fill);
-    card.appendChild(bar);
+    gantry.appendChild(bar);
+    card.appendChild(gantry);
 
     const sub = el('div', 'bp-bp-sub muted');
     if (!(C > 0)) {
@@ -276,7 +294,7 @@ function buildDockLinesSection(account, inst, rerender) {
         : '暂停：线上没有工人，请到「人力」面板给这条线加人。';
     } else {
       // 剩余时长 = 剩余工作量 ÷ 当前进度速率（口径与 shipBuildTick 一致）
-      sub.textContent = '进度 ' + Math.round(prog * 100) + '% · 剩余 ' + fmtTime(((1 - prog) * C) / rate);
+      sub.textContent = '总装进度 ' + Math.round(prog * 100) + '% · 预计交付剩余 ' + fmtTime(((1 - prog) * C) / rate);
     }
     card.appendChild(sub);
 

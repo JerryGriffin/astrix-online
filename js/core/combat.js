@@ -2,7 +2,7 @@
 // 负责舰队对战的回合/实时推演、多舰种定位、兵种协同、护盾与装甲吸收、战术指令冷却与结算。
 // 纯原生 ES 模块，无任何外部构建依赖。
 
-import { fmtNum } from './format.js?v=21.1';
+import { fmtNum } from './format.js?v=21.2';
 
 let _combatSeq = 0;
 function genShipUid() {
