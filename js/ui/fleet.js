@@ -2,7 +2,7 @@
 // 提供编队战备管理、实时战术交互交战视窗、船载物流、殖民地政令与星港贸易。
 // 纯原生 ES 模块，深空玻璃拟态风格，移动端与 PC 端自适应（点击区 >= 44px）。
 
-import { fmtNum, fmtRate, fmtTime } from '../core/format.js?v=21.7';
+import { fmtNum, fmtRate, fmtTime } from '../core/format.js?v=21.8';
 import {
   listFleets, createFleet, disbandFleet, addShipToFleet, removeShipFromFleet,
   fleetSpeedOf, fleetPowerOf, executeCommand,
@@ -10,21 +10,21 @@ import {
   shipCargoOf, loadShipCargo, unloadShipCargo,
   shipCargoMassOf, shipCargoCellsOf, shipCargoCellsMax, effectiveSpeedOf,
   resolveFleetAnomaly,
-} from '../core/fleet.js?v=21.7';
-import { equipmentList } from '../core/shipyard.js?v=21.7';
+} from '../core/fleet.js?v=21.8';
+import { equipmentList } from '../core/shipyard.js?v=21.8';
 import {
   MANAGEMENT_MODES, MANAGEMENT_BY_ID, modeOf, setManagement,
   TERRITORY_ASSIMILATE_SEC, TERRITORY_HAPPY_THRESHOLD,
-} from '../core/planetgen.js?v=21.7';
+} from '../core/planetgen.js?v=21.8';
 import {
   SHOP_PLANET, shopPrices, sell, pendingOrders, deliverOrder, ascoinBalance,
   suggestPriceOf, listForSale, marketListings, cancelListing, buyListing, priceOf, shopStateOf,
   MARKET_FEE,
-} from '../core/shop.js?v=21.7';
-import { getPlanetInstance, currentAccount, ownedOf } from '../core/state.js?v=21.7';
-import { openBattleView } from './combat.js?v=21.7';
-import { detectShipRole, SHIP_ROLES } from '../core/combat.js?v=21.7';
-import { isSoundEnabled, toggleSound, playPing, playVictory, playWarp, playExplosion } from '../core/sound.js?v=21.7';
+} from '../core/shop.js?v=21.8';
+import { getPlanetInstance, currentAccount, ownedOf } from '../core/state.js?v=21.8';
+import { openBattleView } from './combat.js?v=21.8';
+import { detectShipRole, SHIP_ROLES } from '../core/combat.js?v=21.8';
+import { isSoundEnabled, toggleSound, playPing, playVictory, playWarp, playExplosion } from '../core/sound.js?v=21.8';
 
 // HTML 转义
 function esc(s) {
@@ -258,11 +258,31 @@ export function renderFleet(container, ctx) {
   btnDrill.innerHTML = '<span>⚔️ 发起战术交火推演</span>';
   btnDrill.onclick = () => {
     const pShips = (account.ships && account.ships.length > 0) ? account.ships.slice(0, 4) : [];
-    const div = document.createElement('div');
+    let chosenDoctrine = 'blitzkrieg';
     div.innerHTML = `
-      <p style="color:#94a3b8;font-size:13px;line-height:1.5;margin-bottom:14px;">
-        指挥部实时全息推演系统。请选择模拟假想敌作战方案，实战演练舰种配合、手动点选集火与 EMP 磁暴指令：
+      <p style="color:#94a3b8;font-size:13px;line-height:1.5;margin-bottom:10px;">
+        指挥部实时全息推演系统。请配置本次战役所贯彻的<b>最高军事统帅学说</b>与作战方案：
       </p>
+      <!-- 钢铁雄心式学说选择区 -->
+      <div style="margin-bottom:12px;background:rgba(0,0,0,0.3);padding:10px;border-radius:6px;border:1px solid rgba(124,215,255,0.2);">
+        <div style="font-size:12px;font-weight:bold;color:#fde047;margin-bottom:6px;">🎖️ 战略学说贯彻 (HOI4 Doctrine)：</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;" id="bt-doctrine-picker">
+          <button type="button" data-doc="blitzkrieg" style="padding:6px;border-radius:4px;border:1px solid #eab308;background:rgba(234,179,8,0.2);color:#fde047;font-size:11px;cursor:pointer;text-align:left;">
+            <b>⚡ 闪电突穿</b><br><span style="font-size:10px;opacity:0.8;">火力+20%·电容+25·闪避+10%</span>
+          </button>
+          <button type="button" data-doc="superior_firepower" style="padding:6px;border-radius:4px;border:1px solid #334155;background:rgba(255,255,255,0.04);color:#94a3b8;font-size:11px;cursor:pointer;text-align:left;">
+            <b>🎯 优势火力</b><br><span style="font-size:10px;opacity:0.8;">暴击+20%·爆伤+30%·回能+20%</span>
+          </button>
+          <button type="button" data-doc="grand_battleplan" style="padding:6px;border-radius:4px;border:1px solid #334155;background:rgba(255,255,255,0.04);color:#94a3b8;font-size:11px;cursor:pointer;text-align:left;">
+            <b>🛡️ 大纵深防御</b><br><span style="font-size:10px;opacity:0.8;">装甲护盾+35%·全伤减免15%</span>
+          </button>
+          <button type="button" data-doc="guerilla_warfare" style="padding:6px;border-radius:4px;border:1px solid #334155;background:rgba(255,255,255,0.04);color:#94a3b8;font-size:11px;cursor:pointer;text-align:left;">
+            <b>🐺 狼群破袭</b><br><span style="font-size:10px;opacity:0.8;">航速+30%·真实穿透+20%</span>
+          </button>
+        </div>
+      </div>
+
+      <div style="font-size:12px;font-weight:bold;color:#7cd7ff;margin-bottom:6px;">🎯 选择交火战役推演场景：</div>
       <div style="display:flex;flex-direction:column;gap:10px;">
         <button id="bt-scen-1" style="padding:10px 14px;border-radius:6px;background:rgba(56,189,248,0.1);border:1px solid #38bdf850;color:#f1f5f9;cursor:pointer;text-align:left;">
           <div style="font-weight:bold;color:#7cd7ff;">🌌 场景 A：深空哨戒巡逻遭遇战（初级）</div>
@@ -279,9 +299,22 @@ export function renderFleet(container, ctx) {
       </div>
     `;
 
-    openModal({ title: '选择战术交火推演场景', body: div });
+    openModal({ title: '选择战略学说与交火推演场景', body: div });
 
     setTimeout(() => {
+      const docBtns = div.querySelectorAll('#bt-doctrine-picker button');
+      docBtns.forEach((b) => {
+        b.onclick = () => {
+          chosenDoctrine = b.getAttribute('data-doc');
+          docBtns.forEach((ob) => {
+            const isMatch = ob.getAttribute('data-doc') === chosenDoctrine;
+            ob.style.borderColor = isMatch ? '#eab308' : '#334155';
+            ob.style.background = isMatch ? 'rgba(234,179,8,0.2)' : 'rgba(255,255,255,0.04)';
+            ob.style.color = isMatch ? '#fde047' : '#94a3b8';
+          });
+        };
+      });
+
       const b1 = document.getElementById('bt-scen-1');
       const b2 = document.getElementById('bt-scen-2');
       const b3 = document.getElementById('bt-scen-3');
@@ -291,6 +324,7 @@ export function renderFleet(container, ctx) {
           closeModal();
           openBattleView({ openModal, closeModal, onBattleEnd: () => redraw() }, {
             title: '深空哨戒巡逻遭遇战',
+            doctrine: chosenDoctrine,
             playerShips: pShips,
             enemyShips: [
               { name: '星盗截击侦察艇 Alpha', dryMass: 250, thrust: 360, role: 'interceptor' },
@@ -304,6 +338,7 @@ export function renderFleet(container, ctx) {
           closeModal();
           openBattleView({ openModal, closeModal, onBattleEnd: () => redraw() }, {
             title: '星盗劫掠特遣战斗群',
+            doctrine: chosenDoctrine,
             playerShips: pShips,
             enemyShips: [
               { name: '星盗掠夺驱逐舰', dryMass: 450, thrust: 280, role: 'destroyer' },
@@ -317,6 +352,7 @@ export function renderFleet(container, ctx) {
           closeModal();
           openBattleView({ openModal, closeModal, onBattleEnd: () => redraw() }, {
             title: '深空无畏战列舰要塞决战',
+            doctrine: chosenDoctrine,
             playerShips: pShips,
             enemyShips: [
               { name: '要塞无畏重装战列舰', dryMass: 1100, thrust: 220, role: 'battleship' },

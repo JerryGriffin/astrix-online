@@ -1,9 +1,9 @@
 // 开始界面：标题、离线/在线模式、账号选择、各次要入口模态层（Astrix）
-import {  STATE, createAccount, switchAccount, deleteAccount, currentAccount, START_MODES  } from '../core/state.js?v=21.7';
-import { fmtNum, fmtTime } from '../core/format.js?v=21.7';
-import { isSoundEnabled, toggleSound } from '../core/sound.js?v=21.7';
+import {  STATE, createAccount, switchAccount, deleteAccount, currentAccount, START_MODES  } from '../core/state.js?v=21.8';
+import { fmtNum, fmtTime } from '../core/format.js?v=21.8';
+import { isSoundEnabled, toggleSound } from '../core/sound.js?v=21.8';
 // 版本号与更新日志的唯一来源：任何地方要显示版本都从这里取，改版本只改 js/version.js 一处
-import { VERSION, VERSIONS } from '../version.js?v=21.7';
+import { VERSION, VERSIONS } from '../version.js?v=21.8';
 
 // 创建元素的小工具
 function el(tag, cls, text) {

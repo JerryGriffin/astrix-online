@@ -24,15 +24,15 @@
 // 所有数字显示一律走 format.js 的 fmtNum / fmtRate / fmtRateBody / fmtSci。
 // 样式集中在 css/planet.css。
 
-import { MATERIALS } from '../data/materials.js?v=21.7';
-import { fmtNum, fmtRate, fmtSci } from '../core/format.js?v=21.7';
-import { getPlanetInstance, tick, currentAccount, atmosphereOf, ownedOf, rateOf } from '../core/state.js?v=21.7';
-import { computePower } from '../core/power.js?v=21.7';
-import { equipmentList } from '../core/shipyard.js?v=21.7';
-import { materialLabel, productionRates } from '../core/production.js?v=21.7';
-import { BUILDING_BY_ID } from '../data/buildings.js?v=21.7';
-import { NUTRIENT_NAMES, METABOLITE_NAMES, consumptionPerSec, metabolitePerSec } from '../core/population.js?v=21.7';
-import { playPing } from '../core/sound.js?v=21.7';
+import { MATERIALS } from '../data/materials.js?v=21.8';
+import { fmtNum, fmtRate, fmtSci } from '../core/format.js?v=21.8';
+import { getPlanetInstance, tick, currentAccount, atmosphereOf, ownedOf, rateOf } from '../core/state.js?v=21.8';
+import { computePower } from '../core/power.js?v=21.8';
+import { equipmentList } from '../core/shipyard.js?v=21.8';
+import { materialLabel, productionRates } from '../core/production.js?v=21.8';
+import { BUILDING_BY_ID } from '../data/buildings.js?v=21.8';
+import { NUTRIENT_NAMES, METABOLITE_NAMES, consumptionPerSec, metabolitePerSec } from '../core/population.js?v=21.8';
+import { playPing } from '../core/sound.js?v=21.8';
 
 // 地层扫描雷达配置
 const STRATA_CONFIG = [
@@ -176,81 +176,81 @@ export function renderInventory(container, planetOrCtx) {
   equipGrid.className = 'inv-grid';
   equipWrap.append(equipTitle, equipGrid);
 
-  // 生态农场与水培生化穹顶 HUD (v0.2.1-rev7 种田农牧系统丰富)
-  const bioDomeSection = document.createElement('section');
-  bioDomeSection.className = 'inv-block bio-dome-section';
-  const bioDomeTitle = document.createElement('div');
-  bioDomeTitle.className = 'inv-block-title';
-  bioDomeTitle.innerHTML = '🌿 生态农场与水培生化穹顶<span class="inv-block-sub muted"> · 全息光合调控、营养液微循环与有机质栽培</span>';
+  // 军工重工与战备产能动员中枢 (v0.2.1-rev8 钢雄式军工种田体系)
+  const milIndustrySection = document.createElement('section');
+  milIndustrySection.className = 'inv-block mil-industry-section';
+  const milIndustryTitle = document.createElement('div');
+  milIndustryTitle.className = 'inv-block-title';
+  milIndustryTitle.innerHTML = '🏭 战时军工重工业动员枢纽<span class="inv-block-sub muted"> · 钢铁雄心式战时经济产能、重工流水线与战略武器军械总库</span>';
 
-  const bioDomeHud = document.createElement('div');
-  bioDomeHud.className = 'bio-dome-active glass';
-  bioDomeHud.style.cssText = 'margin:8px 0 14px 0;padding:12px;border-radius:8px;border:1px solid rgba(52,211,153,0.35);background:rgba(6,78,59,0.18);';
+  const milIndustryHud = document.createElement('div');
+  milIndustryHud.className = 'glass';
+  milIndustryHud.style.cssText = 'margin:8px 0 14px 0;padding:12px;border-radius:8px;border:1px solid rgba(239,68,68,0.35);background:rgba(69,10,10,0.22);';
 
-  const bioHeader = document.createElement('div');
-  bioHeader.style.cssText = 'display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:8px;margin-bottom:10px;';
+  const milHeader = document.createElement('div');
+  milHeader.style.cssText = 'display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:8px;margin-bottom:10px;';
 
-  const bioStatus = document.createElement('div');
-  bioStatus.style.cssText = 'font-size:13px;font-weight:bold;color:#6ee7b7;display:flex;align-items:center;gap:6px;';
-  bioStatus.innerHTML = '<span class="agri-crop-sway" style="display:inline-block;">🌱</span><span>生化穹顶微环境环控</span><span style="font-size:11px;color:#a7f3d0;font-weight:normal;background:rgba(16,185,129,0.2);padding:2px 6px;border-radius:4px;">光合通量 98.4%</span>';
+  const milStatus = document.createElement('div');
+  milStatus.style.cssText = 'font-size:13px;font-weight:bold;color:#fca5a5;display:flex;align-items:center;gap:6px;';
+  milStatus.innerHTML = '<span class="assembly-spark" style="display:inline-block;">⚙️</span><span>最高战备军备动员令</span><span style="font-size:11px;color:#fecaca;font-weight:normal;background:rgba(239,68,68,0.25);padding:2px 6px;border-radius:4px;border:1px solid rgba(239,68,68,0.4);">军工效能 100% · 总体战法案已签署</span>';
 
-  const bioBtnGroup = document.createElement('div');
-  bioBtnGroup.style.cssText = 'display:flex;gap:6px;';
+  const milBtnGroup = document.createElement('div');
+  milBtnGroup.style.cssText = 'display:flex;gap:6px;';
 
-  const sprayBtn = document.createElement('button');
-  sprayBtn.type = 'button';
-  sprayBtn.className = 'btn-action';
-  sprayBtn.style.cssText = 'padding:4px 10px;min-height:30px;font-size:12px;border-radius:6px;border:1px solid #10b981;background:rgba(16,185,129,0.18);color:#a7f3d0;cursor:pointer;';
-  sprayBtn.innerHTML = '💧 喷灌纳米营养液';
+  const mobilizeBtn = document.createElement('button');
+  mobilizeBtn.type = 'button';
+  mobilizeBtn.className = 'btn-action';
+  mobilizeBtn.style.cssText = 'padding:4px 10px;min-height:30px;font-size:12px;border-radius:6px;border:1px solid #ef4444;background:rgba(239,68,68,0.2);color:#fca5a5;cursor:pointer;';
+  mobilizeBtn.innerHTML = '🚩 动员战时工业';
 
-  const lightBtn = document.createElement('button');
-  lightBtn.type = 'button';
-  lightBtn.className = 'btn-action';
-  lightBtn.style.cssText = 'padding:4px 10px;min-height:30px;font-size:12px;border-radius:6px;border:1px solid #3b82f6;background:rgba(59,130,246,0.18);color:#93c5fd;cursor:pointer;';
-  lightBtn.innerHTML = '🔆 调谐全光谱';
+  const speedupBtn = document.createElement('button');
+  speedupBtn.type = 'button';
+  speedupBtn.className = 'btn-action';
+  speedupBtn.style.cssText = 'padding:4px 10px;min-height:30px;font-size:12px;border-radius:6px;border:1px solid #f59e0b;background:rgba(245,158,11,0.2);color:#fcd34d;cursor:pointer;';
+  speedupBtn.innerHTML = '⚡ 过载军工厂流水线';
 
-  bioBtnGroup.append(sprayBtn, lightBtn);
-  bioHeader.append(bioStatus, bioBtnGroup);
+  milBtnGroup.append(mobilizeBtn, speedupBtn);
+  milHeader.append(milStatus, milBtnGroup);
 
-  const bioTelemetry = document.createElement('div');
-  bioTelemetry.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;margin-bottom:8px;font-size:12px;';
+  const milTelemetry = document.createElement('div');
+  milTelemetry.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;margin-bottom:8px;font-size:12px;';
 
-  const crops = [
-    { icon: '🌾', name: '高产抗辐射小麦', cycle: '生长期 92%', state: '优良', color: '#fde047' },
-    { icon: '🥬', name: '水培多糖螺旋藻', cycle: '采收期 100%', state: '饱满', color: '#86efac' },
-    { icon: '🍄', name: '深岩仿生工程菌', cycle: '繁育期 85%', state: '活跃', color: '#c084fc' },
-    { icon: '🍇', name: '低重力无土藤蔓', cycle: '萌芽期 76%', state: '旺盛', color: '#f472b6' }
+  const milLines = [
+    { icon: '🪖', name: '军用单兵突击步枪', cap: '产能 100%', status: '三班倒满载', color: '#f87171' },
+    { icon: '🛡️', name: '动力外骨骼装甲', cap: '产能 98%', status: '超导淬火中', color: '#60a5fa' },
+    { icon: '🚜', name: '全地形重装履带底盘', cap: '产能 95%', status: '流水线组装', color: '#fbbf24' },
+    { icon: '💣', name: '穿甲反舰高爆重火炮', cap: '产能 100%', status: '火线总装备战', color: '#a78bfa' }
   ];
 
-  crops.forEach(c => {
+  milLines.forEach(l => {
     const card = document.createElement('div');
-    card.style.cssText = 'background:rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.08);padding:8px;border-radius:6px;display:flex;align-items:center;gap:8px;';
-    card.innerHTML = `<div class="agri-crop-sway" style="font-size:20px;">${c.icon}</div><div><div style="font-weight:bold;color:${c.color};font-size:11px;">${c.name}</div><div style="font-size:10px;color:#94a3b8;">${c.cycle} · <span style="color:#6ee7b7;">${c.state}</span></div></div>`;
-    bioTelemetry.appendChild(card);
+    card.style.cssText = 'background:rgba(0,0,0,0.35);border:1px solid rgba(255,255,255,0.08);padding:8px;border-radius:6px;display:flex;align-items:center;gap:8px;';
+    card.innerHTML = `<div class="assembly-spark" style="font-size:20px;">${l.icon}</div><div><div style="font-weight:bold;color:${l.color};font-size:11px;">${l.name}</div><div style="font-size:10px;color:#94a3b8;">${l.cap} · <span style="color:#f87171;">${l.status}</span></div></div>`;
+    milTelemetry.appendChild(card);
   });
 
-  const bioLog = document.createElement('div');
-  bioLog.style.cssText = 'font-size:11px;color:#94a3b8;font-family:monospace;background:rgba(0,0,0,0.25);padding:6px 10px;border-radius:6px;';
-  bioLog.textContent = '农牧遥测：二氧化碳固定率 99.1% · 根系渗透压平衡 · 培养基微量元素储备充足';
+  const milLog = document.createElement('div');
+  milLog.style.cssText = 'font-size:11px;color:#94a3b8;font-family:monospace;background:rgba(0,0,0,0.25);padding:6px 10px;border-radius:6px;';
+  milLog.textContent = '重工简报：民用工业全力转产军工 · 冶金铸造与合金总装流水线运转正常 · 战备弹药储备率 100%';
 
-  sprayBtn.onclick = () => {
-    playPing();
-    const humid = Math.floor(75 + Math.random() * 20);
-    bioLog.textContent = `喷灌完毕：基质相对湿度跃升至 ${humid}% · 根系养分吸收率提高 14.5% · 微生物活性增强`;
-    bioLog.style.color = '#34d399';
-    setTimeout(() => { bioLog.style.color = '#94a3b8'; }, 2200);
+  mobilizeBtn.onclick = () => {
+    playShield();
+    const eff = Math.floor(105 + Math.random() * 20);
+    milLog.textContent = `战备动员已激活：全星球民用工厂已切换战时生产法案 · 重工总产出达标率 ${eff}% · 军械下线加速`;
+    milLog.style.color = '#f87171';
+    setTimeout(() => { milLog.style.color = '#94a3b8'; }, 2400);
   };
 
-  lightBtn.onclick = () => {
-    playPing();
-    const wave = [660, 450, 730, 430][Math.floor(Math.random() * 4)];
-    bioLog.textContent = `光谱调谐：激发主吸收峰 λ=${wave}nm · 叶绿素荧光产额提升 · 净同化速率达峰值`;
-    bioLog.style.color = '#60a5fa';
-    setTimeout(() => { bioLog.style.color = '#94a3b8'; }, 2200);
+  speedupBtn.onclick = () => {
+    playLaser();
+    const boost = (18 + Math.random() * 12).toFixed(1);
+    milLog.textContent = `重工过载：注入超导高压电弧 · 军工制造车间工效即刻提升 +${boost}% · 重装武器总装序列全速推进`;
+    milLog.style.color = '#fbbf24';
+    setTimeout(() => { milLog.style.color = '#94a3b8'; }, 2400);
   };
 
-  bioDomeHud.append(bioHeader, bioTelemetry, bioLog);
-  bioDomeSection.append(bioDomeTitle, bioDomeHud);
+  milIndustryHud.append(milHeader, milTelemetry, milLog);
+  milIndustrySection.append(milIndustryTitle, milIndustryHud);
 
   const storeWrap = document.createElement('section');
   storeWrap.className = 'inv-block inv-block-store';
@@ -348,7 +348,7 @@ export function renderInventory(container, planetOrCtx) {
   strataHud.append(radarHeader, waveContainer, strataRow);
   storeWrap.append(storeTitle, strataHud, storeGrid);
 
-  container.append(ownedWrap, equipWrap, bioDomeSection, storeWrap);
+  container.append(ownedWrap, equipWrap, milIndustrySection, storeWrap);
 
   // ========================================================================
   // 行集合动态重建（v0.0.62）

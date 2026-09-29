@@ -1,7 +1,12 @@
 @echo off
 title Astrix Online Server + Cloudflare Tunnel
+if exist "%~dp0node.exe" (
+    set "PATH=%~dp0;%PATH%"
+    goto :node_found
+)
 where node >nul 2>nul
 if %errorlevel% neq 0 (
+    if exist "C:\Users\zhang\Downloads\node.exe" set "PATH=C:\Users\zhang\Downloads;%PATH%"
     if exist "C:\Program Files\nodejs\node.exe" set "PATH=C:\Program Files\nodejs;%PATH%"
     if exist "%LOCALAPPDATA%\Programs\node\node.exe" set "PATH=%LOCALAPPDATA%\Programs\node;%PATH%"
     for /d %%D in ("%USERPROFILE%\*node*") do (

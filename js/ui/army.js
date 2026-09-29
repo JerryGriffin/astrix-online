@@ -1,16 +1,17 @@
 // 军队系统用户界面（Astrix v0.2.0）
 // 纯原生 ES 模块，深空玻璃拟态风格，移动端与 PC 端自适应（点击区 >= 44px）
 
-import { currentAccount, getPlanetInstance } from '../core/state.js?v=21.7';
+import { currentAccount, getPlanetInstance } from '../core/state.js?v=21.8';
 import {
   ARMY_BLUEPRINTS, ARMY_BP_BY_ID, ARMY_PART_BY_ID, armyBpPartNeeds, armyBpMaterialNeeds
-} from '../data/army_parts.js?v=21.7';
+} from '../data/army_parts.js?v=21.8';
 import {
   listArmies, ensureArmies, armyStatsOf, stationedArmyPower, toggleStationed, disbandArmy,
   getArmyPartStock, canAssembleArmy, startArmyAssemble, cancelArmyAssemble
-} from '../core/army.js?v=21.7';
-import { fmtNum } from '../core/format.js?v=21.7';
-import { playPing, playShield, playLaser, playVictory } from '../core/sound.js?v=21.7';
+} from '../core/army.js?v=21.8';
+import { fmtNum } from '../core/format.js?v=21.8';
+import { playPing, playShield, playLaser, playVictory } from '../core/sound.js?v=21.8';
+import { openBattleView } from './combat.js?v=21.8';
 
 function escapeHtml(s) {
   return String(s ?? '').replace(/[&<>"']/g, (c) => (
@@ -299,7 +300,31 @@ export function renderArmy(root, ctx) {
         }
       };
 
+      // 战术对抗演练 (钢铁雄心式部队检验)
+      const btnDrill = document.createElement('button');
+      btnDrill.className = 'btn-action';
+      btnDrill.style.cssText = 'padding:6px 12px;min-height:44px;border-radius:6px;font-size:12px;cursor:pointer;border:1px solid #eab30850;background:rgba(234,179,8,0.12);color:#fde047;';
+      btnDrill.textContent = '⚔️ 战役推演';
+      btnDrill.onclick = () => {
+        playLaser();
+        const pUnits = [{
+          name: a.nameCn,
+          dryMass: Math.max(300, (stats.def || 10) * 15),
+          thrust: Math.max(250, (stats.speed || 10) * 16),
+          role: (stats.atk > 40) ? 'battleship' : (stats.speed > 18) ? 'interceptor' : 'cruiser',
+        }];
+        openBattleView({ openModal, closeModal, onBattleEnd: () => refresh() }, {
+          title: `地面陆战与战区战役推演：${a.nameCn}`,
+          playerShips: pUnits,
+          enemyShips: [
+            { name: '假想敌突击连队', dryMass: 320, thrust: 300, role: 'interceptor' },
+            { name: '假想敌重装装甲班', dryMass: 550, thrust: 240, role: 'cruiser' },
+          ],
+        });
+      };
+
       actions.appendChild(btnToggle);
+      actions.appendChild(btnDrill);
       actions.appendChild(btnDisband);
 
       card.appendChild(info);

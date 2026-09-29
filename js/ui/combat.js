@@ -3,10 +3,10 @@
 
 import {
   createBattleSession, tickBattle, executeTacticalCommand, TACTICAL_COMMANDS,
-  SHIP_ROLES, getBattleReport
-} from '../core/combat.js?v=21.7';
-import { fmtNum } from '../core/format.js?v=21.7';
-import { playLaser, playExplosion, playShield, playWarp, playVictory } from '../core/sound.js?v=21.7';
+  SHIP_ROLES, BATTLE_DOCTRINES, getBattleReport
+} from '../core/combat.js?v=21.8';
+import { fmtNum } from '../core/format.js?v=21.8';
+import { playLaser, playExplosion, playShield, playWarp, playVictory, playPing } from '../core/sound.js?v=21.8';
 
 function esc(s) {
   return String(s ?? '').replace(/[&<>"']/g, (c) => (
@@ -53,8 +53,11 @@ export function openBattleView(arg1, arg2, arg3) {
   header.innerHTML = `
     <div>
       <span style="font-weight:bold;font-size:16px;color:#7cd7ff;">⚔️ ${esc(session.title)}</span>
-      <span id="bt-time-label" style="margin-left:12px;font-size:12px;color:#94a3b8;">作战耗时：00:00</span>
-      <span id="bt-target-hint" style="margin-left:10px;font-size:11px;color:#facc15;">(点击敌舰可手动锁定首要集火目标)</span>
+      <span id="bt-time-label" style="margin-left:10px;font-size:12px;color:#94a3b8;">作战耗时：00:00</span>
+      <span id="bt-doctrine-tag" style="margin-left:8px;font-size:11px;padding:2px 8px;border-radius:4px;background:rgba(234,179,8,0.18);border:1px solid rgba(234,179,8,0.4);color:#fde047;" title="${esc(session.doctrineInfo?.desc || '')}">
+        ${session.doctrineInfo?.icon || '⚡'} 学说：${esc(session.doctrineInfo?.name || '闪电突穿')}
+      </span>
+      <span id="bt-target-hint" style="margin-left:8px;font-size:11px;color:#38bdf8;">(点击敌舰锁定集火)</span>
     </div>
     <div style="display:flex;gap:8px;align-items:center;">
       <button id="bt-btn-speed" style="padding:4px 10px;min-height:36px;border-radius:4px;background:rgba(255,255,255,0.06);border:1px solid #475569;color:#cbd5e1;cursor:pointer;">1.0x 航速</button>

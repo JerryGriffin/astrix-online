@@ -2,7 +2,7 @@
 // 负责舰队对战的回合/实时推演、多舰种定位、兵种协同、护盾与装甲吸收、战术指令冷却与结算。
 // 纯原生 ES 模块，无任何外部构建依赖。
 
-import { fmtNum } from './format.js?v=21.7';
+import { fmtNum } from './format.js?v=21.8';
 
 let _combatSeq = 0;
 function genShipUid() {
@@ -53,6 +53,51 @@ export const SHIP_ROLES = {
     desc: '搭载舰载无人机与轰炸机联队，持续出动机群突袭，为全舰队提供战术充能增益。',
     energyRegenBonus: 2.0,
     critMul: 1.8,
+  },
+};
+
+/**
+ * 钢铁雄心式战略学说 (HOI4 Military Doctrines)
+ * 影响整支舰队在交火中的战术偏向与属性修正
+ */
+export const BATTLE_DOCTRINES = {
+  blitzkrieg: {
+    id: 'blitzkrieg',
+    name: '闪电突穿学说',
+    icon: '⚡',
+    desc: '装甲突击与高速穿插：全舰队攻击力 +20%，初始战术电容 +25，闪避率 +10%，受到伤害 +10%。',
+    atkMul: 1.20,
+    dmgTakenMul: 1.10,
+    dodgeBonus: 0.10,
+    initialEnergyBonus: 25,
+  },
+  superior_firepower: {
+    id: 'superior_firepower',
+    name: '优势火力学说',
+    icon: '🎯',
+    desc: '全域重炮与饱和打击：暴击率提升至常驻 35%，暴击伤害额外提升 30%，战术回能速度 +20%。',
+    critRateBonus: 0.20,
+    critMulBonus: 0.30,
+    energyRegenMul: 1.20,
+  },
+  grand_battleplan: {
+    id: 'grand_battleplan',
+    name: '大纵深防御学说',
+    icon: '🛡️',
+    desc: '要塞纵深与防线弹性：全舰护盾与装甲上限 +35%，全域受击伤害减免 15%，护盾自回速度翻倍。',
+    hullMul: 1.35,
+    shieldMul: 1.35,
+    dmgTakenMul: 0.85,
+    shieldRegenMul: 2.0,
+  },
+  guerilla_warfare: {
+    id: 'guerilla_warfare',
+    name: '狼群机动破袭',
+    icon: '🐺',
+    desc: '分散破交与游击袭扰：全舰航速 +30%，真实护盾贯穿率 +20%，无人机与鱼雷指令消耗 -10 能量。',
+    speedMul: 1.30,
+    pierceBonus: 0.20,
+    energyDiscount: 10,
   },
 };
 
@@ -228,11 +273,37 @@ export function createBattleSession(playerFleetShips = [], enemyShips = [], opti
     eShips.push(toCombatShip({ name: '星盗要塞旗舰', dryMass: 900, thrust: 240, role: 'battleship' }, 'enemy'));
   }
 
+  // 战略学说加成初始化 (HOI4 Doctrine)
+  const doctrineId = options.doctrine || 'blitzkrieg';
+  const doctrine = BATTLE_DOCTRINES[doctrineId] || BATTLE_DOCTRINES.blitzkrieg;
+
+  // 根据战略学说调整己方舰艇基础属性
+  for (const s of pShips) {
+    if (doctrine.hullMul) {
+      s.hullMax = Math.round(s.hullMax * doctrine.hullMul);
+      s.hull = s.hullMax;
+    }
+    if (doctrine.shieldMul) {
+      s.shieldMax = Math.round(s.shieldMax * doctrine.shieldMul);
+      s.shield = s.shieldMax;
+    }
+    if (doctrine.atkMul) s.atk = Math.round(s.atk * doctrine.atkMul);
+    if (doctrine.speedMul) s.speed = Math.round(s.speed * doctrine.speedMul);
+    if (doctrine.critRateBonus) s.critRate = Math.min(0.85, s.critRate + doctrine.critRateBonus);
+    if (doctrine.critMulBonus) s.critMul += doctrine.critMulBonus;
+    if (doctrine.dodgeBonus) s.dodgeBonus = (s.dodgeBonus || 0) + doctrine.dodgeBonus;
+  }
+
   // 统计母舰提供的能量恢复光环
   let carrierBonus = 0;
   for (const s of pShips) {
     if (s.roleId === 'carrier') carrierBonus += SHIP_ROLES.carrier.energyRegenBonus;
   }
+
+  let baseRegen = 5 + carrierBonus;
+  if (doctrine.energyRegenMul) baseRegen *= doctrine.energyRegenMul;
+
+  const initEnergy = Math.min(100, 50 + (doctrine.initialEnergyBonus || 0));
 
   const cds = {};
   for (const k in TACTICAL_COMMANDS) cds[k] = 0;
@@ -240,14 +311,16 @@ export function createBattleSession(playerFleetShips = [], enemyShips = [], opti
   return {
     id: 'battle_' + Date.now().toString(36),
     title: options.title || '深空遭遇战',
+    doctrine: doctrineId,
+    doctrineInfo: doctrine,
     playerShips: pShips,
     enemyShips: eShips,
     designatedTargetId: null, // 玩家手动指定集火目标
     round: 1,
     timeSec: 0,
-    energy: 50,
+    energy: initEnergy,
     energyMax: 100,
-    energyRegen: 5 + carrierBonus, // 每秒回能
+    energyRegen: baseRegen, // 每秒回能
     activeBuffs: {
       focusActive: 0,
       shieldBuff: 0,
