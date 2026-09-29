@@ -300,4 +300,44 @@ a { color: var(--cyan); }
   animation: gantry-spark 0.6s infinite ease-in-out;
 }
 
+@keyframes circuit-flow {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+.quantum-circuit {
+  background: linear-gradient(90deg, #38bdf830, #818cf850, #34d39940, #38bdf830);
+  background-size: 300% 300%;
+  animation: circuit-flow 4s ease infinite;
+}
+
+@keyframes seismic-pulse {
+  0%, 100% { transform: scaleY(0.4); opacity: 0.4; }
+  50% { transform: scaleY(1.2); opacity: 1; filter: drop-shadow(0 0 6px #38bdf8); }
+}
+
+.seismic-wave-bar {
+  animation: seismic-pulse 1.2s infinite ease-in-out;
+}
+
+@keyframes stratum-active-glow {
+  0%, 100% { border-color: rgba(56, 189, 248, 0.4); box-shadow: 0 0 10px rgba(56, 189, 248, 0.2); }
+  50% { border-color: rgba(56, 189, 248, 0.9); box-shadow: 0 0 20px rgba(56, 189, 248, 0.45); }
+}
+
+.stratum-card-active {
+  animation: stratum-active-glow 1.8s infinite ease-in-out !important;
+}
+
+@keyframes warp-tunnel-flash {
+  0% { opacity: 0; transform: scale(0.7); }
+  50% { opacity: 1; transform: scale(1.05); filter: drop-shadow(0 0 24px #38bdf8); }
+  100% { opacity: 0; transform: scale(1.15); }
+}
+
+.warp-jump-fx {
+  animation: warp-tunnel-flash 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
 

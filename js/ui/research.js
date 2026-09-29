@@ -9,14 +9,15 @@
 // 「船上设施」已从科技树移到「设施」子分类，科技树里只保留解锁它们的节点。
 //
 // 研究点存放在账号对象上（acc.researchPoints / acc.tech / acc.upgrades）。
-import { TECHS, TECH_BY_ID, BRANCHES, techsByTier, canResearch, missingPrereqs, facilityTechs } from '../data/techs.js?v=21.2';
-import { researchTech, buyUpgrade, currentAccount, getPlanetInstance, RESEARCH_UNIT } from '../core/state.js?v=21.2';
-import { UPGRADES, upgradeCost, upgradeMul, upgradeFactorAt } from '../data/upgrades.js?v=21.2';
-import { BUILDING_BY_ID } from '../data/buildings.js?v=21.2';
-import { FACILITIES, MATERIAL_SLOTS, DEFAULT_MATERIAL, isPartUnlocked } from '../data/ship_parts.js?v=21.2';
-import { materialMul, resolvePart } from '../core/shipyard.js?v=21.2';
-import { fmtNum, fmtTime, fmtRate } from '../core/format.js?v=21.2';
-import { jobsOfBuilding, jobOutput } from '../core/population.js?v=21.2';
+import { TECHS, TECH_BY_ID, BRANCHES, techsByTier, canResearch, missingPrereqs, facilityTechs } from '../data/techs.js?v=21.3';
+import { researchTech, buyUpgrade, currentAccount, getPlanetInstance, RESEARCH_UNIT } from '../core/state.js?v=21.3';
+import { UPGRADES, upgradeCost, upgradeMul, upgradeFactorAt } from '../data/upgrades.js?v=21.3';
+import { BUILDING_BY_ID } from '../data/buildings.js?v=21.3';
+import { FACILITIES, MATERIAL_SLOTS, DEFAULT_MATERIAL, isPartUnlocked } from '../data/ship_parts.js?v=21.3';
+import { materialMul, resolvePart } from '../core/shipyard.js?v=21.3';
+import { fmtNum, fmtTime, fmtRate } from '../core/format.js?v=21.3';
+import { jobsOfBuilding, jobOutput } from '../core/population.js?v=21.3';
+import { playPing, playVictory, playLaser } from '../core/sound.js?v=21.3';
 
 function esc(s) {
   return String(s).replace(/[&<>"']/g, (c) => (
@@ -111,6 +112,26 @@ export function renderResearch(root, ctx) {
   head.append(itemPoints, itemTech, itemNote);
   wrap.appendChild(head);
 
+  // 全息科研导能矩阵 HUD
+  const matrixHud = el('div', 'quantum-hud glass');
+  matrixHud.style.cssText = 'margin:10px 0 14px 0;padding:12px 16px;border-radius:8px;border:1px solid #38bdf840;position:relative;overflow:hidden;background:rgba(15,23,42,0.65);';
+
+  const circuitBar = el('div', 'quantum-circuit');
+  circuitBar.style.cssText = 'height:3px;width:100%;border-radius:2px;margin-bottom:10px;';
+
+  const matrixContent = el('div');
+  matrixContent.style.cssText = 'display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:12px;font-size:12px;';
+
+  const mStatus = el('div');
+  mStatus.innerHTML = '<span style="color:#38bdf8;font-weight:bold;">⚛️ 量子超导科研矩阵</span> <span style="color:#94a3b8;margin-left:6px;">导能谐振率 99.4%</span>';
+
+  const mThroughput = el('div', 'res-throughput');
+  mThroughput.style.cssText = 'color:#34d399;font-family:monospace;';
+
+  matrixContent.append(mStatus, mThroughput);
+  matrixHud.append(circuitBar, matrixContent);
+  wrap.appendChild(matrixHud);
+
   // 研究点每秒都在涨（科研所运转时），挂 1 秒定时器只刷新顶部数字，避免整块重绘冲掉按钮与滚动位置。
   // 重复进入面板时先清旧定时器，避免叠加；面板被卸载（.research-wrap 不存在）时自动停。
   if (root._resTimer) { clearInterval(root._resTimer); root._resTimer = null; }
@@ -120,9 +141,12 @@ export function renderResearch(root, ctx) {
     if (g > 1e-9) {
       growthNode.textContent = '(' + fmtRate(g) + ')';
       growthNode.setAttribute('style', 'color:#9FE1CB');
+      const mflops = (g * 840).toFixed(1);
+      mThroughput.innerHTML = `算力通量：<b>${mflops}</b> MFLOPs · 超弦拟合中`;
     } else {
       growthNode.textContent = '(0)';
       growthNode.setAttribute('style', 'color:#7d8a97');
+      mThroughput.innerHTML = '算力通量：<b style="color:#7d8a97">0.0</b> MFLOPs · 待机';
     }
   }
   updateGrowth();
@@ -339,7 +363,12 @@ function renderFacilitySection(body, ctx, techSet, rerender) {
         btn.addEventListener('click', (e) => {
           e.stopPropagation();
           const r = researchTech(t.id);
-          if (!r.ok) { rerender(); return; }   // 失败（如研究点不足）重绘后状态行会显示原因
+          if (!r.ok) {
+            playLaser();
+            rerender();
+            return;
+          }   // 失败（如研究点不足）重绘后状态行会显示原因
+          playVictory();
           rerender();
         });
         row.appendChild(btn);
@@ -451,8 +480,10 @@ function openTechDetail(ctx, t, st, rerender) {
       if (!r.ok) {
         tip.className = 'modal-tip';
         tip.textContent = r.reason;
+        playLaser();
         return;
       }
+      playVictory();
       tip.className = 'modal-tip cyan';
       tip.textContent = '研究完成：' + t.nameCn + '（已扣除 ' + fmtNum(r.spent) + ' 研究点）';
       btn.disabled = true;
@@ -492,7 +523,13 @@ function openUpgradeDetail(ctx, u, lv, cost, maxed, rerender) {
     if (btn.disabled) btn.title = '研究点不足';
     btn.onclick = () => {
       const r = buyUpgrade(u.id);
-      if (!r.ok) { tip.className = 'modal-tip'; tip.textContent = r.reason; return; }
+      if (!r.ok) {
+        tip.className = 'modal-tip';
+        tip.textContent = r.reason;
+        playLaser();
+        return;
+      }
+      playPing();
       tip.className = 'modal-tip cyan';
       tip.textContent = '已升到 Lv ' + r.level + '（扣除 ' + fmtNum(r.spent) + ' 研究点）';
       btn.disabled = true;

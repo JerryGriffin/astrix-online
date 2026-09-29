@@ -4,16 +4,16 @@
 import assert from 'assert';
 import {
   STATE, createAccount, currentAccount, getPlanetInstance, setAdapter, tick
-} from '../js/core/state.js?v=21.2';
+} from '../js/core/state.js?v=21.3';
 import {
   armyStatsOf, listArmies, ensureArmies, stationedArmyPower,
   canAssembleArmy, startArmyAssemble, cancelArmyAssemble,
   tickArmyBuildLines, toggleStationed, disbandArmy
-} from '../js/core/army.js?v=21.2';
-import { ARMY_BLUEPRINTS, ARMY_BP_BY_ID, ARMY_PART_BY_ID, armyBpPartNeeds } from '../js/data/army_parts.js?v=21.2';
-import { addEquipment } from '../js/core/shipyard.js?v=21.2';
-import { recipesForBuilding, partRecipe } from '../js/core/production.js?v=21.2';
-import { evaluateDefensePower } from '../js/core/cloud.js?v=21.2';
+} from '../js/core/army.js?v=21.3';
+import { ARMY_BLUEPRINTS, ARMY_BP_BY_ID, ARMY_PART_BY_ID, armyBpPartNeeds } from '../js/data/army_parts.js?v=21.3';
+import { addEquipment } from '../js/core/shipyard.js?v=21.3';
+import { recipesForBuilding, partRecipe } from '../js/core/production.js?v=21.3';
+import { evaluateDefensePower } from '../js/core/cloud.js?v=21.3';
 
 // 内存存储适配器
 const mem = new Map();

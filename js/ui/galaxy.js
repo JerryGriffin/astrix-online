@@ -1,17 +1,18 @@
 // 星际大厅与在线星图界面（Astrix v0.2.0）
 // 纯原生 ES 模块，深空玻璃拟态风格，移动端与 PC 端自适应（点击区 >= 44px）
 
-import { currentAccount, getPlanetInstance, ownedOf } from '../core/state.js?v=21.2';
+import { currentAccount, getPlanetInstance, ownedOf } from '../core/state.js?v=21.3';
 import {
   ensureCloudProfile, bindEmail, getShieldStatus, fetchGalaxyRegistry,
   getInbox, markMessageRead, markAllMessagesRead, unreadCount,
   sendGalaxyRaid, sendGalaxyTrade, evaluateFleetPower,
   syncOnlineServer, fetchRemoteGalaxyRegistry, fetchOnlineChatMessages, sendOnlineChatMessage,
   fetchOnlineMarketListings, buyOnlineMarketListing, createOnlineMarketListing
-} from '../core/cloud.js?v=21.2';
-import { listFleets } from '../core/fleet.js?v=21.2';
-import { fmtNum } from '../core/format.js?v=21.2';
-import { openBattleView } from './combat.js?v=21.2';
+} from '../core/cloud.js?v=21.3';
+import { listFleets } from '../core/fleet.js?v=21.3';
+import { fmtNum } from '../core/format.js?v=21.3';
+import { openBattleView } from './combat.js?v=21.3';
+import { playWarp, playPing, playVictory } from '../core/sound.js?v=21.3';
 
 function escapeHtml(s) {
   return String(s ?? '').replace(/[&<>"']/g, (c) => (
@@ -347,6 +348,7 @@ export function renderGalaxy(root, ctx) {
         if (!res.ok) {
           err.textContent = res.reason;
         } else {
+          playVictory();
           closeModal();
           alert(res.msg);
           refresh();
@@ -437,6 +439,7 @@ export function renderGalaxy(root, ctx) {
         if (!text) return;
         input.value = '';
         btnSend.disabled = true;
+        playPing();
         await sendOnlineChatMessage(acc, text);
         btnSend.disabled = false;
         await refreshMessages();
@@ -570,6 +573,7 @@ export function renderGalaxy(root, ctx) {
               btn.disabled = false;
               btn.textContent = '采购交割';
             } else {
+              playVictory();
               alert(res.msg);
               refresh();
               renderBrowse();
@@ -654,6 +658,7 @@ export function renderGalaxy(root, ctx) {
             btnSubmit.disabled = false;
             btnSubmit.textContent = '🚀 确认发布到全星区集市';
           } else {
+            playVictory();
             alert(res.msg);
             refresh();
             switchTab('browse');
@@ -707,6 +712,7 @@ export function renderGalaxy(root, ctx) {
             err.textContent = '请先指派具备战斗力的空闲编队';
             return;
           }
+          playWarp();
           const res = sendGalaxyRaid(acc, fleetId, sys);
           if (!res.ok) {
             err.textContent = res.reason;
@@ -730,6 +736,7 @@ export function renderGalaxy(root, ctx) {
             err.textContent = '该编队没有指派战舰';
             return;
           }
+          playWarp();
           const fleetShips = (acc.ships || []).filter((s) => fleet.shipIds.includes(s.id));
           const defenderShips = generateDefenderShips(sys);
 

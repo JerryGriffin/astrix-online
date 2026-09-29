@@ -12,15 +12,15 @@
 //
 // 约定：不修改 state.js（账号对象由调用方传入）；互 import 仅限函数体内使用（无 TDZ 风险）。
 
-import { PLANETS } from '../data/planets.js?v=21.2';
+import { PLANETS } from '../data/planets.js?v=21.3';
 import {
   generateRandomPlanet, capturePlanet, captureDefaultPlanet, uncapturedDefaults,
-} from './planetgen.js?v=21.2';
-import { ownedOf, spendOwned, getPlanetInstance } from './state.js?v=21.2';
-import { CELL_VOLUME, cellsForEquipmentKey } from './footprint.js?v=21.2';   // 纯聚合工具，state.js 不 import 本文件，无环
-import { resolveBlueprint, totalMass } from './shipyard.js?v=21.2';          // 只读导出：蓝图部件 / 蓝图质量
-import { ensureEntry } from './production.js?v=21.2';                        // 装卸货 / 奖励入包（生产模块不 import 本文件，无环）
-import { fmtNum } from './format.js?v=21.2';
+} from './planetgen.js?v=21.3';
+import { ownedOf, spendOwned, getPlanetInstance } from './state.js?v=21.3';
+import { CELL_VOLUME, cellsForEquipmentKey } from './footprint.js?v=21.3';   // 纯聚合工具，state.js 不 import 本文件，无环
+import { resolveBlueprint, totalMass } from './shipyard.js?v=21.3';          // 只读导出：蓝图部件 / 蓝图质量
+import { ensureEntry } from './production.js?v=21.3';                        // 装卸货 / 奖励入包（生产模块不 import 本文件，无环）
+import { fmtNum } from './format.js?v=21.3';
 
 // ============================================================================
 // 编队

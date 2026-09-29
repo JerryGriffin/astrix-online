@@ -24,14 +24,25 @@
 // 所有数字显示一律走 format.js 的 fmtNum / fmtRate / fmtRateBody / fmtSci。
 // 样式集中在 css/planet.css。
 
-import { MATERIALS } from '../data/materials.js?v=21.2';
-import { fmtNum, fmtRate, fmtSci } from '../core/format.js?v=21.2';
-import { getPlanetInstance, tick, currentAccount, atmosphereOf, ownedOf, rateOf } from '../core/state.js?v=21.2';
-import { computePower } from '../core/power.js?v=21.2';
-import { equipmentList } from '../core/shipyard.js?v=21.2';
-import { materialLabel, productionRates } from '../core/production.js?v=21.2';
-import { BUILDING_BY_ID } from '../data/buildings.js?v=21.2';
-import { NUTRIENT_NAMES, METABOLITE_NAMES, consumptionPerSec, metabolitePerSec } from '../core/population.js?v=21.2';
+import { MATERIALS } from '../data/materials.js?v=21.3';
+import { fmtNum, fmtRate, fmtSci } from '../core/format.js?v=21.3';
+import { getPlanetInstance, tick, currentAccount, atmosphereOf, ownedOf, rateOf } from '../core/state.js?v=21.3';
+import { computePower } from '../core/power.js?v=21.3';
+import { equipmentList } from '../core/shipyard.js?v=21.3';
+import { materialLabel, productionRates } from '../core/production.js?v=21.3';
+import { BUILDING_BY_ID } from '../data/buildings.js?v=21.3';
+import { NUTRIENT_NAMES, METABOLITE_NAMES, consumptionPerSec, metabolitePerSec } from '../core/population.js?v=21.3';
+import { playPing } from '../core/sound.js?v=21.3';
+
+// 地层扫描雷达配置
+const STRATA_CONFIG = [
+  { id: 'all', nameCn: '全地层', icon: '🪐', depth: '全息透视' },
+  { id: 'gas', nameCn: '气体层', icon: '🌌', depth: '大气逸散' },
+  { id: 'surface', nameCn: '地表风蚀', icon: '🏔️', depth: '0 km' },
+  { id: 'underground', nameCn: '浅层地裂', icon: '⛏️', depth: '10 km' },
+  { id: 'deep', nameCn: '深地幔流', icon: '🌋', depth: '80 km' },
+  { id: 'core', nameCn: '磁化地核', icon: '⚛️', depth: '500 km' },
+];
 
 // 分组顺序与中文标题
 // v0.0.91：同事把星球数据拆成 surface(地表) / underground(浅层) / deep(深层) / core(地核) / gas(气体) 五层。
@@ -170,9 +181,96 @@ export function renderInventory(container, planetOrCtx) {
   const storeTitle = document.createElement('div');
   storeTitle.className = 'inv-block-title';
   storeTitle.innerHTML = '星球储藏<span class="inv-block-sub muted"> · 按「资源 × 层」分开标注剩余储量，采集会扣减</span>';
+
+  // 行星地质断层雷达与深地脉勘探阵列
+  let selectedLayer = 'all';
+  const strataHud = document.createElement('div');
+  strataHud.className = 'strata-scanner glass';
+  strataHud.style.cssText = 'margin:8px 0 12px 0;padding:12px;border-radius:8px;border:1px solid #38bdf835;background:rgba(15,23,42,0.65);';
+
+  const radarHeader = document.createElement('div');
+  radarHeader.style.cssText = 'display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px;';
+
+  const radarTitle = document.createElement('div');
+  radarTitle.style.cssText = 'font-size:13px;font-weight:bold;color:#7cd7ff;display:flex;align-items:center;gap:6px;';
+  radarTitle.innerHTML = '<span>📡 行星地质断层雷达与深地脉勘探</span><span style="font-size:11px;color:#94a3b8;font-weight:normal;">(地壳深潜勘探阵列)</span>';
+
+  const sonarBtn = document.createElement('button');
+  sonarBtn.type = 'button';
+  sonarBtn.className = 'btn-action';
+  sonarBtn.style.cssText = 'padding:4px 10px;min-height:32px;font-size:12px;border-radius:6px;border:1px solid #38bdf850;background:rgba(56,189,248,0.15);color:#7cd7ff;cursor:pointer;';
+  sonarBtn.innerHTML = '⚡ 激发地脉声纳';
+
+  radarHeader.append(radarTitle, sonarBtn);
+
+  const waveContainer = document.createElement('div');
+  waveContainer.style.cssText = 'display:flex;align-items:center;gap:10px;margin-bottom:10px;background:rgba(0,0,0,0.25);padding:6px 10px;border-radius:6px;';
+
+  const waveGraphic = document.createElement('div');
+  waveGraphic.style.cssText = 'display:flex;align-items:center;gap:3px;height:18px;';
+  for (let i = 0; i < 7; i++) {
+    const bar = document.createElement('span');
+    bar.className = 'seismic-wave-bar';
+    bar.style.cssText = `display:inline-block;width:3px;height:${8 + (i % 3) * 5}px;background:#38bdf8;border-radius:2px;animation-delay:${i * 0.15}s;`;
+    waveGraphic.appendChild(bar);
+  }
+
+  const waveText = document.createElement('div');
+  waveText.style.cssText = 'font-size:11px;color:#94a3b8;font-family:monospace;flex:1;';
+  waveText.textContent = '地质回波：岩层稳定 · 地热流 310 K · 声纳通量 100% · 地层过滤已就绪';
+
+  waveContainer.append(waveGraphic, waveText);
+
+  const strataRow = document.createElement('div');
+  strataRow.style.cssText = 'display:flex;gap:6px;flex-wrap:wrap;';
+
   const storeGrid = document.createElement('div');
   storeGrid.className = 'inv-grid';
-  storeWrap.append(storeTitle, storeGrid);
+
+  function applyStrataFilter() {
+    for (const b of strataRow.children) {
+      const match = b.dataset.layer === selectedLayer;
+      b.className = match ? 'stratum-card-active' : '';
+      b.style.borderColor = match ? '#38bdf8' : '#22354c';
+      b.style.background = match ? 'rgba(56,189,248,0.2)' : 'rgba(255,255,255,0.04)';
+      b.style.color = match ? '#7cd7ff' : '#94a3b8';
+    }
+    const rows = storeGrid.querySelectorAll('.inv-row-store');
+    rows.forEach((r) => {
+      if (selectedLayer === 'all') {
+        r.style.display = '';
+      } else {
+        r.style.display = (r.dataset.layer === selectedLayer) ? '' : 'none';
+      }
+    });
+  }
+
+  sonarBtn.onclick = () => {
+    playPing();
+    const freqs = [14.2, 18.6, 22.4, 28.1, 9.8];
+    const f = freqs[Math.floor(Math.random() * freqs.length)];
+    const temp = Math.floor(290 + Math.random() * 80);
+    waveText.textContent = `地质回波：激发频率 ${f} Hz · 深层地热 ${temp} K · 勘探信噪比 21.8 dB · 矿脉谐振良好`;
+    waveText.style.color = '#34d399';
+    setTimeout(() => { waveText.style.color = '#94a3b8'; }, 2000);
+  };
+
+  for (const s of STRATA_CONFIG) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.dataset.layer = s.id;
+    btn.style.cssText = 'flex:1;min-width:76px;padding:6px 4px;font-size:11px;border-radius:6px;border:1px solid #22354c;background:rgba(255,255,255,0.04);color:#94a3b8;cursor:pointer;text-align:center;transition:all 0.2s ease;';
+    btn.innerHTML = `<div style="font-size:13px;">${s.icon}</div><div style="font-weight:bold;margin-top:2px;">${s.nameCn}</div><div style="font-size:10px;opacity:0.75;">${s.depth}</div>`;
+    btn.onclick = () => {
+      selectedLayer = s.id;
+      playPing();
+      applyStrataFilter();
+    };
+    strataRow.appendChild(btn);
+  }
+
+  strataHud.append(radarHeader, waveContainer, strataRow);
+  storeWrap.append(storeTitle, strataHud, storeGrid);
 
   container.append(ownedWrap, equipWrap, storeWrap);
 
@@ -228,6 +326,7 @@ export function renderInventory(container, planetOrCtx) {
     }
     if (ownedItems.length === 0) ownedGrid.appendChild(emptyHint('暂无持有物品'));
     if (storeItems.length === 0) storeGrid.appendChild(emptyHint('该星球资源已采尽'));
+    applyStrataFilter();
     container._invRowsKey = rowsKey();
     buildEquipRows();
   }
