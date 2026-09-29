@@ -2,8 +2,17 @@
 title Astrix Online Server + Cloudflare Tunnel
 where node >nul 2>nul
 if %errorlevel% neq 0 (
-    set "PATH=C:\Users\zhang\.workbuddy\binaries\node\versions\22.22.2-3;%PATH%"
+    if exist "C:\Program Files\nodejs\node.exe" set "PATH=C:\Program Files\nodejs;%PATH%"
+    if exist "%LOCALAPPDATA%\Programs\node\node.exe" set "PATH=%LOCALAPPDATA%\Programs\node;%PATH%"
+    for /d %%D in ("%USERPROFILE%\*node*") do (
+        if exist "%%D\node.exe" set "PATH=%%D;%PATH%"
+    )
+    for /r "%USERPROFILE%" %%F in (node.exe) do (
+        set "PATH=%%~dpF;%PATH%"
+        goto :node_found
+    )
 )
+:node_found
 echo ========================================================
 echo  Starting Astrix Online Server ^& Cloudflare Tunnel...
 echo ========================================================

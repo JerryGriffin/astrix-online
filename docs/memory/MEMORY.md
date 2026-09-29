@@ -1,7 +1,7 @@
 # Astrix 长期约定（精简版；细节以代码+docs+日志为准）
 
 ## 工作流
-- 改完即发布：每轮收尾必须发布（appId=wbapp_a83qn1S1YtnqmhL6Wb2oF3、updateExistingApp:true、language:"static"，固定链接 https://astrix.app.workbuddy.host/）。云服务已激活。
+- 改完即发布：每轮收尾必须发布（appId=astrix_a83qn1S1YtnqmhL6Wb2oF3、updateExistingApp:true、language:"static"，固定链接 https://github.com/JerryGriffin/astrix-online/）。云服务已激活。
 - 需求批量合并进一个版本；设计决策（数值/公式/取舍）用选项式提问一次问清；中文+表格沟通。
 - 上下文快满→停实现：写 docs/TODO_vX.md 自包含施工图（文件/行号/改法/验收/恢复清单）+当日日志。恢复顺序 TODO_*→DECISIONS.md→代码。
 
