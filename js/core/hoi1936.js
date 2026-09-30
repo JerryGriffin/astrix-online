@@ -10,11 +10,11 @@
 //   * HOI4 风格国策（三支六策，按天推进）               → focus 系列
 //   * 海域（制海权争夺 + 海战）                          → sea 系列
 import { HOI_NATIONS, HOI_BY_ID, HOI_DEEP, HOI_SEAS, ARMY_MEN, popOf, BLOC_NAME, HOI_SCENARIO_ID,
-  workforceOf, ARMY_POWER_PER_DIV, NAVY_MUL, GEAR_PARTS, SHIP_NAMES, ARMY_BP_NAME, HOI_BG, SHIP_CLASSES, POST_WAR_OPTIONS, GER_PUPPETS, ARMY_BP_LINE, warshipTonnageOf } from '../data/hoi1936.js?v=29.1';
-import { BUILDING_BY_ID } from '../data/buildings.js?v=29.1';
-import { ARMY_BP_BY_ID, ARMY_BLUEPRINTS } from '../data/army_parts.js?v=29.1';
-import { JOBS_BY_BUILDING, assignWorkers, jobCapacity, getAvailable } from './population.js?v=29.1';
-import { ELITE_DIVISIONS, ELITE_MUL } from '../data/hoi1936.js?v=29.1';
+  workforceOf, ARMY_POWER_PER_DIV, NAVY_MUL, GEAR_PARTS, SHIP_NAMES, ARMY_BP_NAME, HOI_BG, SHIP_CLASSES, POST_WAR_OPTIONS, GER_PUPPETS, ARMY_BP_LINE, warshipTonnageOf, WAR_LINE, EXTRA_FOCUS_TEMPLATE, JUSTIFY_DAYS } from '../data/hoi1936.js?v=30.1';
+import { BUILDING_BY_ID } from '../data/buildings.js?v=30.1';
+import { ARMY_BP_BY_ID, ARMY_BLUEPRINTS } from '../data/army_parts.js?v=30.1';
+import { JOBS_BY_BUILDING, assignWorkers, jobCapacity, getAvailable } from './population.js?v=30.1';
+import { ELITE_DIVISIONS, ELITE_MUL } from '../data/hoi1936.js?v=30.1';
 
 // 依赖注入（避免与 state.js / production.js 形成循环导入）
 let _getInst = null;
@@ -54,20 +54,35 @@ export function ensureFocus(acc) {
   }
   const f = acc.hoiFocus;
   if (!Array.isArray(f.done)) f.done = [];
-  if (!f.buffs) f.buffs = { atkMul: 1, defMul: 1, lineMul: 1 };
+  if (!f.buffs) f.buffs = { atkMul: 1, defMul: 1, lineMul: 1, justifyMul: 1 };
   if (f.buffs.atkMul == null) f.buffs.atkMul = 1;
   if (f.buffs.defMul == null) f.buffs.defMul = 1;
   if (f.buffs.lineMul == null) f.buffs.lineMul = 1;
+  if (f.buffs.justifyMul == null) f.buffs.justifyMul = 1;
   return f;
+}
+
+/**
+ * 国策总表（v0.3.0 扩充）：本国策 + 通用扩策（+3）+ 德国战争线（+4）
+ */
+export function fociOf(acc) {
+  const n = acc && acc.nation;
+  const deep = HOI_DEEP[n];
+  if (!deep) return [];
+  const base = (deep.foci || []).slice();
+  const extras = EXTRA_FOCUS_TEMPLATE.map((t) => Object.assign({}, t, { id: n + t.suffix }));
+  const war = (WAR_LINE[n] || []).slice();
+  return base.concat(extras, war);
 }
 
 export function focusOptionsOf(acc) {
   const deep = HOI_DEEP[acc && acc.nation];
   if (!deep) return [];
   const f = ensureFocus(acc);
+  const all = fociOf(acc);
   const byBranch = {};
-  for (const x of deep.foci) (byBranch[x.branch] = byBranch[x.branch] || []).push(x);
-  return deep.foci.map((x) => {
+  for (const x of all) (byBranch[x.branch] = byBranch[x.branch] || []).push(x);
+  return all.map((x) => {
     const done = f.done.indexOf(x.id) >= 0;
     const list = byBranch[x.branch] || [];
     const idx = list.findIndex((y) => y.id === x.id);
@@ -89,7 +104,7 @@ export function startFocus(acc, focusId) {
   if (!deep) return { ok: false, reason: '非 1936 剧本存档' };
   const f = ensureFocus(acc);
   if (f.current) return { ok: false, reason: '已有国策正在推进（' + f.current.nameCn + '）' };
-  const def = deep.foci.find((x) => x.id === focusId);
+  const def = fociOf(acc).find((x) => x.id === focusId);
   if (!def) return { ok: false, reason: '找不到该策' };
   if (f.done.indexOf(focusId) >= 0) return { ok: false, reason: '该策已完成' };
   const opt = focusOptionsOf(acc).find((x) => x.id === focusId);
@@ -104,8 +119,7 @@ export function tickFocus(acc, dtSec) {
   if (!f || !f.current) return null;
   f.current.progressDays += Math.max(0, Number(dtSec) || 0) * GAME_DAYS_PER_SEC;
   if (f.current.progressDays < f.current.needDays) return null;
-  const deep = HOI_DEEP[acc.nation];
-  const def = deep && deep.foci.find((x) => x.id === f.current.id);
+  const def = fociOf(acc).find((x) => x.id === f.current.id);
   const doneId = f.current.id;
   f.done.push(doneId);
   const finished = f.current;
@@ -133,6 +147,7 @@ function applyFocusEffect(acc, eff) {
     // 强化同阵营（盟友在开局已建立，这里只作为外交进度）
   }
   if (eff.navy) addNavyShips(acc, eff.navy);
+  if (eff.justifyMul) b.justifyMul = (b.justifyMul || 1) * eff.justifyMul;
 }
 
 // ============================================================================
@@ -807,6 +822,62 @@ export function applyInfiniteReserve(inst) {
     n++;
   }
   return n;
+}
+
+/**
+ * 战争正当化（v0.3.0，HOI4 式）：宣战前需正当化，默认 60 游戏天。
+ *   · 轴心国（bloc 'axis'）可正当化**任意国家**
+ *   · 其他国家只能正当化「非同阵营、且综合国力不高于自己 1.5 倍」的国家
+ *   · 国策的 justifyMul 可缩短正当化时间
+ *   acc.hoiJustify = { targetId, targetName, daysLeft, daysNeed }
+ */
+export function canJustify(acc, nationId) {
+  const me = HOI_BY_ID[acc && acc.nation];
+  const target = HOI_BY_ID[nationId];
+  if (!me || !target) return { ok: false, reason: '国家数据缺失' };
+  if (nationId === me.id) return { ok: false, reason: '不能对自己宣战' };
+  const myBloc = (HOI_DEEP[me.id] || {}).bloc;
+  const theirBloc = (HOI_DEEP[target.id] || {}).bloc;
+  if (myBloc && theirBloc && myBloc === theirBloc && myBloc !== 'neutral') {
+    return { ok: false, reason: '同阵营国家不能宣战（' + (BLOC_NAME[myBloc] || '') + '）' };
+  }
+  if (myBloc !== 'axis') {
+    const mine = me.ic + me.divisions / 2 + me.navy / 3;
+    const theirs = target.ic + target.divisions / 2 + target.navy / 3;
+    if (theirs > mine * 1.5) {
+      return { ok: false, reason: '国力差距过大（非轴心国只能正当化国力不高于自己 1.5 倍的国家）' };
+    }
+  }
+  return { ok: true };
+}
+
+export function startJustify(acc, nationId) {
+  const chk = canJustify(acc, nationId);
+  if (!chk.ok) return chk;
+  const n = HOI_BY_ID[nationId];
+  const f = ensureFocus(acc);
+  const need = Math.max(15, Math.round(JUSTIFY_DAYS * (Number(f.buffs.justifyMul) || 1)));
+  acc.hoiJustify = { targetId: nationId, targetName: n.nameCn, daysLeft: need, daysNeed: need, at: Date.now() };
+  return { ok: true, daysNeed: need, targetName: n.nameCn };
+}
+
+export function justifyStatusOf(acc, nationId) {
+  const j = acc && acc.hoiJustify;
+  if (!j) return null;
+  if (nationId && j.targetId !== nationId) return null;
+  return j;
+}
+
+export function tickJustify(acc, dtSec) {
+  const j = acc && acc.hoiJustify;
+  if (!j) return null;
+  const days = (Number(dtSec) || 0) * GAME_DAYS_PER_SEC;
+  j.daysLeft = Math.max(0, (Number(j.daysLeft) || 0) - days);
+  if (j.daysLeft <= 0) {
+    j.ready = true;   // 正当化完成：可以宣战
+    return { type: 'ready', targetName: j.targetName };
+  }
+  return null;
 }
 
 export function backgroundOf(acc) {

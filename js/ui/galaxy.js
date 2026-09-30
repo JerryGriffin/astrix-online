@@ -16,18 +16,18 @@ import {
   ensureReady, cloudStatus, cloudUser,
   loginWithName, registerWithName, signOutCloud,
   listPublicPlanets, publishMyPlanet, postIncident, fetchInbox, markIncidentResolved,
-} from '../core/cloud.js?v=29.1';
-import { currentAccount, getPlanetInstance, ownedOf, spendOwned } from '../core/state.js?v=29.1';
-import { ensureEntry } from '../core/production.js?v=29.1';
-import { listFleets, fleetPowerOf, defenseBonusOf } from '../core/fleet.js?v=29.1';
-import { totalArmyPowerOf, listArmies, disbandArmy, resolveBattle, armyToUnit, armyPowerOfInstance } from '../core/army.js?v=29.1';
+} from '../core/cloud.js?v=30.1';
+import { currentAccount, getPlanetInstance, ownedOf, spendOwned } from '../core/state.js?v=30.1';
+import { ensureEntry } from '../core/production.js?v=30.1';
+import { listFleets, fleetPowerOf, defenseBonusOf } from '../core/fleet.js?v=30.1';
+import { totalArmyPowerOf, listArmies, disbandArmy, resolveBattle, armyToUnit, armyPowerOfInstance } from '../core/army.js?v=30.1';
 // v0.2.1：内嵌殖民地管理（含内联报告），取代在线模式独立的「星球选择」tab
-import { renderColony } from './colony.js?v=29.1';
-import { PLANETS } from '../data/planets.js?v=29.1';
-import { HOI_NATIONS, HOI_BY_ID, HOI_SCENARIO_ID } from '../data/hoi1936.js?v=29.1';   // v0.2.6 官方 mod
-import { declareWar, activeWarsOf, warWith, addWarScore, canForceSurrender, draftTreaty, endWar, surrenderWar } from '../core/war.js?v=29.1';
-import { postwarOptionsFor, applyPostwarChoice } from '../core/hoi1936.js?v=29.1';
-import { fmtNum } from '../core/format.js?v=29.1';
+import { renderColony } from './colony.js?v=30.1';
+import { PLANETS } from '../data/planets.js?v=30.1';
+import { HOI_NATIONS, HOI_BY_ID, HOI_SCENARIO_ID } from '../data/hoi1936.js?v=30.1';   // v0.2.6 官方 mod
+import { declareWar, activeWarsOf, warWith, addWarScore, canForceSurrender, draftTreaty, endWar, surrenderWar } from '../core/war.js?v=30.1';
+import { postwarOptionsFor, applyPostwarChoice, canJustify, startJustify, justifyStatusOf } from '../core/hoi1936.js?v=30.1';
+import { fmtNum } from '../core/format.js?v=30.1';
 
 function el(tag, cls, text) {
   const e = document.createElement(tag);
@@ -1032,14 +1032,35 @@ function buildNpcCard(f, ctx, rerender, acc) {
     });
     act.append(press, sur);
   } else if (!allied) {
-    const warBtn = el('button', 'btn btn-sm btn-danger', '宣战');
-    warBtn.addEventListener('click', () => {
-      const r = declareWar(acc, { id: f.id, nameCn: f.nameCn, kind: 'npc' });
-      if (!r.ok) { alert(r.reason); return; }
-      alert('已向「' + f.nameCn + '」宣战 —— 战争持续进行：进攻积累战争分数，达到 60 可迫降签约结束。');
-      refresh();
-    });
-    act.appendChild(warBtn);
+    // v0.3.0：宣战需先「正当化」（60 游戏天）—— 轴心国可正当化任意国家
+    const j = f.hoi ? justifyStatusOf(acc, f.hoi.id) : null;
+    if (j && !j.ready) {
+      const tag = el('span', 'muted', '⏳ 正当化中 ' + Math.ceil(j.daysLeft) + '/' + j.daysNeed + ' 天');
+      tag.style.fontSize = '12px';
+      act.appendChild(tag);
+    } else if (j && j.ready) {
+      const warBtn = el('button', 'btn btn-sm btn-danger', '正式宣战');
+      warBtn.addEventListener('click', () => {
+        const r = declareWar(acc, { id: f.id, nameCn: f.nameCn, kind: 'npc' });
+        if (!r.ok) { alert(r.reason); return; }
+        acc.hoiJustify = null;
+        alert('正当化完成 —— 已向「' + f.nameCn + '」宣战！战争持续进行，达到迫降线可签约结束。');
+        refresh();
+      });
+      act.appendChild(warBtn);
+    } else {
+      const warBtn = el('button', 'btn btn-sm btn-danger', '正当化战争');
+      warBtn.addEventListener('click', () => {
+        const chk = f.hoi ? canJustify(acc, f.hoi.id) : { ok: true };
+        if (!chk.ok) { alert(chk.reason); return; }
+        const r = startJustify(acc, f.hoi.id);
+        if (!r.ok) { alert(r.reason || '无法正当化'); return; }
+        alert('已开始对「' + f.nameCn + '」的战争正当化：需 ' + r.daysNeed + ' 天（剧本 1 秒 = 1 天）。'
+          + '完成后即可正式宣战。');
+        refresh();
+      });
+      act.appendChild(warBtn);
+    }
   }
   card.appendChild(act);
   return card;

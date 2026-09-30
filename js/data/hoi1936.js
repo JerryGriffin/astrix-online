@@ -535,3 +535,36 @@ export function warshipTonnageOf(className) {
   if (n.indexOf('潜艇') >= 0) return WARSHIP_TONNAGE.submarine;
   return WARSHIP_TONNAGE.destroyer;
 }
+
+// v0.3.0：德国专属「战争线」（4 策）—— 扩张 → 索取 → 战争
+export const WAR_LINE = {
+  ger: [
+    { id: 'ger_w1', branch: '战争', nameCn: '莱茵兰再武装', days: 90,
+      desc: '进军莱茵兰：全军士气大振，获得陆军加成与战争正当化经验。',
+      effect: { armyAtkMul: 1.1, armyDefMul: 1.05, research: 6000 } },
+    { id: 'ger_w2', branch: '战争', nameCn: '四年计划总动员', days: 150,
+      desc: '全面军工动员：产线提速并大量装备入库。',
+      effect: { lineMul: 1.15, gear: [{ partId: 'ap_wpn_rifle', material: '钢', qty: 400 }] } },
+    { id: 'ger_w3', branch: '战争', nameCn: '吞并奥地利', days: 120,
+      desc: '和平并入奥地利：人口、工业与钢铁大幅增加。',
+      effect: { pop: 4000, goods: { 钢: 9000, 铁: 7000 }, research: 8000 } },
+    { id: 'ger_w4', branch: '战争', nameCn: '但泽或战争', days: 180,
+      desc: '向波兰提出最后通牒：全军攻击 +25%，正当化速度翻倍。',
+      effect: { armyAtkMul: 1.25, justifyMul: 0.5 } },
+  ],
+};
+
+// v0.3.0：所有国家的通用扩充分支（每国 +3 策：工业/军事/外交各一，名称按国别生成）
+export const EXTRA_FOCUS_TEMPLATE = [
+  { suffix: '_x1', branch: '工业', nameCn: '重工业扩建', days: 150,
+    desc: '扩建重工业与矿区：产线提速、物资入库。',
+    effect: { lineMul: 1.12, goods: { 钢: 4000, 铁: 3000 } } },
+  { suffix: '_x2', branch: '军事', nameCn: '常备军整训', days: 150,
+    desc: '常备军整训：全军攻防小幅提升。',
+    effect: { armyAtkMul: 1.1, armyDefMul: 1.1 } },
+  { suffix: '_x3', branch: '外交', nameCn: '外交斡旋', days: 120,
+    desc: '外交斡旋：科研点与人口增长，正当化更快。',
+    effect: { research: 10000, pop: 800, justifyMul: 0.85 } },
+];
+// 战争正当化（HOI4 式）：默认 60 游戏天
+export const JUSTIFY_DAYS = 60;
