@@ -3,29 +3,31 @@
 // 更新：v0.1.1 五指令改为持续任务（startMission，任务行显示倒计时），
 //       新增船载仓库面板；编队 / 五指令区块挂船坞门禁；交易池区 2s 心跳局部刷新。
 
-import { fmtNum, fmtRate, fmtTime } from '../core/format.js?v=20.12';
+import { fmtNum, fmtRate, fmtTime } from '../core/format.js?v=20.13';
 import {
   listFleets, createFleet, disbandFleet, addShipToFleet, removeShipFromFleet,
   fleetSpeedOf, fleetPowerOf, executeCommand,
   startMission, cancelMission, fleetMissionLabel, defenseBonusOf,
   shipCargoOf, loadShipCargo, unloadShipCargo,
   shipCargoMassOf, shipCargoCellsOf, shipCargoCellsMax, effectiveSpeedOf,
-} from '../core/fleet.js?v=20.12';
-import { equipmentList } from '../core/shipyard.js?v=20.12';
+} from '../core/fleet.js?v=20.13';
+import { equipmentList } from '../core/shipyard.js?v=20.13';
 import {
   MANAGEMENT_MODES, MANAGEMENT_BY_ID, modeOf, setManagement,
   TERRITORY_ASSIMILATE_SEC, TERRITORY_HAPPY_THRESHOLD,
-} from '../core/planetgen.js?v=20.12';
+} from '../core/planetgen.js?v=20.13';
 import {
   SHOP_PLANET, shopPrices, sell, pendingOrders, deliverOrder, ascoinBalance,
   shopStateOf,
   marketBuy, marketSell, warehouseOf, ensureShopWarehouse,
-} from '../core/shop.js?v=20.12';
+} from '../core/shop.js?v=20.13';
 import {
   createAuction, placeBid, activeAuctions, auctionLog,
   myAuctionableResources, myAuctionableEquipment, myAuctionableShips, ensureAuctions,
-} from '../core/auction.js?v=20.12';
-import { getPlanetInstance, currentAccount, ownedOf } from '../core/state.js?v=20.12';
+} from '../core/auction.js?v=20.13';
+import { getPlanetInstance, currentAccount, ownedOf, STATE } from '../core/state.js?v=20.13';
+import { cloudUser, fetchSharedWarehouse, upsertSharedWarehouseRow } from '../core/cloud.js?v=20.13';
+import { MATERIALS } from '../data/materials.js?v=20.13';
 
 // HTML 转义（防 XSS，与其它面板一致）
 function esc(s) {
@@ -97,6 +99,9 @@ export function renderShop(container, ctx) {
   container.appendChild(buildPendingOrders(account, inst, openModal, redraw));
   // v0.2.10：原挂单/交易池已移除 —— 交易全部采用拍卖形式（股市即时买卖 + 拍卖行）
 
+  // v0.2.10 共享仓库：进店拉一次云端池，心跳每 10s 同步（仅在线 + 已登录）
+  sharedWarehousePull(account);
+
   // 1s 心跳：实时刷新股价/仓库与拍卖倒计时（不打断输入焦点，面板被替换则自停）
   container._shopTimer = setInterval(() => {
     if (typeof document !== 'undefined' && document.hidden) return;
@@ -104,6 +109,7 @@ export function renderShop(container, ctx) {
       if (container._shopTimer) { clearInterval(container._shopTimer); container._shopTimer = null; }
       return;
     }
+    sharedWarehouseMaybePull(account);
     try { market.refresh(); } catch (e) { /* 忽略 */ }
     try { auction.refresh(); } catch (e) { /* 忽略 */ }
   }, 1000);
@@ -114,6 +120,64 @@ function fmtTrend(price, base) {
   if (price > base) return { arrow: '▲', color: '#9FE1CB' };
   if (price < base) return { arrow: '▼', color: '#f09595' };
   return { arrow: '—', color: '#94a3b8' };
+}
+
+// ============================================================================
+// 共享仓库同步（v0.2.10，仅在线模式）：商店星仓库全服共用，任何玩家的买卖实时增减云端池。
+//   * 本地 acc.shopWarehouse 仅作显示缓存；每 10s 拉云端并做一次回补写回（末写胜出）
+//   * 离线模式 / 未登录：维持原有本地仓库行为
+// ============================================================================
+let _whCloud = {};          // 最近一次拉到的云端快照
+let _whPullAt = 0;
+let _whBusy = false;
+
+function sharedWarehouseOn(acc) {
+  return STATE.mode === 'online' && !!acc && !!cloudUser();
+}
+
+async function sharedWarehousePull(acc) {
+  if (!sharedWarehouseOn(acc) || _whBusy) return;
+  _whBusy = true;
+  try {
+    const r = await fetchSharedWarehouse();
+    if (!r.ok || !acc) return;
+    _whCloud = {};
+    for (const row of r.rows) _whCloud[row.mat] = Number(row.qty) || 0;
+    if (!acc.shopWarehouse) acc.shopWarehouse = {};
+    for (const m of MATERIALS) {
+      if (m.id === 'gold') continue;
+      const base = warehouseBaseline(m);
+      const q = _whCloud[m.nameCn];
+      if (q == null) {
+        // 云端还没有该行：以本地现量初始化（首次上线铺底）
+        const local = Number(acc.shopWarehouse[m.nameCn]) || 0;
+        _whCloud[m.nameCn] = local;
+        acc.shopWarehouse[m.nameCn] = local;
+        upsertSharedWarehouseRow(m.nameCn, local).catch(() => {});
+        continue;
+      }
+      // 回补：以云端现量做 10 秒窗 20% 回补（并发客户端算值几乎一致，末写胜出≈完成一回补）
+      let nq = q;
+      if (nq < base) nq = nq + (base - nq) * 0.2;
+      if (Math.abs(nq - q) > 0.01) upsertSharedWarehouseRow(m.nameCn, nq).catch(() => {});
+      _whCloud[m.nameCn] = nq;
+      acc.shopWarehouse[m.nameCn] = nq;
+    }
+    _whPullAt = Date.now();
+  } catch (e) { /* 云不可达时静默保持本地行为 */ } finally { _whBusy = false; }
+}
+
+function sharedWarehouseMaybePull(acc) {
+  if (sharedWarehouseOn(acc) && Date.now() - _whPullAt > 10000) sharedWarehousePull(acc);
+}
+
+function sharedWarehouseDelta(acc, mat, delta) {
+  if (!sharedWarehouseOn(acc)) return;
+  const cur = (_whCloud[mat] != null) ? _whCloud[mat] : (Number(acc.shopWarehouse[mat]) || 0);
+  const nq = Math.max(0, cur + delta);
+  _whCloud[mat] = nq;
+  acc.shopWarehouse[mat] = nq;
+  upsertSharedWarehouseRow(mat, nq).catch(() => {});
 }
 
 // ============================================================================
@@ -148,12 +212,14 @@ function buildMarketSection(account, inst, openModal, redraw) {
     buyB.addEventListener('click', () => {
       const r = marketBuy(account, p.mat, qty.value, inst);
       if (!r.ok) { if (openModal) openModal({ title: '无法买入', body: '<p>' + esc(r.reason) + '</p>' }); else alert(r.reason); return; }
+      sharedWarehouseDelta(account, p.mat, -(Number(r.qty) || 0));   // v0.2.10 全服共享仓库
       if (openModal) openModal({ title: '买入成功', body: '<p>' + esc(p.mat) + ' ×' + r.qty + '，花费 ' + fmtNum(r.cost) + ' Ascoin。</p>' });
       refresh();   // 即时刷新股价/仓库/余额
     });
     sellB.addEventListener('click', () => {
       const r = marketSell(account, p.mat, qty.value, inst);
       if (!r.ok) { if (openModal) openModal({ title: '无法卖出', body: '<p>' + esc(r.reason) + '</p>' }); else alert(r.reason); return; }
+      sharedWarehouseDelta(account, p.mat, Number(r.qty) || 0);   // v0.2.10 全服共享仓库
       if (openModal) openModal({ title: '卖出成功', body: '<p>' + esc(p.mat) + ' ×' + r.qty + '，获得 ' + fmtNum(r.gain) + ' Ascoin。</p>' });
       refresh();
     });
@@ -465,8 +531,11 @@ function buildShopSection(account, inst, openModal, redraw, hb) {
   // 原「待运输订单」（旧存档的买/卖交割单，仍可标记送达；新股市为即时交割不再产生）
   wrap.appendChild(buildPendingOrders(account, inst, openModal, redraw));
   // v0.2.10：原挂单/交易池已移除 —— 交易全部采用拍卖形式
+  // v0.2.10 共享仓库：进店拉一次云端池，随舰队心跳每 10s 同步（仅在线 + 已登录）
+  sharedWarehousePull(account);
   if (hb && Array.isArray(hb.updaters)) {
     hb.updaters.push(() => {
+      sharedWarehouseMaybePull(account);
       try { market.refresh(); } catch (e) { /* 忽略 */ }
       try { auction.refresh(); } catch (e) { /* 忽略 */ }
     });

@@ -16,15 +16,15 @@ import {
   ensureReady, cloudStatus, cloudUser,
   signInWithPassword, sendEmailOtp, verifyEmailOtp, signOutCloud,
   listPublicPlanets, publishMyPlanet, postIncident, fetchInbox, markIncidentResolved,
-} from '../core/cloud.js?v=20.12';
-import { currentAccount, getPlanetInstance, ownedOf, spendOwned } from '../core/state.js?v=20.12';
-import { ensureEntry } from '../core/production.js?v=20.12';
-import { listFleets, fleetPowerOf, defenseBonusOf } from '../core/fleet.js?v=20.12';
-import { totalArmyPowerOf, listArmies, disbandArmy, resolveBattle } from '../core/army.js?v=20.12';
+} from '../core/cloud.js?v=20.13';
+import { currentAccount, getPlanetInstance, ownedOf, spendOwned } from '../core/state.js?v=20.13';
+import { ensureEntry } from '../core/production.js?v=20.13';
+import { listFleets, fleetPowerOf, defenseBonusOf } from '../core/fleet.js?v=20.13';
+import { totalArmyPowerOf, listArmies, disbandArmy, resolveBattle } from '../core/army.js?v=20.13';
 // v0.2.1：内嵌殖民地管理（含内联报告），取代在线模式独立的「星球选择」tab
-import { renderColony } from './colony.js?v=20.12';
-import { PLANETS } from '../data/planets.js?v=20.12';
-import { fmtNum } from '../core/format.js?v=20.12';
+import { renderColony } from './colony.js?v=20.13';
+import { PLANETS } from '../data/planets.js?v=20.13';
+import { fmtNum } from '../core/format.js?v=20.13';
 
 function el(tag, cls, text) {
   const e = document.createElement(tag);
@@ -113,6 +113,7 @@ export function renderGalaxy(root, ctx) {
 // ============================================================================
 function renderShell(body, ctx, rerender) {
   const acc = ctx.account || currentAccount();
+  ensureAllianceFields(acc);   // v0.2.10 结盟字段兜底
   const u = cloudUser();
   body.innerHTML = '';
 
@@ -296,7 +297,25 @@ const INCIDENT_LABEL = {
   trade_offer: '贸易要约',
   battle_report: '战报回执',
   trade_result: '贸易结算',
+  alliance_offer: '结盟请求',
+  alliance_accept: '结盟回应',
+  alliance_break: '解除盟约',
 };
+
+/** v0.2.10 结盟字段兜底（老存档）：npcAllies = 盟友电脑势力名；allies = [{uid, name}] */
+function ensureAllianceFields(acc) {
+  if (!acc) return;
+  if (!Array.isArray(acc.npcAllies)) acc.npcAllies = [];
+  if (!Array.isArray(acc.allies)) acc.allies = [];
+}
+
+function isPlayerAlly(acc, uid) {
+  return !!(acc && Array.isArray(acc.allies) && uid && acc.allies.some((x) => x && x.uid === uid));
+}
+
+function isNpcAlly(acc, owner) {
+  return !!(acc && Array.isArray(acc.npcAllies) && owner && acc.npcAllies.includes(owner));
+}
 
 function renderInbox(sec, ctx, rerender, items, acc) {
   if (!items.length) {
@@ -441,6 +460,36 @@ function renderInbox(sec, ctx, rerender, items, acc) {
       const seen = el('button', 'btn btn-sm', '已阅');
       seen.addEventListener('click', async () => { await markIncidentResolved(it.id); rerender(); });
       act.appendChild(seen);
+    } else if (it.type === 'alliance_offer') {
+      card.appendChild(el('div', null, '请求与你结盟：结盟后互不侵犯。接受后双方进入盟友列表。'));
+      const yes = el('button', 'btn btn-sm btn-primary', '接受');
+      const no = el('button', 'btn btn-sm', '拒绝');
+      yes.addEventListener('click', async () => {
+        if (!Array.isArray(acc.allies)) acc.allies = [];
+        if (!acc.allies.some((x) => x && x.uid === it.owner_id)) {
+          acc.allies.push({ uid: it.owner_id, name: pay.fromName || '指挥官' });
+        }
+        try { await postIncident(it.owner_id, 'alliance_accept', { fromName: acc.name || '指挥官' }); } catch (e) { /* 忽略 */ }
+        await markIncidentResolved(it.id);
+        rerender();
+      });
+      no.addEventListener('click', async () => { await markIncidentResolved(it.id); rerender(); });
+      act.append(yes, no);
+    } else if (it.type === 'alliance_accept') {
+      if (!Array.isArray(acc.allies)) acc.allies = [];
+      if (it.owner_id && !acc.allies.some((x) => x && x.uid === it.owner_id)) {
+        acc.allies.push({ uid: it.owner_id, name: pay.fromName || '指挥官' });
+      }
+      card.appendChild(el('div', null, '对方接受了结盟请求，你们现在是盟友了（互不侵犯）。'));
+      const seen = el('button', 'btn btn-sm', '已阅');
+      seen.addEventListener('click', async () => { await markIncidentResolved(it.id); rerender(); });
+      act.appendChild(seen);
+    } else if (it.type === 'alliance_break') {
+      acc.allies = (acc.allies || []).filter((x) => x && x.uid !== it.owner_id);
+      card.appendChild(el('div', null, '对方解除了盟约。'));
+      const seen = el('button', 'btn btn-sm', '已阅');
+      seen.addEventListener('click', async () => { await markIncidentResolved(it.id); rerender(); });
+      act.appendChild(seen);
     }
     card.appendChild(act);
     sec.appendChild(card);
@@ -522,6 +571,7 @@ function npcGarrison(f) {
 }
 
 async function renderPlanetGrid(grid, ctx, rerender, u, acc, query) {
+  ensureAllianceFields(acc);   // v0.2.10 结盟字段兜底
   grid.innerHTML = '';
   // v0.2.4：电脑势力星球常驻网格（查看不需登录，交互需要云账号）
   const npcs = NPC_FACTIONS.filter((f) => !query
@@ -588,12 +638,33 @@ function buildPlanetCard(p, ctx, rerender, acc) {
   top.appendChild(intel);
   card.appendChild(top);
 
+  const isAlly = isPlayerAlly(acc, p.owner_id);
+  if (isAlly) top.appendChild(el('div', 'gx-intel', '🤝 盟友：互不侵犯')); // v0.2.10
+
   const act = el('div', 'gx-card-actions');
   const tradeBtn = el('button', 'btn btn-sm btn-primary', '贸易');
   tradeBtn.addEventListener('click', () => openTradeModal(ctx, rerender, acc, p, refresh));
+  const allyBtn = el('button', 'btn btn-sm' + (isAlly ? '' : ' btn-ok'), isAlly ? '解除盟约' : '结盟');
+  allyBtn.addEventListener('click', async () => {
+    ensureAllianceFields(acc);
+    if (isAlly) {
+      acc.allies = acc.allies.filter((x) => x && x.uid !== p.owner_id);
+      try { await postIncident(p.owner_id, 'alliance_break', { fromName: acc.name || '指挥官' }); } catch (e) { /* 忽略 */ }
+      refresh();
+      return;
+    }
+    allyBtn.disabled = true; allyBtn.textContent = '已发出…';
+    try {
+      const r = await postIncident(p.owner_id, 'alliance_offer', { fromName: acc.name || '指挥官', fromUid: (cloudUser() || {}).id || '' });
+      if (!r.ok) { allyBtn.disabled = false; allyBtn.textContent = '结盟'; alert(r.reason || '发送失败'); return; }
+      allyBtn.textContent = '已发出（等对方处理）';
+    } catch (e) { allyBtn.disabled = false; allyBtn.textContent = '结盟'; }
+  });
   const atkBtn = el('button', 'btn btn-sm btn-danger', '进攻');
-  atkBtn.addEventListener('click', () => openAttackModal(ctx, rerender, acc, p, refresh));
+  if (isAlly) { atkBtn.disabled = true; atkBtn.title = '盟友不可进攻（可先解除盟约）'; }
+  else atkBtn.addEventListener('click', () => openAttackModal(ctx, rerender, acc, p, refresh));
   act.appendChild(tradeBtn);
+  act.appendChild(allyBtn);
   act.appendChild(atkBtn);
   card.appendChild(act);
   return card;
@@ -609,7 +680,9 @@ function esc(s) {
 // 电脑势力卡片 + 即时交易 / 即时进攻（v0.2.4）
 // ============================================================================
 function buildNpcCard(f, ctx, rerender, acc) {
+  ensureAllianceFields(acc);
   const st = npcStateOf(f);
+  const allied = isNpcAlly(acc, f.owner);
   const refresh = () => { if (typeof rerender === 'function') rerender(); };
   const defCls = f.defense > 2500 ? 'def-high' : 'def-ok';
   const card = el('div', 'gx-card');
@@ -619,11 +692,12 @@ function buildNpcCard(f, ctx, rerender, acc) {
   nameWrap.appendChild(el('span', 'gx-card-name', f.nameCn));
   nameWrap.appendChild(el('span', 'gx-card-code', f.code));
   line1.appendChild(nameWrap);
-  line1.appendChild(el('span', 'gx-faction', '🤖 ' + f.owner + ' · 电脑势力'));
+  line1.appendChild(el('span', 'gx-faction', '🤖 ' + f.owner + ' · 电脑势力' + (allied ? ' · 🤝 盟友' : '')));
   top.appendChild(line1);
   const info = el('div', 'gx-card-info');
   info.innerHTML = '<div>驻军战力：<b class="' + defCls + '">' + fmtNum(f.defense) + '</b></div>'
-    + '<div>金库 <b>' + fmtNum(st.ascoin) + '</b> Ascoin（战胜可掠夺 10%~25%）</div>';
+    + '<div>金库 <b>' + fmtNum(st.ascoin) + '</b> Ascoin（战胜可掠夺 10%~25%）</div>'
+    + (allied ? '<div>🤝 盟友优惠：购买价 9 折 · 互不侵犯</div>' : '');
   top.appendChild(info);
   const intel = el('div', 'gx-intel');
   intel.textContent = f.desc;
@@ -631,10 +705,19 @@ function buildNpcCard(f, ctx, rerender, acc) {
   card.appendChild(top);
 
   const act = el('div', 'gx-card-actions');
+  const allyBtn = el('button', 'btn btn-sm' + (allied ? '' : ' btn-ok'), allied ? '解除盟约' : '结盟');
+  allyBtn.addEventListener('click', () => {
+    ensureAllianceFields(acc);
+    if (allied) acc.npcAllies = acc.npcAllies.filter((x) => x !== f.owner);
+    else acc.npcAllies.push(f.owner);
+    refresh();
+  });
   const tradeBtn = el('button', 'btn btn-sm btn-primary', '贸易');
   tradeBtn.addEventListener('click', () => openNpcTradeModal(ctx, f, refresh));
   const atkBtn = el('button', 'btn btn-sm btn-danger', '进攻');
-  atkBtn.addEventListener('click', () => openNpcAttackModal(ctx, rerender, acc, f, refresh));
+  if (allied) { atkBtn.disabled = true; atkBtn.title = '盟友不可进攻（可先解除盟约）'; }
+  else atkBtn.addEventListener('click', () => openNpcAttackModal(ctx, rerender, acc, f, refresh));
+  act.appendChild(allyBtn);
   act.appendChild(tradeBtn);
   act.appendChild(atkBtn);
   card.appendChild(act);
@@ -646,8 +729,8 @@ function openNpcTradeModal(ctx, f, refresh) {
   const openModal = ctx.openModal;
   if (!openModal) return;
   const st = npcStateOf(f);
-  const wrap = el('div');
   const acc = currentAccount();
+  const allied = isNpcAlly(acc, f.owner);   // v0.2.10：盟友购买价 9 折
   const inst = getPlanetInstance((acc && acc.homePlanetCode) || 'syl');
 
   wrap.appendChild(el('div', 'section-title', '向 ' + f.owner + ' 购买（即时成交）'));
@@ -656,7 +739,7 @@ function openNpcTradeModal(ctx, f, refresh) {
   for (const m in (f.sell || {})) {
     const o = document.createElement('option');
     o.value = m;
-    o.textContent = m + '（剩 ' + fmtNum(st.stock[m] || 0) + ' · ' + fmtNum(f.sell[m][1]) + '/件）';
+    o.textContent = m + '（剩 ' + fmtNum(st.stock[m] || 0) + ' · ' + fmtNum(Math.round(f.sell[m][1] * (allied ? 0.9 : 1))) + '/件）';
     buySel.appendChild(o);
   }
   const buyQty = document.createElement('input');
@@ -665,7 +748,7 @@ function openNpcTradeModal(ctx, f, refresh) {
   const buyMsg = el('span', 'muted');
   buyBtn.addEventListener('click', () => {
     const m = buySel.value;
-    const price = f.sell[m][1];
+    const price = Math.max(1, Math.round(f.sell[m][1] * (allied ? 0.9 : 1)));
     const qty = Math.max(1, Math.floor(Number(buyQty.value) || 0));
     const avail = st.stock[m] || 0;
     const take = Math.min(qty, avail);
@@ -721,6 +804,11 @@ function openNpcTradeModal(ctx, f, refresh) {
 
 /** NPC 即时进攻：钢铁雄心式多回合对驻军；胜掠夺金库，败按战损解散军队 */
 function openNpcAttackModal(ctx, rerender, acc, f, refresh) {
+  // v0.2.10：盟友不可进攻
+  if (isNpcAlly(acc, f.owner)) {
+    alert('「' + f.owner + '」是你的盟友，不可进攻（可先解除盟约）。');
+    return;
+  }
   const openModal = ctx.openModal;
   if (!openModal) return;
   const st = npcStateOf(f);
@@ -832,6 +920,11 @@ function openTradeModal(ctx, rerender, acc, planet, after) {
 }
 
 function openAttackModal(ctx, rerender, acc, planet, after) {
+  // v0.2.10：盟友不可进攻
+  if (isPlayerAlly(acc, planet && planet.owner_id)) {
+    alert('「' + (planet.owner_name || '该指挥官') + '」是你的盟友，不可进攻（可先解除盟约）。');
+    return;
+  }
   const openModal = ctx.openModal;
   if (!openModal) return;
   const myPower = myDefensePower(acc);   // 同一口径：全部舰队 + 军队 + 驻防

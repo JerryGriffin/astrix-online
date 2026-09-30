@@ -9,9 +9,10 @@
 //   故跨玩家在线竞价暂以本地 NPC 兜底（在线/离线同逻辑）；tickAuctions 预留 cloud 同步钩子，
 //   若日后云端提供公共板即可无缝接入（见 opts.syncCloud）。
 
-import { isEquipmentKey, MARKET_FEE, ascoinOf } from './shop.js?v=20.12';
-import { ownedOf, spendOwned, getPlanetInstance } from './state.js?v=20.12';
-import { equipmentList } from './shipyard.js?v=20.12';
+import { isEquipmentKey, MARKET_FEE, ascoinOf, priceOf, shopStateOf } from './shop.js?v=20.13';
+import { ownedOf, spendOwned, getPlanetInstance } from './state.js?v=20.13';
+import { equipmentList } from './shipyard.js?v=20.13';
+import { MATERIALS } from '../data/materials.js?v=20.13';
 
 const AUCTION_DEFAULT_SEC = 15;     // 竞价窗口（秒）
 const AUCTION_FEE = 0.05;           // 卖家佣金（成交额的 5% 归平台）
@@ -172,13 +173,29 @@ function settle(acc, inst, a) {
   const targetInst = (a.planetCode && typeof getPlanetInstance === 'function')
     ? getPlanetInstance(a.planetCode) : inst;
   if (a.topBid > 0 && a.topBidder) {
-    // 成交：卖家获得（成交额 ×(1-佣金)）
-    const net = Math.round(a.topBid * (1 - AUCTION_FEE));
-    acc.ascoin = (Number(acc.ascoin) || 0) + net;
-    // 资产已被托管（escrow 时已移出），中标方（本地为 NPC）取得资产 → 不返还
+    const npcSeller = a.sellerId && String(a.sellerId).startsWith('npc_');
+    if (npcSeller) {
+      // v0.2.10 NPC 挂单：买家（本地玩家）支付货款，货由 restore() 发入玩家星球
+      acc.ascoin = (Number(acc.ascoin) || 0) - a.topBid;
+      restore(acc, targetInst, a.type, a.key, a.qty, a.asset);
+      acc.shopAuctionLog.unshift({
+        type: 'bought_npc', label: a.label, qty: a.qty, price: a.topBid,
+        buyer: a.topBidderName || '匿名', seller: a.sellerName || '电脑势力', at: Date.now(),
+      });
+    } else {
+      // 成交：卖家获得（成交额 ×(1-佣金)）
+      const net = Math.round(a.topBid * (1 - AUCTION_FEE));
+      acc.ascoin = (Number(acc.ascoin) || 0) + net;
+      // 资产已被托管（escrow 时已移出），中标方（本地为 NPC）取得资产 → 不返还
+      acc.shopAuctionLog.unshift({
+        type: 'sold', label: a.label, qty: a.qty, price: a.topBid,
+        net, buyer: a.topBidderName || '匿名', at: Date.now(),
+      });
+    }
+  } else if (a.sellerId && String(a.sellerId).startsWith('npc_')) {
+    // NPC 挂单流拍：无货可退，仅记日志移除
     acc.shopAuctionLog.unshift({
-      type: 'sold', label: a.label, qty: a.qty, price: a.topBid,
-      net, buyer: a.topBidderName || '匿名', at: Date.now(),
+      type: 'noflow', label: a.label, qty: a.qty, at: Date.now(),
     });
   } else {
     // 流拍：退还资产给卖家（回到来源星球）
@@ -211,12 +228,13 @@ export function tickAuctions(acc, dt, opts) {
         if (i >= 0) acc.shopAuctions.splice(i, 1);
         continue;
       }
-      // NPC 兜底出价：在窗口内持续抬高，逼近 npcCeiling
+      // NPC 兜底出价：在窗口内持续抬高，逼近 npcCeiling（v0.2.10：NPC 自己的挂单不参与）
+      const npcSeller = a.sellerId && String(a.sellerId).startsWith('npc_');
       const remainMs = a.endsAt - Date.now();
       const remainSec = remainMs / 1000;
       // 越临近结束出价越积极；但不超过上限
       const p = Math.min(0.9, 0.25 + (1 - Math.min(1, remainSec / a.durationSec)) * 0.5);
-      if (a.topBid < a.npcCeiling && Math.random() < p) {
+      if (!npcSeller && a.topBid < a.npcCeiling && Math.random() < p) {
         const next = Math.min(a.npcCeiling, Math.round(a.topBid > 0 ? a.topBid * (1.1 + Math.random() * 0.25) : a.minBid));
         if (next > a.topBid) {
           a.topBid = next;
@@ -229,6 +247,51 @@ export function tickAuctions(acc, dt, opts) {
         try { opts.syncCloud(a); } catch (e) { /* 忽略云端同步错误 */ }
       }
     }
+  }
+}
+
+/**
+ * NPC 拍卖挂单生成器（v0.2.10）：拍卖行实时出现电脑势力的挂单，玩家竞价拿货。
+ * 每 60~120 秒尝试一次；活跃拍卖 ≥ 8 时不再生成；时长 3~8 分钟。
+ * 起拍价按市价 ×0.7~1.0；无 NPC 自己竞价，流拍直接移除。
+ */
+const NPC_AUCTION_SELLERS = ['开拓者商会', '商队自由港', '拾荒团', '皇家堡垒'];
+const NPC_AUCTION_ACTIVE_CAP = 8;
+let _npcAuctionNextAt = 0;
+
+export function tickNpcAuctionSpawner(acc) {
+  if (!acc) return;
+  ensureAuctions(acc);
+  if (Date.now() < _npcAuctionNextAt) return;
+  _npcAuctionNextAt = Date.now() + (60 + Math.random() * 60) * 1000;
+  const active = acc.shopAuctions.filter((x) => x && x.status === 'active');
+  if (active.length >= NPC_AUCTION_ACTIVE_CAP) return;
+  // 首次（池里还没有 NPC 单）连发 2 单，避免新会话空荡
+  const npcActive = active.filter((x) => x.sellerId && String(x.sellerId).startsWith('npc_')).length;
+  const spawnN = npcActive === 0 ? 2 : 1;
+  const pool = MATERIALS.filter((m) => m.id !== 'gold');
+  for (let i = 0; i < spawnN && active.length + i < NPC_AUCTION_ACTIVE_CAP; i++) {
+    const m = pool[Math.floor(Math.random() * pool.length)];
+    const qty = 10 + Math.floor(Math.random() * 190);
+    const unit = Math.max(1, priceOf(acc, m.nameCn));
+    const minBid = Math.max(1, Math.round(unit * qty * (0.7 + Math.random() * 0.3)));
+    const dur = 180 + Math.floor(Math.random() * 300);
+    const seller = NPC_AUCTION_SELLERS[Math.floor(Math.random() * NPC_AUCTION_SELLERS.length)];
+    acc.shopAuctions.push({
+      id: genAuctionId(),
+      sellerId: 'npc_' + seller,
+      sellerName: seller,
+      type: 'resource', key: m.nameCn, label: m.nameCn, qty,
+      planetCode: acc.homePlanetCode || null,
+      minBid,
+      topBid: 0, topBidder: null, topBidderName: null,
+      endsAt: Date.now() + dur * 1000,
+      durationSec: dur,
+      createdAt: Date.now(),
+      status: 'active',
+      asset: null,
+      npcCeiling: 0,   // NPC 不拍自己的单
+    });
   }
 }
 

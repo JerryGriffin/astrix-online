@@ -7,14 +7,14 @@
 // 运输：本模块只负责「下单与结算」；**货必须由运输船运**（运输判定在 core/fleet.js，
 //   订单上带 cells 供其判断载货格数是否够）。
 
-import { MATERIALS } from '../data/materials.js?v=20.12';
-import { ownedOf, spendOwned, currentAccount, STATE } from './state.js?v=20.12';
-import { ensureEntry } from './production.js?v=20.12';
-import { ASCOIN_PER_GOLD } from './currency.js?v=20.12';
+import { MATERIALS } from '../data/materials.js?v=20.13';
+import { ownedOf, spendOwned, currentAccount, STATE } from './state.js?v=20.13';
+import { ensureEntry } from './production.js?v=20.13';
+import { ASCOIN_PER_GOLD } from './currency.js?v=20.13';
 // v0.1.2 R9：装备类交易键走 partId@材料（与 v0.1.1 贡品契约同口径），
 // 需能识别部件 id 并估值，故引入部件数据表（PART_BY_ID）与 resolvePart。
-import { PART_BY_ID } from '../data/ship_parts.js?v=20.12';
-import { resolvePart } from './shipyard.js?v=20.12';
+import { PART_BY_ID } from '../data/ship_parts.js?v=20.13';
+import { resolvePart } from './shipyard.js?v=20.13';
 
 const MAT_BY_NAME = Object.fromEntries(MATERIALS.map((m) => [m.nameCn, m]));
 
@@ -75,7 +75,7 @@ function basePriceOf(m) {
 // 商店星仓库（v0.2.6 股市）：每种物资的商店库存。买=从仓库减、卖=进仓库增；
 // 仓库随心跳缓慢回补到基线，保证市场长期有供给。价格随成交实时涨跌（买涨卖跌）+ 自然回归。
 // ============================================================================
-function warehouseBaseline(m) {
+export function warehouseBaseline(m) {
   const cat = categoryOf(m);
   if (m.id === 'gold') return 1e9;
   if (m.id === 'eridium') return 200;

@@ -1,8 +1,8 @@
 // 开始界面：标题、离线/在线模式、账号选择、各次要入口模态层（Astrix）
-import {  STATE, createAccount, switchAccount, deleteAccount, currentAccount, START_MODES, switchPool  } from '../core/state.js?v=20.12';
-import { fmtNum, fmtTime } from '../core/format.js?v=20.12';
+import {  STATE, createAccount, switchAccount, deleteAccount, currentAccount, START_MODES, switchPool  } from '../core/state.js?v=20.13';
+import { fmtNum, fmtTime } from '../core/format.js?v=20.13';
 // 版本号与更新日志的唯一来源：任何地方要显示版本都从这里取，改版本只改 js/version.js 一处
-import { VERSION, VERSIONS } from '../version.js?v=20.12';
+import { VERSION, VERSIONS } from '../version.js?v=20.13';
 
 // 创建元素的小工具
 function el(tag, cls, text) {
@@ -163,7 +163,15 @@ function renderAccountList(body, ctx, pool) {
 }
 
 // 新建存档：用模态内联表单替代 window.prompt（更稳健、可被自动化驱动）
-// v0.2.5：在线池只允许「初登星球」开局（漫溯深空仅限离线模式）
+// v0.2.10：开发者模式（设置里输入密码 astrix 开启；开启后在线模式可选漫溯深空开局）
+function devModeOn() {
+  try { return window.localStorage.getItem('astrix_dev') === '1'; } catch (e) { return false; }
+}
+function setDevMode(on) {
+  try { window.localStorage.setItem('astrix_dev', on ? '1' : '0'); } catch (e) { /* 忽略 */ }
+}
+
+// v0.2.5：在线池只允许「初登星球」开局（漫溯深空仅限离线模式；开发者模式可解鎖）
 function renderNewSaveForm(body, ctx, pool) {
   const isOnline = pool === 'online';
   const form = el('div', 'acc-new-form');
@@ -178,7 +186,8 @@ function renderNewSaveForm(body, ctx, pool) {
   const modeRow = el('div', 'acc-mode-row');
   const modeTip = el('p', 'acc-new-tip muted', '');
   let mode = 'fresh';
-  if (!isOnline) {
+  if (!isOnline || devModeOn()) {
+    // v0.2.10：开发者模式下在线也可选漫溯深空
     const modeBtns = {};
     for (const m of START_MODES) {
       const b = el('button', 'btn acc-mode-btn' + (m.id === mode ? ' active' : ''), m.nameCn);
@@ -192,9 +201,9 @@ function renderNewSaveForm(body, ctx, pool) {
       modeBtns[m.id] = b;
       modeRow.appendChild(b);
     }
-    modeTip.textContent = START_MODES[0].desc;
+    modeTip.textContent = START_MODES[0].desc + (isOnline ? '（开发者模式：在线已解锁）' : '');
   } else {
-    modeTip.textContent = '在线模式仅支持「初登星球」开局（漫溯深空仅限离线模式）。';
+    modeTip.textContent = '在线模式仅支持「初登星球」开局（漫溯深空仅限离线模式；开发者模式可解鎖）。';
   }
 
   const add = el('button', 'btn btn-primary', '+ 新建存档');
@@ -207,8 +216,8 @@ function renderNewSaveForm(body, ctx, pool) {
       input.focus();
       return;
     }
-    // v0.1.0：按所选开局模式建档（'deep' = 漫溯深空）；v0.2.5：在线池恒 fresh
-    createAccount(name, isOnline ? 'fresh' : mode);
+    // v0.1.0：按所选开局模式建档（'deep' = 漫溯深空）；v0.2.10：在线 + 开发者模式也可 deep
+    createAccount(name, mode);
     if (isOnline) {
       if (typeof ctx.enterOnlineGame === 'function') ctx.enterOnlineGame();
       else ctx.enterOffline();
@@ -253,8 +262,8 @@ function openTips(ctx) {
     '<b>飞船编入</b>　研究**超级军用装备 M3** 后，可把现役飞船编入军队作旗舰：火力 +60% / 防护 +40% / 战力 +25%；一艘船只能编入军队**或**舰队（互斥），每军限 1 艘。',
     '<b>舰队</b>　造出船坞才能编队：探索 / 低空防卫 / 巡航 / 运输都是持续任务，完成后自动结算；防卫巡航能给母星加防御。',
     '<b>星际股市</b>　商店星每种资源随时买卖，价格随成交**买涨卖跌**并自然回归；原矿类极度贬值，精加工品才值钱——低级货建议先加工再卖。',
-    '<b>拍卖行</b>　出售资产（资源 / 装备 / 飞船）的唯一途径：15 秒竞价，价高者得，流拍原样退还。离线由「星际买家」NPC 兜底出价。',
-    '<b>在线模式</b>　邮箱验证码登录，存档按邮箱分开、登录一次永久免登；星系里能浏览其他玩家星球、贸易与交战。GitHub 版与正式版同属一个星系。',
+    '<b>拍卖行</b>　出售资产（资源 / 装备 / 飞船）的唯一途径：15 秒竞价，价高者得，流拍原样退还。离线由「星际买家」NPC 兜底出价；电脑势力也会实时挂单，记得去捡漏。',
+    '<b>在线模式</b>　邮箱验证码登录，存档按邮箱分开、登录一次永久免登；星系无迷雾：所有玩家与电脑势力星球全部可见，可贸易、进攻或**结盟**（互不侵犯 + 盟友购买价 9 折）。GitHub 版与正式版同属一个星系；**商店星仓库全服共用**，所有人的买卖实时增减同一个池子。',
     '<b>离线结算</b>　关屏也在推进，回来一次性结算；收益上限 12 小时，长挂不如定时收一次。',
   ];
   const body = document.createElement('div');
@@ -334,6 +343,46 @@ function openSettings(ctx) {
     row.append(el('span', 'set-label', label), control);
     body.appendChild(row);
   });
+
+  // v0.2.10：开发者模式（密码 astrix；开启后在线模式可选漫溯深空开局）
+  {
+    const row = el('div', 'set-row');
+    row.append(el('span', 'set-label', '开发者模式'));
+    const devWrap = el('div');
+    devWrap.style.cssText = 'display:flex;gap:8px;align-items:center;flex-wrap:wrap;';
+    if (devModeOn()) {
+      const st = el('span', null, '已开启 ✅');
+      st.style.color = '#9FE1CB';
+      const off = el('button', 'btn btn-sm btn-danger', '关闭');
+      off.style.minHeight = '40px';
+      off.onclick = () => { setDevMode(false); off.replaceWith(el('span', 'muted', '已关闭')); };
+      devWrap.append(st, off);
+    } else {
+      const pwd = document.createElement('input');
+      pwd.type = 'password';
+      pwd.placeholder = '输入密码';
+      pwd.className = 'acc-new-input';
+      pwd.style.maxWidth = '140px';
+      pwd.style.minHeight = '40px';
+      const ok = el('button', 'btn btn-sm', '验证开启');
+      ok.style.minHeight = '40px';
+      const msg = el('span', 'muted');
+      ok.onclick = () => {
+        if (pwd.value === 'astrix') {
+          setDevMode(true);
+          msg.textContent = '已开启：在线模式现可选择漫溯深空开局。';
+          msg.style.color = '#9FE1CB';
+        } else {
+          msg.textContent = '密码错误。';
+          msg.style.color = '#f09595';
+        }
+      };
+      pwd.addEventListener('keydown', (e) => { if (e.key === 'Enter') ok.onclick(); });
+      devWrap.append(pwd, ok, msg);
+    }
+    row.appendChild(devWrap);
+    body.appendChild(row);
+  }
 
   ctx.openModal({ title: '设置', body });
 }

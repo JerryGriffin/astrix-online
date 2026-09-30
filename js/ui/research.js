@@ -9,14 +9,14 @@
 // 「船上设施」已从科技树移到「设施」子分类，科技树里只保留解锁它们的节点。
 //
 // 研究点存放在账号对象上（acc.researchPoints / acc.tech / acc.upgrades）。
-import { TECHS, TECH_BY_ID, BRANCHES, techsByTier, canResearch, missingPrereqs, missingBuilding, facilityTechs } from '../data/techs.js?v=20.12';
-import { researchTech, buyUpgrade, currentAccount, getPlanetInstance, RESEARCH_UNIT } from '../core/state.js?v=20.12';
-import { UPGRADES, upgradeCost, upgradeMul, upgradeFactorAt } from '../data/upgrades.js?v=20.12';
-import { BUILDING_BY_ID } from '../data/buildings.js?v=20.12';
-import { FACILITIES, MATERIAL_SLOTS, DEFAULT_MATERIAL, isPartUnlocked } from '../data/ship_parts.js?v=20.12';
-import { materialMul, resolvePart } from '../core/shipyard.js?v=20.12';
-import { fmtNum, fmtTime, fmtRate } from '../core/format.js?v=20.12';
-import { jobsOfBuilding, jobOutput } from '../core/population.js?v=20.12';
+import { TECHS, TECH_BY_ID, BRANCHES, techsByTier, canResearch, missingPrereqs, missingBuilding, facilityTechs } from '../data/techs.js?v=20.13';
+import { researchTech, buyUpgrade, currentAccount, getPlanetInstance, RESEARCH_UNIT } from '../core/state.js?v=20.13';
+import { UPGRADES, upgradeCost, upgradeMul, upgradeFactorAt } from '../data/upgrades.js?v=20.13';
+import { BUILDING_BY_ID } from '../data/buildings.js?v=20.13';
+import { FACILITIES, MATERIAL_SLOTS, DEFAULT_MATERIAL, isPartUnlocked } from '../data/ship_parts.js?v=20.13';
+import { materialMul, resolvePart } from '../core/shipyard.js?v=20.13';
+import { fmtNum, fmtTime, fmtRate } from '../core/format.js?v=20.13';
+import { jobsOfBuilding, jobOutput } from '../core/population.js?v=20.13';
 
 function esc(s) {
   return String(s).replace(/[&<>"']/g, (c) => (

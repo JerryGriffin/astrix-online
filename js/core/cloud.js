@@ -19,7 +19,7 @@
 //   → 「打别人 / 贸易别人」= 插入一条 target_uid 指向对方的事件；
 //     对方上线后在收件箱本地结算，并把回执（战报/贸易结算）作为新事件发回。
 
-import { CACHE_TAG } from '../version.js?v=20.12';
+import { CACHE_TAG } from '../version.js?v=20.13';
 
 const CLOUD_ENDPOINT = 'https://astrix.app.workbuddy.host';
 const CLOUD_PUBLISHABLE_KEY = 'wbpk_a83qn1S1YtnqmhL6Wb2oF3_dIuTVZ1qLa1Ph94JTqQhmspVf2q27z14';
@@ -424,4 +424,43 @@ export async function markIncidentResolved(id) {
   }
   if (!(await bridgeEnsureReady())) return { ok: false, reason: state.error || '云服务不可用' };
   return bridgeRpc('markIncidentResolved', [id]);
+}
+
+// ============================================================================
+// 全服共享商店星仓库（v0.2.10：shop_warehouse 表，所有登录玩家可读写）
+//   * 在线模式下商店星仓库不再各自独立 —— 任何玩家的买卖都会增减同一个池子
+//   * 读写模型：拉全量 + 按 mat upsert（read-modify-write，末写胜出；并发漂移对游戏可接受）
+// ============================================================================
+export async function fetchSharedWarehouse() {
+  if (isNative()) {
+    if (!(await nativeEnsureReady()) || !db()) return { ok: false, reason: state.error || '云服务不可用', rows: [] };
+    try {
+      const { data, error } = await db().from('shop_warehouse').select('*').limit(500);
+      if (error) return { ok: false, reason: error.message || '读取共享仓库失败', rows: [] };
+      return { ok: true, rows: Array.isArray(data) ? data : [] };
+    } catch (e) { return { ok: false, reason: (e && e.message) || String(e), rows: [] }; }
+  }
+  if (!(await bridgeEnsureReady())) return { ok: false, reason: state.error || '云服务不可用', rows: [] };
+  return bridgeRpc('fetchSharedWarehouse');
+}
+
+export async function upsertSharedWarehouseRow(mat, qty) {
+  const m = String(mat || '');
+  const q = Number(qty) || 0;
+  if (!m) return { ok: false, reason: '缺少物资名' };
+  if (isNative()) {
+    if (!(await nativeEnsureReady()) || !db()) return { ok: false, reason: state.error || '云服务不可用' };
+    try {
+      const upd = await db().from('shop_warehouse')
+        .update({ qty: q, updated_at: new Date().toISOString() }).eq('mat', m).select();
+      if (upd.error) return { ok: false, reason: upd.error.message || '更新共享仓库失败' };
+      if (Array.isArray(upd.data) && upd.data.length > 0) return { ok: true, updated: true };
+      const ins = await db().from('shop_warehouse')
+        .insert({ mat: m, qty: q, updated_at: new Date().toISOString() }).select();
+      if (ins.error) return { ok: false, reason: ins.error.message || '写入共享仓库失败' };
+      return { ok: true, created: true };
+    } catch (e) { return { ok: false, reason: (e && e.message) || String(e) }; }
+  }
+  if (!(await bridgeEnsureReady())) return { ok: false, reason: state.error || '云服务不可用' };
+  return bridgeRpc('upsertSharedWarehouseRow', [m, q]);
 }
