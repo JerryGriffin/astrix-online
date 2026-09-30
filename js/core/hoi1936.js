@@ -10,11 +10,11 @@
 //   * HOI4 风格国策（三支六策，按天推进）               → focus 系列
 //   * 海域（制海权争夺 + 海战）                          → sea 系列
 import { HOI_NATIONS, HOI_BY_ID, HOI_DEEP, HOI_SEAS, ARMY_MEN, popOf, BLOC_NAME, HOI_SCENARIO_ID,
-  workforceOf, ARMY_POWER_PER_DIV, NAVY_MUL, GEAR_PARTS, SHIP_NAMES, ARMY_BP_NAME, HOI_BG, SHIP_CLASSES, POST_WAR_OPTIONS, GER_PUPPETS, ARMY_BP_LINE, warshipTonnageOf, WAR_LINE, EXTRA_FOCUS_TEMPLATE, JUSTIFY_DAYS } from '../data/hoi1936.js?v=30.1';
-import { BUILDING_BY_ID } from '../data/buildings.js?v=30.1';
-import { ARMY_BP_BY_ID, ARMY_BLUEPRINTS } from '../data/army_parts.js?v=30.1';
-import { JOBS_BY_BUILDING, assignWorkers, jobCapacity, getAvailable } from './population.js?v=30.1';
-import { ELITE_DIVISIONS, ELITE_MUL } from '../data/hoi1936.js?v=30.1';
+  workforceOf, ARMY_POWER_PER_DIV, NAVY_MUL, GEAR_PARTS, SHIP_NAMES, ARMY_BP_NAME, HOI_BG, SHIP_CLASSES, POST_WAR_OPTIONS, GER_PUPPETS, ARMY_BP_LINE, warshipTonnageOf, WAR_LINE, EXTRA_FOCUS_TEMPLATE, JUSTIFY_DAYS, NATION_SEA_REGION, SEA_INITIAL_CONTROL, NAVAL_INVASION_CONTROL } from '../data/hoi1936.js?v=31.1';
+import { BUILDING_BY_ID } from '../data/buildings.js?v=31.1';
+import { ARMY_BP_BY_ID, ARMY_BLUEPRINTS } from '../data/army_parts.js?v=31.1';
+import { JOBS_BY_BUILDING, assignWorkers, jobCapacity, getAvailable } from './population.js?v=31.1';
+import { ELITE_DIVISIONS, ELITE_MUL } from '../data/hoi1936.js?v=31.1';
 
 // 依赖注入（避免与 state.js / production.js 形成循环导入）
 let _getInst = null;
@@ -148,6 +148,7 @@ function applyFocusEffect(acc, eff) {
   }
   if (eff.navy) addNavyShips(acc, eff.navy);
   if (eff.justifyMul) b.justifyMul = (b.justifyMul || 1) * eff.justifyMul;
+  if (eff.justifyAgainst) { try { startJustify(acc, eff.justifyAgainst); } catch (e) { /* 忽略 */ } }
 }
 
 // ============================================================================
@@ -157,9 +158,51 @@ function applyFocusEffect(acc, eff) {
 export function ensureSeas(acc) {
   if (!acc) return [];
   if (!Array.isArray(acc.hoiSeas) || !acc.hoiSeas.length) {
-    acc.hoiSeas = HOI_SEAS.map((s) => ({ id: s.id, nameCn: s.nameCn, base: s.base, control: 0.5, lastResult: null }));
+    acc.hoiSeas = HOI_SEAS.map((s) => {
+      const init = (SEA_INITIAL_CONTROL[s.id] || {});
+      const mine = Number(init[acc.nation]) || 0;    // 本国开局既有制海权（英国控制英吉利海峡）
+      const best = Object.keys(init).reduce((m, k) => Math.max(m, Number(init[k]) || 0), 0);
+      return {
+        id: s.id, nameCn: s.nameCn, base: s.base, region: s.region,
+        control: mine || (best > 0 ? Math.max(0.05, 0.35 - best * 0.3) : 0.5),
+        aiMax: best,
+        lastResult: null,
+      };
+    });
   }
   return acc.hoiSeas;
+}
+
+/** 该国能否在该海域行动（欧洲国家只能抢欧洲海域…） */
+export function canSailIn(acc, seaId) {
+  const sea = HOI_SEAS.find((x) => x.id === seaId);
+  if (!sea) return false;
+  const regions = NATION_SEA_REGION[acc && acc.nation] || ['europe'];
+  return regions.indexOf(sea.region) >= 0;
+}
+
+/** 该海域里「非我方、非盟友」国家的海上实力（AI 巡航压力） */
+export function seaRivals(acc, seaId) {
+  const sea = HOI_SEAS.find((x) => x.id === seaId);
+  if (!sea) return 0;
+  const allied = Array.isArray(acc.npcAllies) ? acc.npcAllies : [];
+  let sum = 0;
+  for (const n of HOI_NATIONS) {
+    if (n.id === acc.nation) continue;
+    if (allied.indexOf(n.nameCn) >= 0) continue;
+    if ((NATION_SEA_REGION[n.id] || []).indexOf(sea.region) < 0) continue;
+    const init = ((SEA_INITIAL_CONTROL[seaId] || {})[n.id]) || 0;
+    sum += (n.navy * 20 + n.ic * 3) * (1 + init);
+  }
+  return sum;
+}
+
+/** 登陆门槛：跨海进攻需该战区制海权 ≥ NAVAL_INVASION_CONTROL */
+export function canInvadeFrom(acc, seaId) {
+  const sea = ensureSeas(acc).find((x) => x.id === seaId);
+  if (!sea) return { ok: true };
+  if (sea.control >= NAVAL_INVASION_CONTROL) return { ok: true, control: sea.control };
+  return { ok: false, reason: '登陆需要制海权 ≥ ' + Math.round(NAVAL_INVASION_CONTROL * 100) + '%（' + sea.nameCn + ' 当前 ' + Math.round(sea.control * 100) + '%）' };
 }
 
 /** 敌方海上压力：与我方交战国家（含阵营）的海军实力合计 */
@@ -179,8 +222,12 @@ export function contestSea(acc, seaId, myNavyStr) {
   const seas = ensureSeas(acc);
   const sea = seas.find((s) => s.id === seaId);
   if (!sea) return { ok: false, reason: '未知海域' };
+  if (!canSailIn(acc, seaId)) {
+    return { ok: false, reason: '本国海军无法在该海域行动（该海域不属于本国作战区域）' };
+  }
   const mine = Math.max(0, Number(myNavyStr) || 0);
-  const foe = enemySeaPressure(acc) * (0.5 + Math.random() * 0.6);
+  // v0.3.1：敌方压力 = 该海域内竞争国家（含 AI 巡航）的实力 + 其既有制海权
+  const foe = (seaRivals(acc, seaId) + (Number(sea.aiMax) || 0) * 300) * (0.6 + Math.random() * 0.5);
   const ratio = mine / Math.max(1, mine + foe);
   // 制海权向战果比例靠拢（每轮推进 30%）
   sea.control = Math.max(0, Math.min(1, sea.control + (ratio - sea.control) * 0.3));
@@ -476,8 +523,9 @@ export function setupLines(inst, nation) {
   ];
   for (const L of MUST_LINES) {
     if (!plan.some((x) => x.buildingId === L.buildingId && x.recipeId === L.recipeId)) {
-      // 钢 / 碳 / 铝合金等基础资源线给足人力，避免跟不上消耗
-      plan.push({ buildingId: L.buildingId, recipeId: L.recipeId, workers: 460 });
+      // 钢 / 碳 / 铝合金等基础资源线给足人力（碳尤其吃紧 → 额外加人）
+      const isCarbon = L.recipeId === 'r_furnace_carbon' || L.recipeId === 'r_furnace_wood';
+      plan.push({ buildingId: L.buildingId, recipeId: L.recipeId, workers: isCarbon ? 900 : 520 });
     }
   }
   // ①b 高工业国家（ic ≥ 40）：高炉各类矿 + 全部化工复合资源铺线，避免缺料
@@ -673,7 +721,28 @@ export function repairScenarioEstates(acc) {
     }
     // 被长期拖垮的幸福度：给一个可恢复的起点（不直接拉满，保留博弈空间）
     if (!(Number(inst.pop.happiness) > 0.55)) inst.pop.happiness = 0.72;
+    try { applyInfiniteReserve(inst); } catch (e) { /* v0.3.1：老档储量补 ∞ */ }
   }
+  // v0.3.1：老档舰队自愈 —— 旧代码造的战舰缺字段（飞船页打不开）：补齐字段 + 史实名
+  try {
+    const nation = HOI_BY_ID[acc.nation];
+    if (nation) {
+      const classes = SHIP_CLASSES[nation.id] || [];
+      let i2 = 0;
+      for (const sh of (acc.ships || [])) {
+        if (!sh) continue;
+        if (classes.length) { sh.nameCn = classes[i2 % classes.length] + ' ' + (i2 + 1); if (!sh.shipClass) sh.shipClass = classes[i2 % classes.length]; }
+        if (!sh.blueprintId) sh.blueprintId = (acc.blueprints && acc.blueprints[0] && acc.blueprints[0].id) || 'bp_scout';
+        if (sh.mark == null) sh.mark = 1;
+        if (!sh.parts) sh.parts = {};
+        if (sh.capacity == null) sh.capacity = 0;
+        if (!sh.state) sh.state = { fuelMol: 2000 };
+        if (!(Number(sh.strength) > 0)) sh.strength = Math.round(warshipTonnageOf(sh.shipClass || '') * 12);
+        if (!sh.kind) sh.kind = 'warship';
+        i2++;
+      }
+    }
+  } catch (e) { /* 忽略 */ }
   return fixed;
 }
 

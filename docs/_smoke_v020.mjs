@@ -1,7 +1,7 @@
 // v0.2.0 浏览器冒烟：军队 tab（蓝图/组装线）+ 星际 tab（云服务降级）端到端
 // 复用 _smoke_v011.mjs 脚手架：本地静态服务 + msedge 无头。
 // 注意：step() 回调在 Node 侧执行，不能在里面用 document/window；
-//       要在页面里改状态，用 page.evaluate + 动态 import('/js/core/state.js?v=30.1')。
+//       要在页面里改状态，用 page.evaluate + 动态 import('/js/core/state.js?v=31.1')。
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -107,8 +107,8 @@ step('无船坞时军队 tab 恒显示，星际/星球选择不出现（v0.2.4�
 
 // ---- 授予科技 + 造船坞/制造车间/军营 + 注入军事装备 → 重进星球重建 tab ----
 await page.evaluate(async () => {
-  const S = await import('/js/core/state.js?v=30.1');
-  const Y = await import('/js/core/shipyard.js?v=30.1');
+  const S = await import('/js/core/state.js?v=31.1');
+  const Y = await import('/js/core/shipyard.js?v=31.1');
   const acc = S.currentAccount();
   acc.tech = ['t_e1', 't_e2', 't_e3', 't_e4', 't_m1', 't_m2', 't_m3', 't_m4'];
   const inst = S.getPlanetInstance('syl');

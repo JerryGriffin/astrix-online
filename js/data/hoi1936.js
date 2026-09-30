@@ -36,7 +36,7 @@ export const HOI_NATIONS = [
   },
   {
     id: 'sov', nameCn: '苏维埃联盟', nameEn: 'USSR', capital: '莫斯科', flag: '🟥',
-    popM: 168.0, ic: 76, divisions: 92, navy: 14, airforce: 40,
+    popM: 168.0, ic: 58, divisions: 92, navy: 14, airforce: 40,
     sell: { '钢': [4200, 19], '铁': [3000, 13], '陶瓷': [900, 22], '有机质': [3200, 6] },
     buys: { '铜': 32, '铝': 28, '橡胶': 48, '石墨烯': 1200 },
     colony: { name: '中亚边区', typeId: '苔原行星' },
@@ -223,7 +223,7 @@ export const HOI_DEEP = {
     ],
   },
   sov: {
-    armyName: '步兵军', atkMul: 1.18, defMul: 1.22, bloc: 'comintern',
+    armyName: '步兵军', atkMul: 0.88, defMul: 1.05, bloc: 'comintern',
     fleets: [{ nameCn: '波罗的海舰队', share: 0.6 }, { nameCn: '黑海舰队', share: 0.4 }],
     lines: [
       { buildingId: 'refinery', recipeId: 'r_refine_steel', workers: 16 },
@@ -369,19 +369,35 @@ export const HOI_DEEP = {
 
 // 海域（HOI4 风格战区海域；navyStr = 巡航需要的综合实力基准）
 export const HOI_SEAS = [
-  { id: 'north_sea', nameCn: '北海', base: 400 },
-  { id: 'baltic', nameCn: '波罗的海', base: 300 },
-  { id: 'med', nameCn: '地中海', base: 500 },
-  { id: 'atlantic', nameCn: '大西洋', base: 900 },
-  { id: 'pacific_w', nameCn: '西太平洋', base: 800 },
-  { id: 'japan_sea', nameCn: '日本海', base: 350 },
+  { id: 'north_sea', nameCn: '北海', base: 400, region: 'europe' },
+  { id: 'baltic', nameCn: '波罗的海', base: 300, region: 'europe' },
+  { id: 'channel', nameCn: '英吉利海峡', base: 600, region: 'europe' },
+  { id: 'med', nameCn: '地中海', base: 500, region: 'europe' },
+  { id: 'atlantic', nameCn: '大西洋', base: 900, region: 'atlantic' },
+  { id: 'pacific_w', nameCn: '西太平洋', base: 800, region: 'asia' },
+  { id: 'japan_sea', nameCn: '日本海', base: 350, region: 'asia' },
 ];
+// 各国可争夺的海域区域（欧洲国家只能抢欧洲海域，亚洲国家抢亚洲+太平洋…）
+export const NATION_SEA_REGION = {
+  ger: ['europe'], ita: ['europe'], fra: ['europe', 'atlantic'], eng: ['europe', 'atlantic'],
+  sov: ['europe'], pol: ['europe'], spa: ['europe', 'atlantic'], tur: ['europe'],
+  jap: ['asia', 'pacific' ], chn: ['asia'],
+  usa: ['atlantic', 'pacific'], bra: ['atlantic'],
+};
+// 开局 AI 制海权（HOI4 式的既有格局：英国基本控制英吉利海峡与北海）
+export const SEA_INITIAL_CONTROL = {
+  channel: { eng: 0.85 }, north_sea: { eng: 0.8 }, med: { ita: 0.6, eng: 0.55 },
+  atlantic: { eng: 0.7 }, pacific_w: { jap: 0.75, usa: 0.6 }, japan_sea: { jap: 0.8 },
+  baltic: { sov: 0.7 },
+};
+// 登陆作战门槛：目标海域制海权需 ≥ 0.45
+export const NAVAL_INVASION_CONTROL = 0.45;
 
 // ============================================================================
 // v0.2.6 rev3：生产线规模 / 陆军师规模 / 海军传统
 // ============================================================================
 // 生产线工人总数 = 工业 × 415（德国 48 → 19920 ≈ 20k，设计者给定基准）
-export const WORKFORCE_PER_IC = 520;   // v0.2.6 rev9：生产类人力提高（德国 60×520 = 31,200）
+export const WORKFORCE_PER_IC = 560;   // v0.2.6 rev9：生产类人力提高（德国 60×520 = 31,200）
 // 每师基础战力：师数即历史师数（德国 30 个师就是 30 支）
 export const ARMY_POWER_PER_DIV = 52;
 // 海军传统加成（同吨位下战力差异：英/日/美 海军强国 > 德法意 > 苏/中/南美）
@@ -551,6 +567,12 @@ export const WAR_LINE = {
     { id: 'ger_w4', branch: '战争', nameCn: '但泽或战争', days: 180,
       desc: '向波兰提出最后通牒：全军攻击 +25%，正当化速度翻倍。',
       effect: { armyAtkMul: 1.25, justifyMul: 0.5 } },
+    { id: 'ger_w5', branch: '战争', nameCn: '黄色方案（对法作战）', days: 200,
+      desc: '以装甲洪流突破阿登：全军攻击 +30%，并立即获得对法国的战争正当化。',
+      effect: { armyAtkMul: 1.3, justifyAgainst: 'fra', justifyMul: 0.6 } },
+    { id: 'ger_w6', branch: '战争', nameCn: '巴巴罗萨（对苏作战）', days: 240,
+      desc: '东方总攻势：全军攻防 +25%，并立即获得对苏联的战争正当化。',
+      effect: { armyAtkMul: 1.25, armyDefMul: 1.25, justifyAgainst: 'sov', justifyMul: 0.6 } },
   ],
 };
 
