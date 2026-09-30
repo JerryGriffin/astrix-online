@@ -1,6 +1,22 @@
-# 全服状态持久化（HuggingFace 部署）
+# 全服状态持久化（`server.mjs`）
 
 解决什么问题：**公网联机时，全服数据在容器重启后会全部归零。**
+
+## 前置说明：这份文档服务于"能跑 Node 的主机"，不是 HF 免费层
+
+2026-09-30 实测确认：**HuggingFace 免费账号无法运行 Docker Space**（`cpu-basic` 配额为 0），
+因此 HF 目前只能托管 `sdk: static` 的静态站点 —— 那种形态下 `server.mjs` 根本不被执行，
+本文档的持久化机制也就无从谈起。
+
+本文档适用于以下场景：
+
+| 场景 | 后端 | 状态 |
+|---|---|---|
+| **本地 / 局域网**（`start_online.bat`） | `file` | ✅ **现在就能用**，重启世界不丢 |
+| 任一能跑 Node 单端口 HTTP 服务的主机（自建 VPS、其他 PaaS、WorkBuddy 发布） | `file`（或配 `hf`） | ✅ 可用 |
+| HuggingFace Space（付费 PRO 的 Docker Space） | `hf` | ⚠️ 需先付费解锁计算型 Space |
+
+（HuggingFace 的 `hf` 数据集后端已实现，配置方法见第三节；若将来 HF 解锁或换到其他主机，按需启用。）
 
 ---
 

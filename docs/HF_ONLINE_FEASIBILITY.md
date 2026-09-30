@@ -6,19 +6,43 @@
 
 ---
 
+## ⚠️ 关键更正（2026-09-30 实测后补记，请先读这段）
+
+本报告下文的技术结论（后端本身可用、只需切 `sdk: docker`）**在技术上成立，但漏掉了一道账户级硬门槛**：
+
+> **HuggingFace 免费账号无法运行 Gradio / Docker Space，只能托管 Static Space。**
+> 运行需要计算的 Space 必须付费（PRO）。官方论坛工作人员原话：
+> 「Creating a Space that runs on compute (Gradio or Docker) requires a paid plan.
+> This includes converting an existing Static Space to Gradio or Docker.」
+
+**实测证据**：把 `README.md` 改为 `sdk: docker` + `app_port: 7860` 并推送后，HF 返回
+
+```json
+"errorMessage": "Quota exceeded for flavor cpu-basic (requested=1): current=0, limit=0"
+```
+
+Space 立即进入 `PAUSED`，`recapiut-astrix-online.hf.space` **全路径 503**（`/`、`/index.html`、`/api/online/*` 全不可用），
+即公开站点被彻底打挂。随后已回滚 `README.md` 为 `sdk: static` 并验证恢复（`index.html` 200）。
+
+**因此**：本报告的「HF 公网联机可行性 = 高」应修正为
+**「技术可行，但免费额度下不可落地；需付费 PRO，或改用其他能跑 Node 的主机」**。
+下面第一、二节的实测数据仍然有效（后端确实就绪、问题确实只在部署形态），只是「换一行就能开」这个结论不成立。
+
+---
+
 ## 〇、结论摘要
 
 | 事项 | 结论 |
 |---|---|
 | 本地 ↔ GitHub 同步 | ✅ **完全同步**（`36b435e`，工作树干净） |
 | GitHub ↔ HF Space 同步 | ✅ **完全同步**（自动工作流最后一次运行成功，内容逐文件比对一致） |
-| HF 公网**在线联机**可行性 | ⚠️ **技术上完全可行，当前被一项配置阻断**：Space 为 `sdk: static`，`/api/online/*` 全部 404 |
-| 修复所需改动量 | **1 行**（Space README 前置元数据 `sdk: static` → `sdk: docker`） |
-| 主要代价 | 免费层 48 小时无访问自动休眠（冷启动 30–90 秒）、重启后全服内存态清零 |
+| HF 公网**在线联机**可行性 | ❌ **免费额度下不可落地**：HF 免费账号无 cpu-basic 配额，Docker Space 一开就 503（见上方「关键更正」）。技术本身可行，但需付费 PRO 或换主机 |
+| 修复所需改动量 | HF 路线：0 行代码（仅 README 一行）**但要付费 PRO**；其他主机路线：0 行代码（`server.mjs` 已满足单端口 HTTP 服务的全部要求，同源托管静态资源与 API） |
+| 主要代价 | 免费层 48 小时无访问自动休眠（冷启动 30–90 秒）；全服状态在容器重启后清零（已由 `server.mjs` 的持久化层解决，见 `docs/HF_STATE_PERSISTENCE.md`） |
 
-> **实施状态（rev17 已落地）**：本报告的结论已付诸实施 —— `README.md` 切为 `sdk: docker` + `app_port: 7860`，
-> 并新增全服状态持久化层解决"重启清零"。配置与验证步骤见 **`docs/HF_STATE_PERSISTENCE.md`**，
-> 本报告保留为当时的可行性论证与实测证据链。
+> **实施状态**：服务端的联机与持久化实现已全部落地（`server.mjs` 快照持久化层 + 往返自检 36 项全通），
+> 但 Space 的 `sdk: docker` 切换**因免费账号无 cpu-basic 配额而回滚**（见上方「关键更正」）。
+> 配置与验证步骤见 **`docs/HF_STATE_PERSISTENCE.md`**，本报告保留为可行性论证与实测证据链。
 
 后端本身**已实测可用**：在隔离端口实跑 `server.mjs`，8 条联机接口（心跳注册 / 全服注册表 / 公频收发 / 集市挂单 / 集市成交 / 跨玩家攻防 / 攻防信箱）全部返回预期结果并形成完整读写闭环。**问题不在代码，只在部署形态。**
 
@@ -124,22 +148,25 @@ Space 侧 main 与本地 `36b435e` **SHA 不同属预期**：`sync_to_hf.yml` �
 
 ## 三、可行性判定
 
-### 3.1 技术可行性：**可行（高置信度）**
+### 3.1 技术可行性：**可行（高置信度）**，但受账户配额阻断
 
 三项必要条件**已全部就位**，无需改动任何业务代码：
 
-1. **端口契约已满足** — `Dockerfile`：`FROM node:22-alpine` + `EXPOSE 7860` + `ENV PORT=7860` + `CMD ["node","server.mjs"]`。HF Docker Space 默认要求监听 7860，完全吻合。
-2. **零依赖满足** — `server.mjs` 只用 Node 原生 `http`/`fs`/`crypto`/`path`/`url`，无 npm 安装步骤，镜像构建约 1–2 分钟。
-3. **同源要求满足** — Docker 模式下 `server.mjs` 同时托管静态资源与 `/api/*`，与客户端相对路径请求天然同源，不需改 `cloud.js`、不需处理 CORS。
+1. **端口契约已满足** — `Dockerfile`：`FROM node:22-alpine` + `EXPOSE 7860` + `ENV PORT=7860` + `CMD ["node","server.mjs"]`。HF Docker Space 默认要求监听 7860，完全吻合。同一份 `server.mjs` 也满足任何通用单端口 HTTP 宿主的要求（读 `PORT`、绑 `0.0.0.0`、零依赖、`npm start` 可直接拉起）。
+2. **零依赖满足** — `server.mjs` 只用 Node 原生 `http`/`fs`/`crypto`/`path`/`url`（快照持久化用内置 `fetch`），无 npm 安装步骤。
+3. **同源要求满足** — `server.mjs` 同时托管静态资源与 `/api/*`，与客户端相对路径请求天然同源，不需改 `cloud.js`、不需处理 CORS。
 
-**唯一缺口**：Space `README.md` 前置元数据 `sdk: static`。改为 `sdk: docker` 即完成切换（`app_port` 可省略，默认 7860）。
+**但落地被账户配额阻断**（见「关键更正」）：HF 免费账号的 `cpu-basic` 配额为 0，
+Docker Space 无法启动。原判断「唯一缺口是 README 里的 `sdk: static`」**不完整** ——
+真正的缺口是**该账号没有运行计算型 Space 的权限**，这不是改一行配置能解决的。
 
 ### 3.2 切换后的实际代价
 
 | 代价 | 具体表现 | 影响程度 |
 |---|---|---|
+| **账户配额（决定性，先于下面所有条目）** | 免费账号 `cpu-basic` 配额为 0，Docker Space 直接 503 起不来 | **阻断**。要么付费 PRO（$9/月），要么换主机 |
 | **48 小时自动休眠** | 免费 CPU 层无访问 48h 后暂停，下次访问冷启动 30–90 秒 | 中。静态站无休眠，切换后是纯体验回退；但单机玩法完全不受影响 |
-| **重启后全服状态清零** | `server.mjs` 的 `ONLINE_STORE` **纯内存**（已确认全文无 `writeFile`），休眠唤醒即重建 | 中高。注册表、公频、集市挂单、攻防记录全部丢失 |
+| **重启后全服状态清零** | ~~`server.mjs` 的 `ONLINE_STORE` 纯内存~~ → **已解决**：新增快照持久化层（`hf` 数据集 / `file` 本地文件），见 `docs/HF_STATE_PERSISTENCE.md` | 已消除 |
 | **无持久化磁盘** | 免费层 50 GB 为临时盘，重建即清空；持久化存储为付费项 | 与上一条同源 |
 | **免费层仅公开 Space** | 免费层不支持私有 | 无影响（当前即公开） |
 | **平台定位风险** | HF Spaces 面向 ML 应用；非 ML 内容虽无明文禁令（Content Policy 只约束违法/有害内容），但存在被判定为「非目标用途」的低概率风险 | 低，但非零 |
@@ -148,11 +175,12 @@ Space 侧 main 与本地 `36b435e` **SHA 不同属预期**：`sync_to_hf.yml` �
 
 | 方案 | 改动量 | 优点 | 缺点 |
 |---|---|---|---|
-| **A. Space 切 `sdk: docker`** | README 1 行 | 零代码改动、同源、自动同步链路不动 | 48h 休眠、内存态清零、冷启动 |
-| B. 前端留 HF + API 另挂 Node 主机 | 需改 `cloud.js` 支持可配置基址 + CORS/跨域 | 前端仍静态常驻 | 引入第二个平台与运维面；与 rev14「联机收敛到 HF」的决策相悖 |
-| C. 维持 static（现状） | 0 | 秒开、无常驻成本 | 公网无真联机，仅单机 + NPC |
+| **A. Space 切 `sdk: docker`** | README 1 行 | 零代码改动、同源、自动同步链路不动 | ❌ **免费账号不可行**（cpu-basic 配额 0）；除非付费 PRO $9/月 |
+| **B. 前端留 HF + 后端另挂 Node 主机** | 若主机同源托管整个项目则 **0 行改动**；若前后端分离则需给 `cloud.js` 加可配置基址 | 前端保持静态常驻（无休眠）；`server.mjs` 已满足单端口 HTTP 宿主要求；API 响应已带 `Access-Control-Allow-Origin: *`，跨域也现成 | 引入第二个平台与运维面；与 rev14「联机收敛到 HF」的决策相悖 |
+| C. 维持 static（现状） | 0 | 秒开、无常驻成本、当前可用 | 公网无真联机，仅单机 + NPC |
 
-**方案 A 是唯一零代码改动的路径**，与现有架构和 rev14 决策一致。若接受「世界状态每次唤醒重置」，可直接切；若要求状态存活，需要在 `server.mjs` 增加向 HF Dataset（需 `HF_TOKEN` secrets）定期落盘的能力，属新增开发工作量。
+**方案 A 已被实测排除**（账户配额）。真联机的现实路径是 **B**：把整个项目（静态资源 + `server.mjs`）部署到任一能跑 Node 的单端口 HTTP 主机——因为 `server.mjs` 本身同源托管全部内容，**前端一行都不用改**，`/api/online/*` 的相对路径请求直接成立。
+本地 / 局域网则无需任何外部主机，`start_online.bat` 起的服务已经可玩且（新增持久化后）重启不丢世界。
 
 ### 3.4 建议的验证步骤（切换后）
 

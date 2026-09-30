@@ -157,10 +157,10 @@
 | 项 | 决策 |
 |---|---|
 | 公网发布链路 | GitHub `JerryGriffin/astrix-online` push → `.github/workflows/sync_to_hf.yml` → HuggingFace Space `Recapiut/astrix-online` |
-| Space SDK | **`sdk: docker` + `app_port: 7860`**（写在 `README.md` 前置元数据里）。rev14 后曾一度改为 `static` 以求「秒级部署 + 零配额」，但那会让公网真联机彻底失效（见下两行），现已切回 `docker` |
-| 已知后果（rev15 记录 / 现已解决） | `sdk: static` 时 Space 上**不执行 Dockerfile、不运行 `server.mjs`** → 公网 `/api/online/*`（心跳 / 指挥官 / 聊天 / 集市）全部 **404**；客户端 `js/core/cloud.js` 静默降级为「本地 + NPC 星系」，公开站点实为单机可玩。切回 `sdk: docker` 后公网真联机恢复 |
-| 免费层休眠（切回 docker 的代价，已知并接受） | 免费 CPU 层 **48 小时无访问自动休眠**，唤醒时容器冷启动 30–90 秒（`static` 站点由 CDN 分发、无休眠，属体验回退）。单机玩法不受影响 |
-| 全服状态持久化 | `server.mjs` 内置三层后端：`hf`（提交快照到私有 Dataset 仓库，**跨容器重建可恢复**）/ `file`（本地 `data/online-state.json`）/ `memory`。免费层容器磁盘**重启即丢**（HF 官方文档），故跨重建恢复必须走 Dataset 快照。配置与验证见 `docs/HF_STATE_PERSISTENCE.md` |
+| Space SDK | **`sdk: static`**。2026-09-30 曾试探性改为 `docker` + `app_port: 7860` 以恢复公网真联机，**被账户配额硬阻断**（见下一行），已回滚 |
+| 免费账号的硬门槛（决定性） | HuggingFace **免费账号无法运行 Gradio / Docker Space**，只能托管 Static Space；运行计算型 Space 需付费 PRO。实测：改为 `docker` 后 Space 报 `Quota exceeded for flavor cpu-basic (requested=1): current=0, limit=0`、进入 `PAUSED`、整站 503。官方工作人员原话：「Creating a Space that runs on compute (Gradio or Docker) requires a paid plan. **This includes converting an existing Static Space to Gradio or Docker.**」⇒ **HF 免费额度下公网真联机不可落地** |
+| 公网真联机的现实路径 | 把整个项目（静态资源 + `server.mjs`）部署到任一能跑 **Node 单端口 HTTP 服务**的主机：`server.mjs` 同源托管全部内容，**前端零改动**，`/api/online/*` 相对路径直接成立。HF 只继续承担静态站点托管（单机 + NPC 可玩） |
+| 全服状态持久化 | `server.mjs` 内置三层后端：`hf`（提交快照到私有 Dataset 仓库）/ `file`（本地 `data/online-state.json`，默认）/ `memory`。免费层容器磁盘**重启即丢**（HF 官方文档），故跨重建恢复必须走外部快照。配置与验证见 `docs/HF_STATE_PERSISTENCE.md`；往返自检 `docs/selfcheck_online_state.mjs`（36 项） |
 | 同步链路保护 | `.gitignore` **不得**写成 `.github/`——那会把 `sync_to_hf.yml` 一并忽略，同步会**静默失效**；正确写法是 `.github/*` + `!.github/workflows/`（rev15 已修正） |
 
 ---
