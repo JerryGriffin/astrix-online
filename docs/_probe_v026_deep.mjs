@@ -1,9 +1,9 @@
 // v0.2.6 深化探针：人口比例 / 500 人编制 / 史实舰队 / 侧重生产线 / 阵营 / 国策 / 海域
-import { STATE, createAccount, getPlanetInstance } from '../js/core/state.js?v=26.9';
-import { HOI_NATIONS, HOI_BY_ID, HOI_DEEP, popOf, GER_POP_BASE, ARMY_MEN, HOI_SEAS } from '../js/data/hoi1936.js?v=26.9';
-import { scenarioDateOf, ensureFocus, startFocus, tickFocus, focusOptionsOf, contestSea, ensureSeas, enemySeaPressure, blocNameOf, deepOf } from '../js/core/hoi1936.js?v=26.9';
-import { consumptionPerSec } from '../js/core/population.js?v=26.9';
-import { listFleets } from '../js/core/fleet.js?v=26.9';
+import { STATE, createAccount, getPlanetInstance } from '../js/core/state.js?v=27.1';
+import { HOI_NATIONS, HOI_BY_ID, HOI_DEEP, popOf, GER_POP_BASE, ARMY_MEN, HOI_SEAS } from '../js/data/hoi1936.js?v=27.1';
+import { scenarioDateOf, ensureFocus, startFocus, tickFocus, focusOptionsOf, contestSea, ensureSeas, enemySeaPressure, blocNameOf, deepOf } from '../js/core/hoi1936.js?v=27.1';
+import { consumptionPerSec } from '../js/core/population.js?v=27.1';
+import { listFleets } from '../js/core/fleet.js?v=27.1';
 
 let pass = 0, fail = 0;
 function ok(cond, msg) { if (cond) { pass++; console.log('  ✓ ' + msg); } else { fail++; console.log('  ✗ ' + msg); } }
@@ -81,7 +81,7 @@ ok(enemySeaPressure(ger) === 0, '未交战 → 无敌方海上压力');
 const seaR = contestSea(ger, 'baltic', 900);
 ok(seaR.ok && seaR.control > 0.5, '无敌人时巡航提升制海权（' + Math.round(seaR.control * 100) + '%）');
 // 与海上强国交战后再测：敌方海上压力 > 0，弱小舰队会丢制海权
-const W = await import('../js/core/war.js?v=26.9');
+const W = await import('../js/core/war.js?v=27.1');
 W.declareWar(ger, { id: 'hoi_eng', nameCn: '伦敦', kind: 'npc' });
 ok(enemySeaPressure(ger) > 0, '与不列颠交战后敌方海上压力 > 0（' + Math.round(enemySeaPressure(ger)) + '）');
 const before = seas.find((x) => x.id === 'atlantic').control;
@@ -98,10 +98,10 @@ ok(missing.length === 0, '12 国均有编制/舰队/生产线/六策/阵营' + (
 
 
 // ---- H. rev3：生产线工人 / 建筑群 / 历史师数 / 史实蓝图 / 国策分支 / 外交 AI / 战时总动员 ----
-import { workforceOf, SHIP_NAMES, ARMY_BP_NAME } from '../js/data/hoi1936.js?v=26.9';
-import { tickDiploAI } from '../js/core/hoi1936.js?v=26.9';
-import { MANAGE_MODES, tickPopulation } from '../js/core/population.js?v=26.9';
-import { resolveBattle } from '../js/core/army.js?v=26.9';
+import { workforceOf, SHIP_NAMES, ARMY_BP_NAME } from '../js/data/hoi1936.js?v=27.1';
+import { tickDiploAI } from '../js/core/hoi1936.js?v=27.1';
+import { MANAGE_MODES, tickPopulation } from '../js/core/population.js?v=27.1';
+import { resolveBattle } from '../js/core/army.js?v=27.1';
 
 const ger2 = createAccount('柏林2', 'hoi1936', { countryId: 'ger' });
 const g2 = getPlanetInstance(ger2.homePlanetCode);
@@ -159,7 +159,7 @@ ok(typeof withRes.log === 'string' && withRes.log.indexOf('预备队') >= 0, '�
 
 
 // ---- I. rev5：全建筑有人工作 / 工业修正 / 王牌师 ----
-import { ELITE_DIVISIONS, ELITE_MUL } from '../js/data/hoi1936.js?v=26.9';
+import { ELITE_DIVISIONS, ELITE_MUL } from '../js/data/hoi1936.js?v=27.1';
 const ger5 = createAccount('柏林5', 'hoi1936', { countryId: 'ger' });
 const g5 = getPlanetInstance(ger5.homePlanetCode);
 ok((ger5.hoiStaffJobs || 0) > 20000, '岗位工人已分配（' + ger5.hoiStaffJobs + ' 人：农田/矿井/科研/加工等）');
@@ -180,8 +180,8 @@ ok(usa5.armies.some((a) => a.stats.atk > ger5.armies.find((x) => !x.elite).stats
 
 
 // ---- J. rev7：旧存档自愈（庇护补齐） ----
-import { repairScenarioEstates } from '../js/core/hoi1936.js?v=26.9';
-import { tickPopulation as tickPop2 } from '../js/core/population.js?v=26.9';
+import { repairScenarioEstates } from '../js/core/hoi1936.js?v=27.1';
+import { tickPopulation as tickPop2 } from '../js/core/population.js?v=27.1';
 const oldAcc = createAccount('旧档自愈', 'hoi1936', { countryId: 'sov' });
 const oldCol = getPlanetInstance(oldAcc.colonyCode);
 oldCol.buildings.house = 4;          // 模拟 rev6 前的老存档
@@ -196,8 +196,8 @@ ok(oldCol.pop.happiness > 0.85, '300 秒后幸福度回到 0.85+（' + oldCol.po
 
 
 // ---- K. rev9：真战舰 / 多军队蓝图 / 战争推进 / 补员 ----
-import { tickWarsHoi4, reinforceArmy } from '../js/core/hoi1936.js?v=26.9';
-import { ARMY_BP_LINE } from '../js/data/hoi1936.js?v=26.9';
+import { tickWarsHoi4, reinforceArmy } from '../js/core/hoi1936.js?v=27.1';
+import { ARMY_BP_LINE } from '../js/data/hoi1936.js?v=27.1';
 const g9 = createAccount('柏林9', 'hoi1936', { countryId: 'ger' });
 ok(g9.ships.every((sh) => sh.kind === 'warship'), '仓库船全是战舰（非探索船/运输船）');
 const cls9 = g9.ships.map((sh) => sh.shipClass);
@@ -206,7 +206,7 @@ ok(cls9.some((c) => /驱逐舰/.test(c || '')) && cls9.some((c) => /潜艇/.test
 ok((g9.hoiArmyBps || []).length >= 3, '每国 ≥3 种军队蓝图（' + (g9.hoiArmyBps || []).join(' / ') + '）');
 ok((ARMY_BP_LINE.ger || []).length === 3 && (ARMY_BP_LINE.chn || []).length === 3, '12 国均有三类兵种蓝图');
 // 战争推进（HOI4 式）
-const W9 = await import('../js/core/war.js?v=26.9');
+const W9 = await import('../js/core/war.js?v=27.1');
 W9.declareWar(g9, { id: 'hoi_pol', nameCn: '华沙', kind: 'npc' });
 for (let i = 0; i < 30; i++) tickWarsHoi4(g9, 30);
 const w9 = W9.warWith(g9, 'hoi_pol');

@@ -24,14 +24,14 @@
 // 所有数字显示一律走 format.js 的 fmtNum / fmtRate / fmtRateBody / fmtSci。
 // 样式集中在 css/planet.css。
 
-import { MATERIALS } from '../data/materials.js?v=26.9';
-import { fmtNum, fmtRate, fmtSci } from '../core/format.js?v=26.9';
-import { getPlanetInstance, tick, currentAccount, atmosphereOf, ownedOf, rateOf } from '../core/state.js?v=26.9';
-import { computePower } from '../core/power.js?v=26.9';
-import { equipmentList } from '../core/shipyard.js?v=26.9';
-import { materialLabel, productionRates } from '../core/production.js?v=26.9';
-import { BUILDING_BY_ID } from '../data/buildings.js?v=26.9';
-import { NUTRIENT_NAMES, METABOLITE_NAMES, consumptionPerSec, metabolitePerSec } from '../core/population.js?v=26.9';
+import { MATERIALS } from '../data/materials.js?v=27.1';
+import { fmtNum, fmtRate, fmtSci } from '../core/format.js?v=27.1';
+import { getPlanetInstance, tick, currentAccount, atmosphereOf, ownedOf, rateOf } from '../core/state.js?v=27.1';
+import { computePower } from '../core/power.js?v=27.1';
+import { equipmentList } from '../core/shipyard.js?v=27.1';
+import { materialLabel, productionRates } from '../core/production.js?v=27.1';
+import { BUILDING_BY_ID } from '../data/buildings.js?v=27.1';
+import { NUTRIENT_NAMES, METABOLITE_NAMES, consumptionPerSec, metabolitePerSec } from '../core/population.js?v=27.1';
 
 // 分组顺序与中文标题
 // v0.0.91：同事把星球数据拆成 surface(地表) / underground(浅层) / deep(深层) / core(地核) / gas(气体) 五层。
@@ -282,7 +282,8 @@ export function renderInventory(container, planetOrCtx) {
         //   这里显示的还是旧值。改走 ownedOf(planet, mat) 跨层实时重算。
         const owned = ownedOf(planet, r.item.mat);
         totalOwned += owned;
-        r.ownedEl.textContent = fmtNum(owned);
+        // v0.2.7：1936 剧本无限资源显示为 ∞
+        r.ownedEl.textContent = (owned >= 1e15) ? '∞' : fmtNum(owned);
         // 需求 2：显示净增长，+ 绿、− 红；为 0 时不显示（不占位）
         const net = netOf(planet, r.item.mat);
         r.rateEl.textContent = net !== 0 ? ' ' + fmtRate(net) : '';
@@ -496,7 +497,8 @@ function openDetail(mat, layer, planet, openModal, inv) {
   const net = netOf(planet, mat);
   const netText = net === 0 ? '0（不增不减）' : fmtRate(net) + (net > 0 ? '（增长）' : '（消耗）');
   const rows = [
-    ['玩家持有', fmtNum(entries.reduce((s, e) => s + (Number(e.owned) || 0), 0))],
+    ['玩家持有', (entries.reduce((s, e) => s + (Number(e.owned) || 0), 0) >= 1e15) ? '∞'
+      : fmtNum(entries.reduce((s, e) => s + (Number(e.owned) || 0), 0))],
     ['净增长', netText],
   ];
   if (layer) {

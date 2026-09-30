@@ -10,10 +10,10 @@
 // 现在：版本号只在这里定义一次，任何地方要显示都从这里取；
 // index.html 的入口脚本带 ?v= 查询串（与 VERSION 同步），改版本号即自动击穿缓存。
 
-export const VERSION = 'v0.2.6';
+export const VERSION = 'v0.2.7';
 
 // 版本号数字形式（用于存档迁移判断）
-export const VERSION_NUM = 26;
+export const VERSION_NUM = 27;
 
 export const VERSION_DATE = '2026-09-30';
 
@@ -26,12 +26,17 @@ export const VERSION_DATE = '2026-09-30';
 //   VERSION     —— 玩家看到的版本（设计者说不变就不变）
 //   REVISION    —— 只要改了 css/ 或 js/，这里就 +1
 //   CACHE_TAG   —— 实际写进 index.html 的 ?v= 串
-export const REVISION = 9;
+export const REVISION = 1;
 // index.html 里所有 css 链接与 js/main.js 入口都用它；改代码后记得 +1
 export const CACHE_TAG = VERSION_NUM + '.' + REVISION;
 
 // 更新日志：从新到旧。每项 [版本号, 日期, [条目...]]
 export const VERSIONS = [
+  ['v0.2.7', '2026-09-30', [
+    '**1936 剧本 · 星球储存资源无限**：本土与属地的物品栏资源全部置满（玩家持有 / 储量上限 / 气体剩余），'
+      + '界面以「∞」显示 —— 1936 剧本从此不再为原料短缺卡手（用大数 1e15 实现，不用真 Infinity 以免毁档）',
+    '**发布节奏调整**：此后每次小更新都单独占一个版本号，并同步写入本更新日志',
+  ]],
   ['v0.2.6', '2026-09-30', [
     '**修复「殖民地幸福度仍然下降」（旧存档自愈）**：新存档已按庇护需求配足住房，'
       + '但 rev6 之前建立的存档里星球住房仍是旧数量（属地常只有 4 栋）—— 现在**进入存档后自动补齐**'
