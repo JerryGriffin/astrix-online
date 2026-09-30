@@ -1,10 +1,10 @@
 // v0.1.4 四条需求端到端整合探针（走真实 state.js tick 链路）
-import * as S from '../js/core/state.js?v=20.19';
-import * as PG from '../js/core/planetgen.js?v=20.19';
-import * as SH from '../js/core/shipyard.js?v=20.19';
-import * as SHOP from '../js/core/shop.js?v=20.19';
-import * as FLEET from '../js/core/fleet.js?v=20.19';
-import * as RPT from '../js/ui/reports.js?v=20.19';
+import * as S from '../js/core/state.js?v=26.1';
+import * as PG from '../js/core/planetgen.js?v=26.1';
+import * as SH from '../js/core/shipyard.js?v=26.1';
+import * as SHOP from '../js/core/shop.js?v=26.1';
+import * as FLEET from '../js/core/fleet.js?v=26.1';
+import * as RPT from '../js/ui/reports.js?v=26.1';
 
 const mem = new Map();
 S.setAdapter({ get: (k) => (mem.has(k) ? mem.get(k) : null), set: (k, v) => mem.set(k, String(v)), del: (k) => mem.delete(k) });

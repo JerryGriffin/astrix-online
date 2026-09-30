@@ -3,31 +3,31 @@
 // 更新：v0.1.1 五指令改为持续任务（startMission，任务行显示倒计时），
 //       新增船载仓库面板；编队 / 五指令区块挂船坞门禁；交易池区 2s 心跳局部刷新。
 
-import { fmtNum, fmtRate, fmtTime } from '../core/format.js?v=20.19';
+import { fmtNum, fmtRate, fmtTime } from '../core/format.js?v=26.1';
 import {
   listFleets, createFleet, disbandFleet, addShipToFleet, removeShipFromFleet,
   fleetSpeedOf, fleetPowerOf, executeCommand,
   startMission, cancelMission, fleetMissionLabel, defenseBonusOf,
   shipCargoOf, loadShipCargo, unloadShipCargo,
   shipCargoMassOf, shipCargoCellsOf, shipCargoCellsMax, effectiveSpeedOf,
-} from '../core/fleet.js?v=20.19';
-import { equipmentList } from '../core/shipyard.js?v=20.19';
+} from '../core/fleet.js?v=26.1';
+import { equipmentList } from '../core/shipyard.js?v=26.1';
 import {
   MANAGEMENT_MODES, MANAGEMENT_BY_ID, modeOf, setManagement,
   TERRITORY_ASSIMILATE_SEC, TERRITORY_HAPPY_THRESHOLD,
-} from '../core/planetgen.js?v=20.19';
+} from '../core/planetgen.js?v=26.1';
 import {
   SHOP_PLANET, shopPrices, sell, pendingOrders, deliverOrder, ascoinBalance,
   shopStateOf, applySharedPrice,
   marketBuy, marketSell, warehouseOf, ensureShopWarehouse,
-} from '../core/shop.js?v=20.19';
+} from '../core/shop.js?v=26.1';
 import {
   createAuction, placeBid, activeAuctions, auctionLog,
   myAuctionableResources, myAuctionableEquipment, myAuctionableShips, ensureAuctions,
-} from '../core/auction.js?v=20.19';
-import { getPlanetInstance, currentAccount, ownedOf, STATE } from '../core/state.js?v=20.19';
-import { cloudUser, fetchSharedWarehouse, upsertSharedWarehouseRow, upsertSharedPriceRow } from '../core/cloud.js?v=20.19';
-import { MATERIALS } from '../data/materials.js?v=20.19';
+} from '../core/auction.js?v=26.1';
+import { getPlanetInstance, currentAccount, ownedOf, STATE } from '../core/state.js?v=26.1';
+import { cloudUser, fetchSharedWarehouse, upsertSharedWarehouseRow, upsertSharedPriceRow } from '../core/cloud.js?v=26.1';
+import { MATERIALS } from '../data/materials.js?v=26.1';
 
 // HTML 转义（防 XSS，与其它面板一致）
 function esc(s) {

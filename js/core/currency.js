@@ -6,7 +6,7 @@
 //      只单独计数，用于特殊/稀有交易。因此本模块不提供 eridium -> ascoin / 金 的换算函数。
 //   4. 玩家的「金」是物品栏里的金材料，Ascoin 是独立的计数项。
 
-import { fmtNum } from './format.js?v=20.19';
+import { fmtNum } from './format.js?v=26.1';
 
 export const ASCOIN_PER_GOLD = 1048576;
 

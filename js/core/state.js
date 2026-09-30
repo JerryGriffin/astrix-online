@@ -15,40 +15,41 @@
 //    开局自带 1 座建筑工厂（设计者：「开局有一个建筑工厂」）。
 // 5. 施工队列由 tick 推进：速度 = 建筑工有效人力（受建筑工厂工位限制），无人则为 0。
 
-import { PLANETS } from '../data/planets.js?v=20.19';
-import { BUILDING_BY_ID, buildingCost } from '../data/buildings.js?v=20.19';
-import { TECH_BY_ID, canResearch, missingPrereqs, missingBuilding } from '../data/techs.js?v=20.19';
-import { UPGRADES, upgradeCost } from '../data/upgrades.js?v=20.19';
+import { PLANETS } from '../data/planets.js?v=26.1';
+import { HOI_NATIONS, HOI_BY_ID, HOI_SCENARIO_ID } from '../data/hoi1936.js?v=26.1';   // v0.2.6 官方 mod 1936 剧本
+import { BUILDING_BY_ID, buildingCost } from '../data/buildings.js?v=26.1';
+import { TECH_BY_ID, canResearch, missingPrereqs, missingBuilding } from '../data/techs.js?v=26.1';
+import { UPGRADES, upgradeCost } from '../data/upgrades.js?v=26.1';
 import {
   createPopulation, tickPopulation, getAvailable, gatherLaborByLayer, jobsOfBuilding, getIntensity,
   consumptionPerSec, jobOutput,
   JOBS, freeSlots,
-} from './population.js?v=20.19';
-import { buildRateOf, buildBlockReason } from './construction.js?v=20.19';
-import { tickShip, defaultBlueprints, createShip, shipBuildTick } from './shipyard.js?v=20.19';
+} from './population.js?v=26.1';
+import { buildRateOf, buildBlockReason } from './construction.js?v=26.1';
+import { tickShip, defaultBlueprints, createShip, shipBuildTick } from './shipyard.js?v=26.1';
 // v0.0.6：电力系统与配方生产。
 // 注意这两个模块**不反向 import 本文件**（否则形成循环依赖），
 // 它们只从传入的 inst 上读 buildings / pop / inventory / recipes。
-import { energyOf, computePower, tickPower } from './power.js?v=20.19';
+import { energyOf, computePower, tickPower } from './power.js?v=26.1';
 // v0.0.91：efficiencyBonus 由 production.js 导出（建筑总座数效率乘数），
 //   这里沿用既有的 state→production 单向边引入，不反向让 production import state，避免循环依赖。
-import { tickProduction, productionRates, ensureLines, lineWorkersTotal, efficiencyBonus, ensureEntry, addLine as addProductionLine, lineSlotInfo } from './production.js?v=20.19';
+import { tickProduction, productionRates, ensureLines, lineWorkersTotal, efficiencyBonus, ensureEntry, addLine as addProductionLine, lineSlotInfo } from './production.js?v=26.1';
 // v0.0.92：星际航行与殖民（管理模式 / 独立倾向 / 随机星球）
-import { tickIndependence, outputMulOf, happinessDeltaOf, ensureDiscoveredDefaults, discoverPlanet, purgeShopColonies, tickManagedColonies, SHOP_PLANET_CODE } from './planetgen.js?v=20.19';
+import { tickIndependence, outputMulOf, happinessDeltaOf, ensureDiscoveredDefaults, discoverPlanet, capturePlanet, purgeShopColonies, tickManagedColonies, SHOP_PLANET_CODE } from './planetgen.js?v=26.1';
 // v0.1.2（需求 18/19）：永久升级的「效果」改乘方，唯一实现在 data/upgrades.js#upgradeMul
 // （UI 的 research.js 也用它，别在别处再写一套公式）。
 // 此前 upg_collect/refine/power/labor/research/build 六项付了钱却没有任何效果。
-import { upgradeMul } from '../data/upgrades.js?v=20.19';
-import { tickFleetMissions, ensureFleets } from './fleet.js?v=20.19';
-import { ensureArmies, armyBuildTick, advanceTraining, ARMY_LABOR_PER_BARRACKS } from './army.js?v=20.19';   // v0.2.0 军队
+import { upgradeMul } from '../data/upgrades.js?v=26.1';
+import { tickFleetMissions, ensureFleets } from './fleet.js?v=26.1';
+import { ensureArmies, armyBuildTick, advanceTraining, ARMY_LABOR_PER_BARRACKS } from './army.js?v=26.1';   // v0.2.0 军队
 // v0.1.0：电脑账号（离线存档里的 NPC 势力）与其交易池联动。
 //   注意 npc.js 是叶子模块（只 import 数据表），shop.js 与 state.js 互为函数级引用、无顶层副作用。
-import { ensureNpcs, tickNpcs } from './npc.js?v=20.19';
+import { ensureNpcs, tickNpcs } from './npc.js?v=26.1';
 import {
   priceOf as shopPriceOf, suggestPriceOf as shopSuggestPriceOf,
   tickShop as shopTick,
-} from './shop.js?v=20.19';
-import { tickAuctions, tickNpcAuctionSpawner } from './auction.js?v=20.19';   // v0.2.6 拍卖行；v0.2.10 NPC 挂单
+} from './shop.js?v=26.1';
+import { tickAuctions, tickNpcAuctionSpawner } from './auction.js?v=26.1';   // v0.2.6 拍卖行；v0.2.10 NPC 挂单
 
 const SAVE_PREFIX = 'astrix.save.';
 const INDEX_KEY = SAVE_PREFIX + 'index';
@@ -189,7 +190,7 @@ export function saveState() {
 
 // 新建账号并切换为当前账号
 // mode（v0.1.0）：'fresh'（初登星球，默认）/ 'deep'（漫溯深空，中期开局）
-export function createAccount(name, mode) {
+export function createAccount(name, mode, opts) {
   const acc = defaultAccount(name);
   STATE.accounts.push(acc);
   STATE.currentAccountId = acc.id;
@@ -203,6 +204,13 @@ export function createAccount(name, mode) {
     try {
       const inst = getPlanetInstance(acc.homePlanetCode);
       applyDeepStart(acc, inst);
+    } catch (e) { /* 失败也要保证基础存档可用 */ }
+  }
+  // v0.2.6：官方 mod「1936 剧本」开局 —— 选国家，铺本土 + 属地两颗星球
+  if (mode === 'hoi1936') {
+    try {
+      const inst = getPlanetInstance(acc.homePlanetCode);
+      apply1936Start(acc, inst, (opts && opts.countryId) || HOI_NATIONS[0].id);
     } catch (e) { /* 失败也要保证基础存档可用 */ }
   }
   return acc;
@@ -1326,7 +1334,147 @@ export function settleOffline() {
 export const START_MODES = [
   { id: 'fresh', nameCn: '初登星球', desc: '标准开局：一座建筑工厂 + 少量物资，从零开始。' },
   { id: 'deep',  nameCn: '漫溯深空', desc: '中期开局：已解锁到船坞科技，建筑成规模、物资充足，并随机获得 10 艘飞船。' },
+  { id: 'hoi1936', nameCn: '1936 剧本', desc: '官方 mod：选择 1936 年的国家开局（真实历史数据），本土 + 属地两颗星球，与其他模拟国家贸易 / 结盟 / 开战。' },
 ];
+
+// ============================================================================
+// 官方 mod · 1936 剧本（v0.2.6）
+//   设计者要求：开局先选国家，与其他星球模拟的国家对战；数据采用真实历史数据；
+//   本土一个星球 + 殖民地一个星球；参考钢铁雄心 4「风暴前夜」开局。
+// ============================================================================
+function apply1936Start(acc, inst, countryId) {
+  const n = HOI_BY_ID[countryId] || HOI_NATIONS[0];
+  acc.scenario = HOI_SCENARIO_ID;
+  acc.nation = n.id;
+  acc.wars = acc.wars || [];
+  acc.warLog = acc.warLog || [];
+  acc.capturedPlanets = Array.isArray(acc.capturedPlanets) ? acc.capturedPlanets : [];
+
+  // 1) 本土星球：以首都命名
+  inst.nameCn = n.capital + '（本土）';
+  inst.nameEn = n.nameEn;
+
+  // 2) 科技：工业全线贯通 + 军事三级
+  acc.tech = ['t_a1', 't_a2', 't_b8', 't_b1', 't_c1', 't_e2', 't_b2', 't_c2', 't_e4',
+    't_a4', 't_b5', 't_b7', 't_e3', 't_d1', 't_d2', 't_b3', 't_c3', 't_e1',
+    't_m1', 't_m2', 't_m3'];
+  acc._armyTechV3 = true;
+  acc.researchPoints = Math.round(n.ic * 2500);
+
+  // 3) 建筑规模：按真实工业产能铺开
+  const ic = n.ic;
+  inst.buildings = {
+    workshop: Math.max(2, Math.round(ic / 8)),
+    house: Math.max(8, Math.round(n.popM / 3)),
+    manual_power: 3,
+    farm: Math.max(2, Math.round(ic / 12)),
+    gas_collector: 2,
+    furnace: Math.max(1, Math.round(ic / 14)),
+    blast_furnace: Math.max(1, Math.round(ic / 18)),
+    electrolyzer: 1,
+    thermal_plant: Math.max(1, Math.round(ic / 16)),
+    clean_plant: 1,
+    mine_shallow: Math.max(1, Math.round(ic / 16)),
+    mine_deep: 2, mine_core: 1, storage_plant: 2,
+    lab: Math.max(1, Math.round(ic / 20)),
+    fabricator: Math.max(1, Math.round(ic / 12)),
+    chem_lab: 1, refinery: 1, dock: 1, repair_bay: 1,
+    barracks: Math.max(1, Math.round(n.divisions / 18)),
+    training_ground: 1,
+  };
+
+  // 4) 物资：按工业与人口换算
+  const bundle = {
+    石头: 1e5, 泥土: 6e4,
+    有机质: Math.round(n.popM * 900), 水: Math.round(n.popM * 900),
+    粘土: 3e4, 石墨: 2e4, 石英: Math.round(ic * 500),
+    铁: Math.round(ic * 700), 铜: Math.round(ic * 300), 铝: Math.round(ic * 350),
+    钢: Math.round(ic * 260), 玻璃: Math.round(ic * 120), 陶瓷: Math.round(ic * 130),
+    塑料: Math.round(ic * 90), 橡胶: Math.round(ic * 55), 钛: Math.round(ic * 40),
+    铝合金: Math.round(ic * 25), 碳化钨: Math.round(ic * 12), 钛合金: Math.round(ic * 18),
+  };
+  for (const name in bundle) {
+    const e = inst.inventory.find((x) => x && x.mat === name);
+    const qty = bundle[name];
+    if (e) e.owned = Math.min(Number(e.reserve) || qty, (Number(e.owned) || 0) + qty);
+    else {
+      const ne = ensureEntry(inst, name, 'refined');
+      ne.owned = qty;
+    }
+  }
+  inst.facilityStock = Object.assign({}, inst.facilityStock, { battery_m: 4, solar_m: 3, wind_m: 3, thermal_m: 2 });
+
+  // 5) 人口 / 国库 / 军用装备（按师数铺）
+  if (inst.pop) inst.pop.total = Math.max(300, Math.round(n.popM * 8));
+  acc.ascoin = Math.round(ic * 4000 + n.divisions * 600);
+  inst.equipment = inst.equipment || {};
+  const gear = {
+    'ap_frame_light@钢': n.divisions * 2, 'ap_wpn_rifle@钢': n.divisions * 3,
+    'ap_armor_light@钢': n.divisions, 'ap_mob_wheel@钢': n.divisions,
+    'ap_frame_heavy@钢': Math.round(n.divisions / 2), 'ap_wpn_hmg@钢': Math.round(n.divisions / 2),
+    'ap_armor_composite@钢': Math.round(n.divisions / 3), 'ap_wpn_howitzer@钢': Math.round(n.divisions / 4),
+    'ap_sup_radar@钢': Math.round(n.divisions / 6), 'ap_sup_supply@钢': Math.round(n.divisions / 5),
+  };
+  for (const key in gear) {
+    const [partId, material] = key.split('@');
+    const cnt = Math.max(0, Math.round(gear[key]));
+    if (!cnt) continue;
+    const e = inst.equipment[key] || { partId, material: material || null, count: 0 };
+    e.count = (Number(e.count) || 0) + cnt;
+    inst.equipment[key] = e;
+  }
+
+  // 6) 军队：师数 → 集团军（战力按师数与装备水平折算）
+  acc.armies = [];
+  const armies = Math.max(2, Math.min(14, Math.round(n.divisions / 6)));
+  const perPower = Math.max(60, Math.round(n.divisions * 11));
+  for (let i = 0; i < armies; i++) {
+    acc.armies.push({
+      id: 'army_' + n.id + '_' + i,
+      nameCn: n.nameCn + ' 第' + (i + 1) + '集团军',
+      blueprintId: 'ab_ranger',
+      men: 105, exp: 0, bonusAtk: 0, bonusDef: 0,
+      stats: { atk: Math.round(perPower * 0.5), def: Math.round(perPower * 0.42), speed: 8 },
+      power: perPower,
+    });
+  }
+  acc.blueprints = defaultBlueprints();
+  acc.blueprint = acc.blueprints[0];
+  acc.ships = acc.ships || [];   // 1936 开局不送飞船（海军计入数据，船在游戏内造）
+
+  // 7) 属地星球：第二颗星球（历史属地命名，资源按属地类型倾斜）
+  try {
+    const seed = (n.id.charCodeAt(0) * 7919 + n.id.charCodeAt(1) * 104729) % 1e9;
+    const d = discoverPlanet(acc, { typeId: n.colony.typeId, seed });
+    if (d && d.ok && d.planet) {
+      d.planet.nameCn = n.colony.name;
+      d.planet.nameEn = n.colony.name;
+      const cap = capturePlanet(acc, d.planet);
+      if (cap && cap.ok !== false) {
+        const inst2 = getPlanetInstance(d.planet.code);
+        if (inst2) {
+          inst2.nameCn = n.colony.name;
+          if (inst2.pop) inst2.pop.total = Math.max(120, Math.round((inst.pop ? inst.pop.total : 400) * 0.35));
+          inst2.buildings = { mine_shallow: 3, mine_deep: 2, farm: 2, house: 4, workshop: 1, storage_plant: 1 };
+          const colBundle = {
+            有机质: Math.round(n.popM * 300), 水: Math.round(n.popM * 300),
+            铁: Math.round(ic * 300), 石英: Math.round(ic * 150), 橡胶: Math.round(ic * 60),
+            石头: 4e4, 泥土: 2e4,
+          };
+          for (const name in colBundle) {
+            const e = inst2.inventory.find((x) => x && x.mat === name);
+            if (e) e.owned = (Number(e.owned) || 0) + colBundle[name];
+            else {
+              const ne = ensureEntry(inst2, name, 'refined');
+              ne.owned = colBundle[name];
+            }
+          }
+          acc.colonyCode = d.planet.code;
+        }
+      }
+    }
+  } catch (e) { /* 属地初始化失败不影响本土可用 */ }
+}
 
 // 「漫溯深空」开局：把科技、建筑、物资、飞船一次性铺到位
 function applyDeepStart(acc, inst) {

@@ -16,15 +16,17 @@ import {
   ensureReady, cloudStatus, cloudUser,
   loginWithName, registerWithName, signOutCloud,
   listPublicPlanets, publishMyPlanet, postIncident, fetchInbox, markIncidentResolved,
-} from '../core/cloud.js?v=20.19';
-import { currentAccount, getPlanetInstance, ownedOf, spendOwned } from '../core/state.js?v=20.19';
-import { ensureEntry } from '../core/production.js?v=20.19';
-import { listFleets, fleetPowerOf, defenseBonusOf } from '../core/fleet.js?v=20.19';
-import { totalArmyPowerOf, listArmies, disbandArmy, resolveBattle, armyToUnit, armyPowerOfInstance } from '../core/army.js?v=20.19';
+} from '../core/cloud.js?v=26.1';
+import { currentAccount, getPlanetInstance, ownedOf, spendOwned } from '../core/state.js?v=26.1';
+import { ensureEntry } from '../core/production.js?v=26.1';
+import { listFleets, fleetPowerOf, defenseBonusOf } from '../core/fleet.js?v=26.1';
+import { totalArmyPowerOf, listArmies, disbandArmy, resolveBattle, armyToUnit, armyPowerOfInstance } from '../core/army.js?v=26.1';
 // v0.2.1：内嵌殖民地管理（含内联报告），取代在线模式独立的「星球选择」tab
-import { renderColony } from './colony.js?v=20.19';
-import { PLANETS } from '../data/planets.js?v=20.19';
-import { fmtNum } from '../core/format.js?v=20.19';
+import { renderColony } from './colony.js?v=26.1';
+import { PLANETS } from '../data/planets.js?v=26.1';
+import { HOI_NATIONS, HOI_BY_ID, HOI_SCENARIO_ID } from '../data/hoi1936.js?v=26.1';   // v0.2.6 官方 mod
+import { declareWar, activeWarsOf, warWith, addWarScore, canForceSurrender, draftTreaty, endWar, surrenderWar } from '../core/war.js?v=26.1';
+import { fmtNum } from '../core/format.js?v=26.1';
 
 function el(tag, cls, text) {
   const e = document.createElement(tag);
@@ -204,6 +206,39 @@ function renderShell(body, ctx, rerender) {
   npcSec.appendChild(npcGrid);
   body.appendChild(npcSec);
   renderNpcGrid(npcGrid, ctx, rerender, acc, '');
+
+  // ---- 3.6 进行中的战争（v0.2.6）：持续过程，只有投降签约才结束 ----
+  const wars = activeWarsOf(acc);
+  if (wars.length) {
+    const wSec = el('div', 'gx-section');
+    wSec.appendChild(el('div', 'section-title', '进行中的战争'));
+    wSec.appendChild(el('div', 'muted',
+      '战争是**持续过程** —— 不会随时间自动结束，只有一方投降并签订条约才会终止。'
+      + '进攻获胜积累我方战争分数，达到 60 即可迫降电脑国家（在对方星球卡上操作）。'));
+    for (const w of wars) {
+      const card = el('div', 'gx-card');
+      const info = el('div', 'gx-card-info');
+      const days = Math.max(0.1, Math.round((Date.now() - w.startedAt) / 8640000) / 10);
+      info.innerHTML = '<div>对手：<b>' + esc(w.targetName) + '</b>（'
+        + (w.kind === 'npc' ? '模拟国家' : '真人玩家') + '）</div>'
+        + '<div>战争分数：我方 <b style="color:' + (w.myScore >= w.theirScore ? '#9FE1CB' : '#f09595') + '">'
+        + w.myScore + '</b> : 对方 <b>' + w.theirScore + '</b> · 已交战 ' + w.battles + ' 次</div>'
+        + '<div class="muted" style="font-size:12px">持续 ' + days + ' 天 · '
+        + (w.kind === 'npc' ? '分数 ≥ 60 可迫降签约' : '需对方接受投降条约') + '</div>';
+      card.appendChild(info);
+      const recent = (w.log || []).slice(0, 3);
+      if (recent.length) {
+        const lg = el('div', 'muted');
+        lg.style.fontSize = '12px';
+        lg.style.marginTop = '4px';
+        lg.textContent = recent.map((l) => '· ' + l.text).join('\n');
+        lg.style.whiteSpace = 'pre-line';
+        card.appendChild(lg);
+      }
+      wSec.appendChild(card);
+    }
+    body.appendChild(wSec);
+  }
 
   // ---- 4. 我的殖民地快照说明 / 收件箱 / 玩家星球网格 ----
   const snapNote = el('div', 'muted', '说明：进入本页会自动把你的殖民地概况（人口 / 建筑 / 防御）'
@@ -712,10 +747,30 @@ function npcGarrison(f) {
 }
 
 /** 电脑势力星球网格（v0.2.10：独立同步渲染，不依赖云端） */
+// v0.2.6：1936 剧本的模拟国家（真实数据 → NPC 势力对象；排除本国）
+function npcFactionsOf(acc) {
+  if (!acc || acc.scenario !== HOI_SCENARIO_ID) return NPC_FACTIONS;
+  const mine = acc.nation;
+  const defeated = Array.isArray(acc.defeatedNations) ? acc.defeatedNations : [];
+  return HOI_NATIONS.filter((n) => n.id !== mine).map((n) => ({
+    id: 'hoi_' + n.id,
+    owner: n.nameCn,
+    code: 'hoi-' + n.id,
+    nameCn: n.capital,
+    defense: Math.round(n.divisions * 60 + n.ic * 12),
+    ascoin: Math.round(n.ic * 3000 + n.popM * 120),
+    sell: n.sell,
+    buys: n.buys,
+    desc: n.desc + '　【人口 ' + n.popM + ' 百万 · 工业 ' + n.ic + ' · 陆军 ' + n.divisions
+      + ' 师 · 海军 ' + n.navy + ' · 空军 ' + n.airforce + ' 百架' + (defeated.includes(n.id) ? ' · 已被迫降签约' : '') + '】',
+    hoi: n,
+  }));
+}
+
 function renderNpcGrid(grid, ctx, rerender, acc, query) {
   ensureAllianceFields(acc);
   grid.innerHTML = '';
-  const npcs = NPC_FACTIONS.filter((f) => !query
+  const npcs = npcFactionsOf(acc).filter((f) => !query
     || (f.nameCn + f.owner + f.code).toLowerCase().includes(query));
   for (const f of npcs) grid.appendChild(buildNpcCard(f, ctx, rerender, acc));
   if (!npcs.length) grid.appendChild(el('div', 'muted', '没有匹配「' + query + '」的电脑势力星球。'));
@@ -924,6 +979,45 @@ function buildNpcCard(f, ctx, rerender, acc) {
   act.appendChild(allyBtn);
   act.appendChild(tradeBtn);
   act.appendChild(atkBtn);
+  // v0.2.6 战争：宣战 / 战争进行中（分数）/ 迫降签约 / 我方投降
+  const w = warWith(acc, f.id);
+  if (w) {
+    const wTag = el('span', 'muted', '⚔ ' + w.myScore + ' : ' + w.theirScore);
+    wTag.style.fontSize = '12px';
+    wTag.style.color = w.myScore >= w.theirScore ? '#9FE1CB' : '#f09595';
+    act.appendChild(wTag);
+    const press = el('button', 'btn btn-sm btn-primary', '迫降签约');
+    press.addEventListener('click', () => {
+      const chk = canForceSurrender(acc, f.id);
+      if (!chk.ok) { alert(chk.reason); return; }
+      const terms = draftTreaty(w, Number(st.ascoin) || 0, {});
+      acc.ascoin = (Number(acc.ascoin) || 0) + terms.reparations;
+      acc.defeatedNations = Array.isArray(acc.defeatedNations) ? acc.defeatedNations : [];
+      const nid = f.hoi ? f.hoi.id : f.id;
+      if (!acc.defeatedNations.includes(nid)) acc.defeatedNations.push(nid);
+      endWar(acc, f.id, 'me', terms, '迫降 ' + f.nameCn + ' 并签订条约');
+      alert('迫降成功！条约赔款 ' + fmtNum(terms.reparations) + ' Ascoin 已入账，「' + f.nameCn + '」承认战败。');
+      refresh();
+    });
+    const sur = el('button', 'btn btn-sm', '我方投降');
+    sur.addEventListener('click', () => {
+      const pay = Math.round((Number(acc.ascoin) || 0) * 0.35);
+      surrenderWar(acc, f.id, { reparations: pay }, '我方战败支付赔款 ' + fmtNum(pay));
+      acc.ascoin = Math.max(0, (Number(acc.ascoin) || 0) - pay);
+      alert('已向「' + f.nameCn + '」投降并签约，赔款 ' + fmtNum(pay) + ' Ascoin，战争结束。');
+      refresh();
+    });
+    act.append(press, sur);
+  } else if (!allied) {
+    const warBtn = el('button', 'btn btn-sm btn-danger', '宣战');
+    warBtn.addEventListener('click', () => {
+      const r = declareWar(acc, { id: f.id, nameCn: f.nameCn, kind: 'npc' });
+      if (!r.ok) { alert(r.reason); return; }
+      alert('已向「' + f.nameCn + '」宣战 —— 战争持续进行：进攻积累战争分数，达到 60 可迫降签约结束。');
+      refresh();
+    });
+    act.appendChild(warBtn);
+  }
   card.appendChild(act);
   return card;
 }
@@ -1057,6 +1151,8 @@ function openNpcAttackModal(ctx, rerender, acc, f, refresh) {
         ? '攻破「' + f.nameCn + '」！掠夺 ' + fmtNum(plunder) + ' Ascoin。'
         : '进攻被击退' + (lost.length ? '，损失军队 ' + lost.join('、') : '，军队无损（火力侦察）') + '。')
       + (lost.length && res.attackerWin ? '\n战损解散：' + lost.join('、') : '');
+    // v0.2.6：战役结果计入战争分数（若与该国处于战争状态）
+    try { addWarScore(acc, f.id, !!res.attackerWin, '进攻 ' + f.nameCn); } catch (e) { /* 忽略 */ }
     openModal({ title: '战斗结算（' + res.rounds + ' 回合）', body });
     refresh();
   });
