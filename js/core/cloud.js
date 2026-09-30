@@ -2,11 +2,20 @@
 // 提供指挥官云身份、星系注册表、异步贸易与远征进攻、战报收件箱系统。
 // 遵循零构建原生 ES 模块规范，具备离线/断网平滑降级（自动混入 NPC 星系）。
 
-import { currentAccount, ownedOf, spendOwned, getPlanetInstance } from './state.js?v=21.16';
-import { listFleets, ensureFleets } from './fleet.js?v=21.16';
-import { fmtNum } from './format.js?v=21.16';
-import { ensureEntry } from './production.js?v=21.16';
-import { stationedArmyPower } from './army.js?v=21.16';
+import { currentAccount, ownedOf, spendOwned, getPlanetInstance } from './state.js?v=21.17';
+import { listFleets, ensureFleets } from './fleet.js?v=21.17';
+import { fmtNum } from './format.js?v=21.17';
+import { ensureEntry } from './production.js?v=21.17';
+import { stationedArmyPower } from './army.js?v=21.17';
+import {
+  ensureRelay, getRelayStatus, onRelayStatus, onWorldEvent, publishPresence, publishBye,
+  listPlayers, listChat, sendChat, listListings, createListing, claimListing, broadcastRaid,
+  getRelayRoom, setRelayRoom,
+} from './relay.js?v=21.17';
+
+// 中继链路状态对 UI 可见（用于显示「用的是哪条链路 / 当前在线人数」）。
+// 由 cloud.js 统一转发，UI 不必直接依赖 net 层。
+export { getRelayStatus, onRelayStatus, getRelayRoom, setRelayRoom, publishBye };
 
 export function addMaterial(inst, matName, amount) {
   const e = ensureEntry(inst, matName);
@@ -502,6 +511,20 @@ export function sendGalaxyRaid(acc, fleetId, targetSystem, opts = {}) {
   const winProbability = Math.min(0.92, Math.max(0.12, myPower / (myPower + targetDef)));
   const isWin = opts.forceWin !== undefined ? !!opts.forceWin : (Math.random() < winProbability);
 
+  // 中继联机下把这次进攻实时广播出去：被攻击方会立刻收到战报并同步免战力场。
+  // 胜负判定仍沿用原本的「进攻方本地结算」设计（中继只负责送达，不充当裁判），
+  // NPC 星球与服务端链路都不广播。
+  if (_transport === 'relay' && targetSystem.commanderId && !targetSystem.isNpc) {
+    broadcastRaid(profile, {
+      targetId: targetSystem.commanderId,
+      fleetPower: myPower,
+      targetDef,
+      win: isWin,
+      shieldUntil: isWin ? Date.now() + SHIELD_DURATION_MS : 0,
+      at: Date.now(),
+    });
+  }
+
   if (isWin) {
     // 胜利：掠夺 5%~10% 物资
     const lootRatio = 0.05 + Math.random() * 0.05; // 5% ~ 10%
@@ -627,12 +650,127 @@ export function sendGalaxyTrade(acc, fleetId, targetSystem, matName, buyQty) {
 }
 
 // ============================================================================
-// 七、全服真实在线网络联动（API 接口直连）
+// 七、全服真实在线网络联动（双传输：同源服务端 / 公网中继）
+// ----------------------------------------------------------------------------
+// 为什么要有两条链路：
+//   · 本地与局域网（start_online.bat）跑的是 server.mjs，有权威服务端，应当继续用它；
+//   · HuggingFace 免费账号只能托管 Static Space —— 官方政策明确「运行计算的 Space
+//     （Gradio/Docker）需创建付费计划」，`cpu-basic` 对免费账号配额为 0。公网上永远
+//     没有 server.mjs，于是自动落到「公网中继」：浏览器直连公共 MQTT 代理，由所有
+//     客户端共同维护同一份广播世界（实现见 core/relay.js）。
+// 两条链路对外函数名与返回形状完全一致，UI 与上层业务逻辑无需感知走的是哪条。
 // ============================================================================
+
+let _transport = null; // 'server' | 'relay'
+let _probe = null;
+let _hooked = false;
+
+async function detectTransport() {
+  if (_transport) return _transport;
+  if (!_probe) {
+    _probe = (async () => {
+      try {
+        const ctl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+        const timer = ctl ? setTimeout(() => ctl.abort(), 2500) : null;
+        const res = await fetch('/api/online/status', {
+          cache: 'no-store',
+          signal: ctl ? ctl.signal : undefined,
+        });
+        if (timer) clearTimeout(timer);
+        if (res.ok) {
+          const data = await res.json().catch(() => null);
+          if (data && data.ok) return 'server';
+        }
+      } catch (e) {
+        // 静态托管下 /api/* 必然 404 或直接连不上 —— 这正是要落到中继的情形
+      }
+      return 'relay';
+    })();
+  }
+  try { _transport = await _probe; } finally { _probe = null; }
+  return _transport;
+}
+
+// 服务端中途不可用时，本次会话永久降级到中继，避免每次调用都白等一次超时。
+function degradeToRelay() {
+  if (_transport === 'server') { _transport = 'relay'; _probe = null; }
+}
+
+/** 复位传输探测（自检用；也用于「服务端稍后上线」的场景）。 */
+export function resetTransport() {
+  _transport = null;
+  _probe = null;
+}
+
+/** 当前实际使用的链路：'server' | 'relay' | null（尚未探测）。 */
+export function currentTransport() {
+  return _transport;
+}
+
+function useRelay() {
+  ensureRelay();
+  if (_hooked) return;
+  _hooked = true;
+  // 被真实玩家进攻时，中继会把战报实时推过来 —— 落到本地信箱，并同步免战力场。
+  onWorldEvent((evt) => {
+    if (!evt || evt.type !== 'raid') return;
+    const acc = currentAccount();
+    if (!acc) return;
+    const profile = ensureCloudProfile(acc);
+    if (!profile || evt.targetId !== profile.commanderId) return;
+    addInboxMessage(acc, {
+      type: evt.win ? 'defense_loss' : 'defense_win',
+      title: evt.win
+        ? `⚠️【空袭警报】母星遭遇 ${evt.attackerCallsign} 突击`
+        : `🛡️【防线告捷】成功拦截 ${evt.attackerCallsign} 的进攻`,
+      body: evt.win
+        ? `敌方突击舰队（战力 ${evt.fleetPower}）突破了母星防线，掠夺了少量工业物资。已紧急激活 12 小时免战力场保护。`
+        : `敌突击舰队（战力 ${evt.fleetPower}）遭到我行星要塞与要塞防空火力的全域压制，已败退脱离。`,
+      details: `战报由公网中继实时送达（真实玩家进攻）。\n交战时间：${new Date(evt.at).toLocaleString()}`,
+    });
+  });
+  // 关页时尽力而为地告知全服「我离线了」，避免在线列表残留幽灵指挥官。
+  // 浏览器不保证该事件一定触发，故中继侧另存在在线超时清理兜底。
+  if (typeof window !== 'undefined') {
+    window.addEventListener('pagehide', () => { try { publishBye(); } catch (e) { /* 忽略 */ } });
+  }
+}
+
+function normalizeChatMessage(m) {
+  if (!m || typeof m !== 'object') return null;
+  // 服务端链路产出的字段是 { from, commanderId, text, at }，而公频 UI 读的是
+  // { senderId, senderName, time } —— 此前两者从未对齐，导致公频列表恒为空。
+  // 在这里统一归一，两条链路共用同一形状。
+  const senderId = m.senderId || m.commanderId || m.from || 'unknown';
+  const senderName = m.senderName || m.from || m.commanderId || '未知指挥官';
+  return {
+    id: m.id || `chat_${m.time || m.at || Date.now()}_${senderId}`,
+    senderId,
+    senderName,
+    text: String(m.text || ''),
+    time: Number(m.time || m.at) || Date.now(),
+  };
+}
+
+function filterRegistry(list, filterQuery) {
+  const q = String(filterQuery || '').trim().toLowerCase();
+  if (!q) return list;
+  return list.filter((item) => (
+    (item.planetNameCn && item.planetNameCn.toLowerCase().includes(q)) ||
+    (item.commanderId && item.commanderId.toLowerCase().includes(q)) ||
+    (item.callsign && item.callsign.toLowerCase().includes(q)) ||
+    (item.faction && item.faction.toLowerCase().includes(q))
+  ));
+}
 
 export async function syncOnlineServer(acc) {
   if (!acc) return null;
   const snapshot = buildLocalSnapshot(acc);
+  if (await detectTransport() === 'relay') {
+    useRelay();
+    publishPresence(snapshot);
+    return { ok: true, transport: 'relay', onlineCount: listPlayers().length };
+  }
   try {
     const res = await fetch('/api/online/heartbeat', {
       method: 'POST',
@@ -641,44 +779,66 @@ export async function syncOnlineServer(acc) {
     });
     return await res.json();
   } catch (e) {
-    return null;
+    degradeToRelay();
+    useRelay();
+    publishPresence(snapshot);
+    return { ok: true, transport: 'relay', onlineCount: listPlayers().length };
   }
 }
 
 export async function fetchRemoteGalaxyRegistry(acc, filterQuery = '') {
-  try {
-    const res = await fetch('/api/online/commanders');
-    if (res.ok) {
-      const data = await res.json();
-      if (data && Array.isArray(data.list) && data.list.length > 0) {
-        try { localStorage.setItem(REGISTRY_LOCAL_KEY, JSON.stringify(data.list)); } catch (e) {}
-        const q = String(filterQuery || '').trim().toLowerCase();
-        if (!q) return data.list;
-        return data.list.filter((item) => (
-          (item.planetNameCn && item.planetNameCn.toLowerCase().includes(q)) ||
-          (item.commanderId && item.commanderId.toLowerCase().includes(q)) ||
-          (item.callsign && item.callsign.toLowerCase().includes(q)) ||
-          (item.faction && item.faction.toLowerCase().includes(q))
-        ));
+  let list = null;
+  if (await detectTransport() === 'relay') {
+    useRelay();
+    // 只返回真实玩家：NPC 星球由 NPC_STAR_SYSTEMS 常量提供，与服务端链路同一套
+    // 合并逻辑（fetchGalaxyRegistry 会按 commanderId 去重）。
+    list = listPlayers();
+  } else {
+    try {
+      const res = await fetch('/api/online/commanders');
+      if (res.ok) {
+        const data = await res.json();
+        if (data && Array.isArray(data.list)) list = data.list.filter((item) => item && !item.isNpc);
       }
+    } catch (e) {
+      degradeToRelay();
     }
-  } catch (e) {}
-  return fetchGalaxyRegistry(acc, filterQuery);
+  }
+  if (list === null) return fetchGalaxyRegistry(acc, filterQuery);
+  if (list.length > 0) {
+    // 写入本地缓存：星系星图（同步渲染）读的就是这份缓存，因此拉取到之后重绘即可
+    // 看到真实在线玩家。
+    try { localStorage.setItem(REGISTRY_LOCAL_KEY, JSON.stringify(list)); } catch (e) { /* 忽略 */ }
+  }
+  return filterRegistry(list, filterQuery);
 }
 
 export async function fetchOnlineChatMessages() {
+  if (await detectTransport() === 'relay') {
+    useRelay();
+    return listChat();
+  }
   try {
     const res = await fetch('/api/online/chat');
     if (res.ok) {
       const data = await res.json();
-      return (data && data.messages) || [];
+      const raw = (data && data.messages) || [];
+      return { messages: raw.map(normalizeChatMessage).filter(Boolean) };
     }
-  } catch (e) {}
-  return [];
+  } catch (e) {
+    degradeToRelay();
+    useRelay();
+    return listChat();
+  }
+  return { messages: [] };
 }
 
 export async function sendOnlineChatMessage(acc, text) {
   const profile = ensureCloudProfile(acc);
+  if (await detectTransport() === 'relay') {
+    useRelay();
+    return sendChat(profile, text);
+  }
   try {
     const res = await fetch('/api/online/chat', {
       method: 'POST',
@@ -691,23 +851,37 @@ export async function sendOnlineChatMessage(acc, text) {
     });
     return await res.json();
   } catch (e) {
-    return { ok: false, reason: '网络连接异常' };
+    degradeToRelay();
+    useRelay();
+    return sendChat(profile, text);
   }
 }
 
 export async function fetchOnlineMarketListings() {
+  if (await detectTransport() === 'relay') {
+    useRelay();
+    return listListings();
+  }
   try {
     const res = await fetch('/api/online/market');
     if (res.ok) {
       const data = await res.json();
       return (data && data.listings) || [];
     }
-  } catch (e) {}
+  } catch (e) {
+    degradeToRelay();
+    useRelay();
+    return listListings();
+  }
   return [];
 }
 
 export async function listOnlineMarketItem(acc, { mat, nameCn, qty, priceAscoin }) {
   const profile = ensureCloudProfile(acc);
+  if (await detectTransport() === 'relay') {
+    useRelay();
+    return createListing(profile, { mat, nameCn, qty, priceAscoin });
+  }
   try {
     const res = await fetch('/api/online/market/list', {
       method: 'POST',
@@ -723,12 +897,18 @@ export async function listOnlineMarketItem(acc, { mat, nameCn, qty, priceAscoin 
     });
     return await res.json();
   } catch (e) {
-    return { ok: false, reason: '网络连接异常' };
+    degradeToRelay();
+    useRelay();
+    return createListing(profile, { mat, nameCn, qty, priceAscoin });
   }
 }
 
 export async function buyOnlineMarketItem(acc, listingId) {
   const profile = ensureCloudProfile(acc);
+  if (await detectTransport() === 'relay') {
+    useRelay();
+    return claimListing(profile, listingId);
+  }
   try {
     const res = await fetch('/api/online/market/buy', {
       method: 'POST',
@@ -741,7 +921,9 @@ export async function buyOnlineMarketItem(acc, listingId) {
     });
     return await res.json();
   } catch (e) {
-    return { ok: false, reason: '网络连接异常' };
+    degradeToRelay();
+    useRelay();
+    return claimListing(profile, listingId);
   }
 }
 

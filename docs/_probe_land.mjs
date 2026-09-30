@@ -5,10 +5,10 @@ import {
   startMission, cancelMission, createFleet, addShipToFleet, ensureFleets,
   listLandTargets, estimateGarrisonOf, garrisonPowerOf, embarkedArmiesOf,
   releaseEmbarkedArmies, disbandFleet, tickFleetMissions, MISSION_DISTANCE,
-} from '../js/core/fleet.js?v=21.16';
-import { discoverPlanet, generateRandomPlanet } from '../js/core/planetgen.js?v=21.16';
-import { stationedArmyPower, embarkableArmies } from '../js/core/army.js?v=21.16';
-import { STATE } from '../js/core/state.js?v=21.16';
+} from '../js/core/fleet.js?v=21.17';
+import { discoverPlanet, generateRandomPlanet } from '../js/core/planetgen.js?v=21.17';
+import { stationedArmyPower, embarkableArmies } from '../js/core/army.js?v=21.17';
+import { STATE } from '../js/core/state.js?v=21.17';
 
 // ---------------------------------------------------------------------------
 // 构造测试账号 / 母星实例 / 飞船

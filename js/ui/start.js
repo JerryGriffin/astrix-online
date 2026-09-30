@@ -1,11 +1,11 @@
 // 开始界面：标题、离线/在线模式、账号选择、各次要入口模态层（Astrix）
-import {  STATE, createAccount, switchAccount, deleteAccount, currentAccount, START_MODES, setStorageMode, getStorageMode  } from '../core/state.js?v=21.16';
-import { fmtNum, fmtTime } from '../core/format.js?v=21.16';
-import { isSoundEnabled, toggleSound } from '../core/sound.js?v=21.16';
+import {  STATE, createAccount, switchAccount, deleteAccount, currentAccount, START_MODES, setStorageMode, getStorageMode  } from '../core/state.js?v=21.17';
+import { fmtNum, fmtTime } from '../core/format.js?v=21.17';
+import { isSoundEnabled, toggleSound } from '../core/sound.js?v=21.17';
 // 版本号与更新日志的唯一来源：任何地方要显示版本都从这里取，改版本只改 js/version.js 一处
-import { VERSION, VERSIONS } from '../version.js?v=21.16';
+import { VERSION, VERSIONS } from '../version.js?v=21.17';
 // v0.2.2：离线 mod 系统
-import { listMods, installMod, setModEnabled, removeMod, modEffects } from '../core/mods.js?v=21.16';
+import { listMods, installMod, setModEnabled, removeMod, modEffects } from '../core/mods.js?v=21.17';
 
 // 创建元素的小工具
 function el(tag, cls, text) {

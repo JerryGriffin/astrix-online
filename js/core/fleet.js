@@ -12,16 +12,16 @@
 //
 // 约定：不修改 state.js（账号对象由调用方传入）；互 import 仅限函数体内使用（无 TDZ 风险）。
 
-import { PLANETS } from '../data/planets.js?v=21.16';
+import { PLANETS } from '../data/planets.js?v=21.17';
 import {
   generateRandomPlanet, capturePlanet, captureDefaultPlanet, uncapturedDefaults,
-} from './planetgen.js?v=21.16';
-import { ownedOf, spendOwned, getPlanetInstance } from './state.js?v=21.16';
-import { CELL_VOLUME, cellsForEquipmentKey } from './footprint.js?v=21.16';   // 纯聚合工具，state.js 不 import 本文件，无环
-import { resolveBlueprint, totalMass, addEquipment } from './shipyard.js?v=21.16';          // 只读导出：蓝图部件 / 蓝图质量；addEquipment 用于登陆战缴获
-import { ARMY_PARTS, ARMY_PART_BY_ID } from '../data/army_parts.js?v=21.16';                 // v0.2.3：登陆战缴获军事部件用
-import { ensureEntry } from './production.js?v=21.16';                        // 装卸货 / 奖励入包（生产模块不 import 本文件，无环）
-import { fmtNum } from './format.js?v=21.16';
+} from './planetgen.js?v=21.17';
+import { ownedOf, spendOwned, getPlanetInstance } from './state.js?v=21.17';
+import { CELL_VOLUME, cellsForEquipmentKey } from './footprint.js?v=21.17';   // 纯聚合工具，state.js 不 import 本文件，无环
+import { resolveBlueprint, totalMass, addEquipment } from './shipyard.js?v=21.17';          // 只读导出：蓝图部件 / 蓝图质量；addEquipment 用于登陆战缴获
+import { ARMY_PARTS, ARMY_PART_BY_ID } from '../data/army_parts.js?v=21.17';                 // v0.2.3：登陆战缴获军事部件用
+import { ensureEntry } from './production.js?v=21.17';                        // 装卸货 / 奖励入包（生产模块不 import 本文件，无环）
+import { fmtNum } from './format.js?v=21.17';
 
 // ============================================================================
 // 编队

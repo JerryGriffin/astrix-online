@@ -15,42 +15,42 @@
 //    开局自带 1 座建筑工厂（设计者：「开局有一个建筑工厂」）。
 // 5. 施工队列由 tick 推进：速度 = 建筑工有效人力（受建筑工厂工位限制），无人则为 0。
 
-import { PLANETS } from '../data/planets.js?v=21.16';
-import { BUILDING_BY_ID, buildingCost } from '../data/buildings.js?v=21.16';
-import { TECH_BY_ID, canResearch, missingPrereqs } from '../data/techs.js?v=21.16';
-import { UPGRADES, upgradeCost } from '../data/upgrades.js?v=21.16';
+import { PLANETS } from '../data/planets.js?v=21.17';
+import { BUILDING_BY_ID, buildingCost } from '../data/buildings.js?v=21.17';
+import { TECH_BY_ID, canResearch, missingPrereqs } from '../data/techs.js?v=21.17';
+import { UPGRADES, upgradeCost } from '../data/upgrades.js?v=21.17';
 import {
   createPopulation, tickPopulation, getAvailable, gatherLaborByLayer, jobsOfBuilding, getIntensity,
   consumptionPerSec, jobOutput,
   JOBS, freeSlots,
-} from './population.js?v=21.16';
-import { buildRateOf, buildBlockReason } from './construction.js?v=21.16';
-import { tickShip, defaultBlueprints, createShip, shipBuildTick } from './shipyard.js?v=21.16';
-import { tickArmyBuildLines, armyStatsOf } from './army.js?v=21.16';
+} from './population.js?v=21.17';
+import { buildRateOf, buildBlockReason } from './construction.js?v=21.17';
+import { tickShip, defaultBlueprints, createShip, shipBuildTick } from './shipyard.js?v=21.17';
+import { tickArmyBuildLines, armyStatsOf } from './army.js?v=21.17';
 // v0.0.6：电力系统与配方生产。
 // 注意这两个模块**不反向 import 本文件**（否则形成循环依赖），
 // 它们只从传入的 inst 上读 buildings / pop / inventory / recipes。
-import { energyOf, computePower, tickPower } from './power.js?v=21.16';
+import { energyOf, computePower, tickPower } from './power.js?v=21.17';
 // v0.0.91：efficiencyBonus 由 production.js 导出（建筑总座数效率乘数），
 //   这里沿用既有的 state→production 单向边引入，不反向让 production import state，避免循环依赖。
-import { tickProduction, productionRates, ensureLines, lineWorkersTotal, efficiencyBonus, ensureEntry, addLine as addProductionLine, lineSlotInfo } from './production.js?v=21.16';
+import { tickProduction, productionRates, ensureLines, lineWorkersTotal, efficiencyBonus, ensureEntry, addLine as addProductionLine, lineSlotInfo } from './production.js?v=21.17';
 // v0.0.92：星际航行与殖民（管理模式 / 独立倾向 / 随机星球）
-import { tickIndependence, outputMulOf, happinessDeltaOf, ensureDiscoveredDefaults, discoverPlanet, purgeShopColonies, tickManagedColonies, SHOP_PLANET_CODE } from './planetgen.js?v=21.16';
+import { tickIndependence, outputMulOf, happinessDeltaOf, ensureDiscoveredDefaults, discoverPlanet, purgeShopColonies, tickManagedColonies, SHOP_PLANET_CODE } from './planetgen.js?v=21.17';
 // v0.1.2（需求 18/19）：永久升级的「效果」改乘方，唯一实现在 data/upgrades.js#upgradeMul
 // （UI 的 research.js 也用它，别在别处再写一套公式）。
 // 此前 upg_collect/refine/power/labor/research/build 六项付了钱却没有任何效果。
-import { upgradeMul } from '../data/upgrades.js?v=21.16';
-import { tickFleetMissions, ensureFleets } from './fleet.js?v=21.16';
+import { upgradeMul } from '../data/upgrades.js?v=21.17';
+import { tickFleetMissions, ensureFleets } from './fleet.js?v=21.17';
 // v0.2.2：离线 mod 系统（叶子模块，不 import 任何游戏模块，无循环依赖风险）
-import { modEffects, applyStartBonus, applyPendingStartResources } from './mods.js?v=21.16';
+import { modEffects, applyStartBonus, applyPendingStartResources } from './mods.js?v=21.17';
 // v0.1.0：电脑账号（离线存档里的 NPC 势力）与其交易池联动。
 //   注意 npc.js 是叶子模块（只 import 数据表），shop.js 与 state.js 互为函数级引用、无顶层副作用。
-import { ensureNpcs, tickNpcs } from './npc.js?v=21.16';
+import { ensureNpcs, tickNpcs } from './npc.js?v=21.17';
 import {
   priceOf as shopPriceOf, suggestPriceOf as shopSuggestPriceOf,
   npcListOnMarket, npcTakeFromMarket, tickShop as shopTick,
   tickListings as shopTickListings,
-} from './shop.js?v=21.16';
+} from './shop.js?v=21.17';
 
 export const AUTOSAVE_INTERVAL = 10;            // 自动存档间隔（秒）
 

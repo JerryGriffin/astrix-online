@@ -1,24 +1,28 @@
 // 星际大厅与在线星图界面（Astrix v0.2.0）
 // 纯原生 ES 模块，深空玻璃拟态风格，移动端与 PC 端自适应（点击区 >= 44px）
 
-import { currentAccount, getPlanetInstance, ownedOf, getStorageMode, setStorageMode } from '../core/state.js?v=21.16';
+import { currentAccount, getPlanetInstance, ownedOf, getStorageMode, setStorageMode } from '../core/state.js?v=21.17';
 import {
   ensureCloudProfile, bindEmail, getShieldStatus, fetchGalaxyRegistry,
   getInbox, markMessageRead, markAllMessagesRead, unreadCount,
   sendGalaxyRaid, sendGalaxyTrade, evaluateFleetPower,
   syncOnlineServer, fetchRemoteGalaxyRegistry, fetchOnlineChatMessages, sendOnlineChatMessage,
-  fetchOnlineMarketListings, buyOnlineMarketListing, createOnlineMarketListing
-} from '../core/cloud.js?v=21.16';
-import { listFleets } from '../core/fleet.js?v=21.16';
-import { fmtNum } from '../core/format.js?v=21.16';
-import { openBattleView } from './combat.js?v=21.16';
-import { playWarp, playPing, playVictory } from '../core/sound.js?v=21.16';
+  fetchOnlineMarketListings, buyOnlineMarketListing, createOnlineMarketListing,
+  getRelayStatus, onRelayStatus, currentTransport
+} from '../core/cloud.js?v=21.17';
+import { listFleets } from '../core/fleet.js?v=21.17';
+import { fmtNum } from '../core/format.js?v=21.17';
+import { openBattleView } from './combat.js?v=21.17';
+import { playWarp, playPing, playVictory } from '../core/sound.js?v=21.17';
 
 function escapeHtml(s) {
   return String(s ?? '').replace(/[&<>"']/g, (c) => (
     { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
   ));
 }
+
+// 联机状态标签的重绘订阅（每次重绘重绑，避免监听器泄漏）
+let _linkUnsub = null;
 
 export function renderGalaxy(root, ctx) {
   const { openModal, closeModal, onBack } = ctx;
@@ -79,6 +83,35 @@ export function renderGalaxy(root, ctx) {
     shieldTag.style.cssText = `padding:6px 12px;min-height:44px;border-radius:6px;display:flex;align-items:center;font-size:13px;border:1px solid ${shield.active ? '#ffc46b' : '#345'};background:${shield.active ? 'rgba(255,196,107,0.1)' : 'rgba(255,255,255,0.04)'};color:${shield.active ? '#ffc46b' : '#94a3b8'};`;
     shieldTag.innerHTML = `🛡️ ${shield.text}`;
     btnGroup.appendChild(shieldTag);
+
+    // 联机链路状态：让玩家看得见「走的是哪条链路、连上没有、现在多少人在线」。
+    // 静态托管（HuggingFace）下没有同源服务端，自动走公网中继 MQTT 广播世界。
+    const linkTag = document.createElement('div');
+    linkTag.style.cssText = 'padding:6px 12px;min-height:44px;border-radius:6px;display:flex;align-items:center;font-size:13px;border:1px solid #345;background:rgba(255,255,255,0.04);color:#94a3b8;';
+    const paintLink = (status) => {
+      if (getStorageMode().mode !== 'online') {
+        linkTag.style.borderColor = '#345';
+        linkTag.style.color = '#94a3b8';
+        linkTag.textContent = '📡 离线模式';
+        linkTag.title = '离线单机：不连接任何在线链路';
+        return;
+      }
+      const s = status || getRelayStatus();
+      const via = currentTransport() === 'server' ? '本地服务端' : '公网中继';
+      const online = s.state === 'connected';
+      linkTag.style.borderColor = online ? '#38bdf860' : '#345';
+      linkTag.style.color = online ? '#7cd7ff' : '#94a3b8';
+      linkTag.textContent = online
+        ? `📡 ${via} · 已连接（${s.players} 人在线）`
+        : `📡 ${via} · 连接中…`;
+      linkTag.title = online
+        ? `链路：${via}\n代理：${s.broker}\n房间：${s.room}`
+        : '正在建立联机链路…';
+    };
+    paintLink(null);
+    if (_linkUnsub) _linkUnsub();
+    _linkUnsub = onRelayStatus((s) => { if (linkTag.isConnected) paintLink(s); });
+    btnGroup.appendChild(linkTag);
 
     // 信箱入口（带未读徽标）
     const unread = unreadCount(acc);
@@ -762,4 +795,20 @@ export function renderGalaxy(root, ctx) {
 
   // 初始启动
   refresh();
+
+  // 拉取真实在线玩家并回填注册表缓存，再重绘一次 —— 星图的星系列表读的就是这份
+  // 缓存，所以这样才能看到全服真人（此前该接口从未被调用，星图里永远只有 NPC）。
+  if (getStorageMode().mode === 'online') {
+    let filled = false;
+    const fill = (list) => {
+      if (filled) return;
+      if (Array.isArray(list) && list.length > 0) {
+        filled = true;
+        refresh();
+      }
+    };
+    fetchRemoteGalaxyRegistry(acc, '').then(fill).catch(() => {});
+    // 中继刚连上时可能还没收到他人广播，稍后再补拉一次。
+    setTimeout(() => { fetchRemoteGalaxyRegistry(acc, '').then(fill).catch(() => {}); }, 5000);
+  }
 }

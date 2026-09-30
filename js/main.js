@@ -1,10 +1,10 @@
 // 应用入口：路由、全局模态层与启动（Astrix）
-import { STATE, loadState, createAccount, currentAccount, saveState, tick, settleOffline, OFFLINE_RATIO, setStorageMode } from './core/state.js?v=21.16';
-import { renderStart } from './ui/start.js?v=21.16';
-import { renderPlanet } from './ui/planet.js?v=21.16';
-import { renderGalaxy } from './ui/galaxy.js?v=21.16';
-import { startReportToasts } from './ui/reports.js?v=21.16';
-import { syncOnlineServer } from './core/cloud.js?v=21.16';
+import { STATE, loadState, createAccount, currentAccount, saveState, tick, settleOffline, OFFLINE_RATIO, setStorageMode } from './core/state.js?v=21.17';
+import { renderStart } from './ui/start.js?v=21.17';
+import { renderPlanet } from './ui/planet.js?v=21.17';
+import { renderGalaxy } from './ui/galaxy.js?v=21.17';
+import { startReportToasts } from './ui/reports.js?v=21.17';
+import { syncOnlineServer } from './core/cloud.js?v=21.17';
 
 const root = document.getElementById('app');
 const modalRoot = document.getElementById('modal-root');

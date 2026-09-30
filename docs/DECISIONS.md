@@ -152,15 +152,16 @@
 | 游戏心跳 | 全局 1 秒心跳（不再只挂在物品栏里），切到任何界面产出都不中断 |
 | 自动存档 | 每 **10 秒** 落盘一次；关页面前 `beforeunload` 强制再存一次 |
 
-### 线上部署与同步链路（v0.2.2-rev15）
+### 线上部署与同步链路（v0.2.2-rev15，rev17 补充联机方案）
 
 | 项 | 决策 |
 |---|---|
 | 公网发布链路 | GitHub `JerryGriffin/astrix-online` push → `.github/workflows/sync_to_hf.yml` → HuggingFace Space `Recapiut/astrix-online` |
 | Space SDK | **`sdk: static`**。2026-09-30 曾试探性改为 `docker` + `app_port: 7860` 以恢复公网真联机，**被账户配额硬阻断**（见下一行），已回滚 |
-| 免费账号的硬门槛（决定性） | HuggingFace **免费账号无法运行 Gradio / Docker Space**，只能托管 Static Space；运行计算型 Space 需付费 PRO。实测：改为 `docker` 后 Space 报 `Quota exceeded for flavor cpu-basic (requested=1): current=0, limit=0`、进入 `PAUSED`、整站 503。官方工作人员原话：「Creating a Space that runs on compute (Gradio or Docker) requires a paid plan. **This includes converting an existing Static Space to Gradio or Docker.**」⇒ **HF 免费额度下公网真联机不可落地** |
-| 公网真联机的现实路径 | 把整个项目（静态资源 + `server.mjs`）部署到任一能跑 **Node 单端口 HTTP 服务**的主机：`server.mjs` 同源托管全部内容，**前端零改动**，`/api/online/*` 相对路径直接成立。HF 只继续承担静态站点托管（单机 + NPC 可玩） |
-| 全服状态持久化 | `server.mjs` 内置三层后端：`hf`（提交快照到私有 Dataset 仓库）/ `file`（本地 `data/online-state.json`，默认）/ `memory`。免费层容器磁盘**重启即丢**（HF 官方文档），故跨重建恢复必须走外部快照。配置与验证见 `docs/HF_STATE_PERSISTENCE.md`；往返自检 `docs/selfcheck_online_state.mjs`（36 项） |
+| 免费账号的硬门槛（决定性） | HuggingFace **免费账号无法运行 Gradio / Docker Space**，只能托管 Static Space；运行计算型 Space 需付费 PRO。实测：改为 `docker` 后 Space 报 `Quota exceeded for flavor cpu-basic (requested=1): current=0, limit=0`、进入 `PAUSED`、整站 503。官方工作人员原话：「Creating a Space that runs on compute (Gradio or Docker) requires a paid plan. **This includes converting an existing Static Space to Gradio or Docker.**」⇒ **HF 免费额度下无法用「服务端」承载联机**（rev17 已改用无服务端中继绕开，见下面两行） |
+| 公网联机（rev17 起，免费可行） | **无服务端广播世界**：站点纯静态，浏览器直连公共 MQTT 代理（`js/net/mqtt.js` 自实现 MQTT 3.1.1，零依赖），由在线客户端按确定性规则共同物化全服世界（`js/core/relay.js`）。免费、无账号、无 API key。见 `docs/ONLINE_RELAY.md`；自检 46 + 30 项 |
+| 联机选路（两条链路，一套接口） | `cloud.js` 探测 `GET /api/online/status`：200 ⇒ 走同源服务端（本地/局域网/未来容器主机）；404 或抛错 ⇒ 走公网中继。8 个联机函数名与返回形状**完全一致**，UI 与业务逻辑不感知；服务端中途不可用会**自动降级**到中继 |
+| 全服状态持久化 | `server.mjs` 内置三层后端：`hf`（提交快照到私有 Dataset 仓库）/ `file`（本地 `data/online-state.json`，默认）/ `memory`。免费层容器磁盘**重启即丢**（HF 官方文档），故跨重建恢复必须走外部快照。配置与验证见 `docs/HF_STATE_PERSISTENCE.md`；往返自检 `docs/selfcheck_online_state.mjs`（36 项）。**注**：中继链路不使用它——中继世界是会话级的 |
 | 对外暴露面（rev17 加固，对外部署的前提） | `server.mjs` 的静态托管改为**白名单**（仅 `index.html` + `js/` + `css/`）。此前是「命中即发」，实测 `/.git/config`（**内含带内嵌凭据的 remote URL**）在局域网/公网可直接下载，`/server.mjs`、`/docs/*`、`/.workbuddy/*`、`/node.exe` 同样可下载。另修两处独立缺陷：畸形百分号编码（`GET /%`）使 async 处理器抛错并**终止进程**（单请求远程 DoS）；`startsWith(ROOT)` 前缀判定可被相邻目录绕过。详见 `docs/SERVER_HARDENING.md`；自检 `docs/selfcheck_server_surface.mjs`（66 项） |
 | 同步链路保护 | `.gitignore` **不得**写成 `.github/`——那会把 `sync_to_hf.yml` 一并忽略，同步会**静默失效**；正确写法是 `.github/*` + `!.github/workflows/`（rev15 已修正） |
 
@@ -199,15 +200,17 @@
 10. **自定义化工厂的自定义配方**：~~目前只有 3 个示例配方~~（v0.2.2 已落地：人力面板生产线区块提供「新建自定义材料配方」卡片，makeCustomMaterial 核心自 v0.0.61 就绪，UI 于 v0.2.2 接通）。
 11. **精细加工厂的「2→1 提升精细度」通用规则**：`js/core/production.js` 已导出 `refinePair(matName)`
     的语义函数，但还没接成「对任意材料生效」的 UI。
-12. ~~**公网是否恢复真联机**~~ —— **免费路径已明确，服务端已就绪；落地只差一次部署动作（rev17）**。
-    `HuggingFace Space` 受账户配额**硬阻断**：免费账号无法运行 Docker/Gradio Space（只能托管 Static），
-    而 Static 形态下公网 `/api/online/*` 一律 404 ⇒ **HF 免费额度下无法承载真联机**（已回滚为此前状态）。
-    免费可行的路径 = 把整个项目部署到**任一能跑 Node 单端口 HTTP 服务的主机**：
-    `server.mjs` 同源托管静态资源与 API，`cloud.js` 全用相对路径 `/api/online/*`，
-    已实测**前端零改动**即可成立（`README.md` 的 `sdk: static` 保持不动，HF 继续承担单机 + NPC 站点）。
-    服务端落地前提已全部就绪并有自检兜底：
-    ① **全服状态持久化**（三层后端，`docs/HF_STATE_PERSISTENCE.md`，往返自检 36 项）；
-    ② **对外暴露面收敛**（静态白名单 + 请求级异常隔离 + 正确的路径包含性判定，
-    `docs/SERVER_HARDENING.md`，自检 66 项）；
-    ③ 容器契约成立：`PORT` 注入生效、绑定 `0.0.0.0`、与 cwd 无关、经非回环地址可达。
-    **待你决定**是否发布（发布是对外动作，需你明确同意后再执行）。
+12. ~~**公网是否恢复真联机**~~ —— **已结案（rev17）：公网联机在免费额度下已可用，无需部署任何服务端**。
+    HuggingFace 免费账号无法运行 Docker/Gradio Space（`cpu-basic` 配额实测为 `0`，改为 `docker` 即整站 503），
+    因此公网不存在能执行 `server.mjs` 的运行时。**改为「无服务端广播世界」**：站点保持纯静态，
+    浏览器直连公共 MQTT 代理，由在线客户端按确定性规则共同物化同一份全服世界
+    （在线集市、星区公频、真实玩家名录、被真人进攻的实时战报与免战力场）。
+    **免费、无需账号、无需 API key**；本地/局域网仍走自带服务端，客户端**自动选路**，两条链路对 UI 完全一致。
+    实现、边界与运维见 `docs/ONLINE_RELAY.md`；自检 `docs/selfcheck_relay_online.mjs`（46 项）
+    + `docs/selfcheck_online_transport.mjs`（30 项）。
+    **遗留（已知并接受）**：公共代理无 SLA、主题公开（靠字段白名单 + 限幅，`?room=` 提供隔离而非保密）、
+    世界为会话级（代理不持久化；玩家自身存档在 localStorage，不受影响）、成交仲裁用固定窗口近似强一致。
+    **仍未做的可选项**：把整个项目部署到能跑 Node 单端口 HTTP 服务的主机（
+    `server.mjs` 同源托管静态资源与 API，**前端零改动**，且自带全服状态持久化与暴露面加固，
+    见 `docs/HF_STATE_PERSISTENCE.md`、`docs/SERVER_HARDENING.md`）——这是「世界可跨重启存活 + 有权威裁判」的唯一路径，
+    属更强的形态，但需要一次对外部署动作（发布是对外动作，需你明确同意后再执行）。
