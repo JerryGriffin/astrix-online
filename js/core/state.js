@@ -15,45 +15,45 @@
 //    开局自带 1 座建筑工厂（设计者：「开局有一个建筑工厂」）。
 // 5. 施工队列由 tick 推进：速度 = 建筑工有效人力（受建筑工厂工位限制），无人则为 0。
 
-import { PLANETS } from '../data/planets.js?v=26.7';
-import { HOI_NATIONS, HOI_BY_ID, HOI_SCENARIO_ID } from '../data/hoi1936.js?v=26.7';   // v0.2.6 官方 mod 1936 剧本
+import { PLANETS } from '../data/planets.js?v=26.8';
+import { HOI_NATIONS, HOI_BY_ID, HOI_SCENARIO_ID } from '../data/hoi1936.js?v=26.8';   // v0.2.6 官方 mod 1936 剧本
 import {
-  setHoiDeps, popOf, setupArmies, setupNavy, setupLines, setupBloc, setupFactories, setupColony, ensureShipNames, backgroundOf, repairScenarioEstates, tickDiploAI, staffBuildings,
+  setHoiDeps, popOf, setupArmies, setupNavy, setupLines, setupBloc, setupFactories, setupColony, ensureShipNames, backgroundOf, repairScenarioEstates, setupGermanPuppets, tickDiploAI, staffBuildings,
   ensureFocus, tickFocus, ensureSeas, scenarioDateOf, gameDaysOf,
-} from './hoi1936.js?v=26.7';
-import { BUILDING_BY_ID, buildingCost } from '../data/buildings.js?v=26.7';
-import { TECH_BY_ID, canResearch, missingPrereqs, missingBuilding } from '../data/techs.js?v=26.7';
-import { UPGRADES, upgradeCost } from '../data/upgrades.js?v=26.7';
+} from './hoi1936.js?v=26.8';
+import { BUILDING_BY_ID, buildingCost } from '../data/buildings.js?v=26.8';
+import { TECH_BY_ID, canResearch, missingPrereqs, missingBuilding } from '../data/techs.js?v=26.8';
+import { UPGRADES, upgradeCost } from '../data/upgrades.js?v=26.8';
 import {
   createPopulation, tickPopulation, getAvailable, gatherLaborByLayer, jobsOfBuilding, getIntensity,
   consumptionPerSec, jobOutput,
   JOBS, freeSlots,
-} from './population.js?v=26.7';
-import { buildRateOf, buildBlockReason } from './construction.js?v=26.7';
-import { tickShip, defaultBlueprints, createShip, shipBuildTick } from './shipyard.js?v=26.7';
+} from './population.js?v=26.8';
+import { buildRateOf, buildBlockReason } from './construction.js?v=26.8';
+import { tickShip, defaultBlueprints, createShip, shipBuildTick } from './shipyard.js?v=26.8';
 // v0.0.6：电力系统与配方生产。
 // 注意这两个模块**不反向 import 本文件**（否则形成循环依赖），
 // 它们只从传入的 inst 上读 buildings / pop / inventory / recipes。
-import { energyOf, computePower, tickPower } from './power.js?v=26.7';
+import { energyOf, computePower, tickPower } from './power.js?v=26.8';
 // v0.0.91：efficiencyBonus 由 production.js 导出（建筑总座数效率乘数），
 //   这里沿用既有的 state→production 单向边引入，不反向让 production import state，避免循环依赖。
-import { tickProduction, productionRates, ensureLines, lineWorkersTotal, efficiencyBonus, ensureEntry, addLine as addProductionLine, lineSlotInfo } from './production.js?v=26.7';
+import { tickProduction, productionRates, ensureLines, lineWorkersTotal, efficiencyBonus, ensureEntry, addLine as addProductionLine, lineSlotInfo } from './production.js?v=26.8';
 // v0.0.92：星际航行与殖民（管理模式 / 独立倾向 / 随机星球）
-import { tickIndependence, outputMulOf, happinessDeltaOf, ensureDiscoveredDefaults, discoverPlanet, capturePlanet, purgeShopColonies, tickManagedColonies, SHOP_PLANET_CODE } from './planetgen.js?v=26.7';
+import { tickIndependence, outputMulOf, happinessDeltaOf, ensureDiscoveredDefaults, discoverPlanet, capturePlanet, purgeShopColonies, tickManagedColonies, SHOP_PLANET_CODE } from './planetgen.js?v=26.8';
 // v0.1.2（需求 18/19）：永久升级的「效果」改乘方，唯一实现在 data/upgrades.js#upgradeMul
 // （UI 的 research.js 也用它，别在别处再写一套公式）。
 // 此前 upg_collect/refine/power/labor/research/build 六项付了钱却没有任何效果。
-import { upgradeMul } from '../data/upgrades.js?v=26.7';
-import { tickFleetMissions, ensureFleets } from './fleet.js?v=26.7';
-import { ensureArmies, armyBuildTick, advanceTraining, ARMY_LABOR_PER_BARRACKS } from './army.js?v=26.7';   // v0.2.0 军队
+import { upgradeMul } from '../data/upgrades.js?v=26.8';
+import { tickFleetMissions, ensureFleets } from './fleet.js?v=26.8';
+import { ensureArmies, armyBuildTick, advanceTraining, ARMY_LABOR_PER_BARRACKS } from './army.js?v=26.8';   // v0.2.0 军队
 // v0.1.0：电脑账号（离线存档里的 NPC 势力）与其交易池联动。
 //   注意 npc.js 是叶子模块（只 import 数据表），shop.js 与 state.js 互为函数级引用、无顶层副作用。
-import { ensureNpcs, tickNpcs } from './npc.js?v=26.7';
+import { ensureNpcs, tickNpcs } from './npc.js?v=26.8';
 import {
   priceOf as shopPriceOf, suggestPriceOf as shopSuggestPriceOf,
   tickShop as shopTick,
-} from './shop.js?v=26.7';
-import { tickAuctions, tickNpcAuctionSpawner } from './auction.js?v=26.7';   // v0.2.6 拍卖行；v0.2.10 NPC 挂单
+} from './shop.js?v=26.8';
+import { tickAuctions, tickNpcAuctionSpawner } from './auction.js?v=26.8';   // v0.2.6 拍卖行；v0.2.10 NPC 挂单
 
 const SAVE_PREFIX = 'astrix.save.';
 const INDEX_KEY = SAVE_PREFIX + 'index';
@@ -1443,12 +1443,15 @@ function apply1936Start(acc, inst, countryId) {
   } catch (e) { /* 忽略 */ }
   acc.ascoin = Math.round(ic * 4000 + n.divisions * 600);
   inst.equipment = inst.equipment || {};
+  // v0.2.6 rev8：装备配发与工业挂钩（高工业国家每个师的装备更充足）
+  const gearMul = 1 + Math.min(1.5, n.ic / 80);
+  const gm = (x) => Math.max(1, Math.round(x * gearMul));
   const gear = {
-    'ap_frame_light@钢': n.divisions * 2, 'ap_wpn_rifle@钢': n.divisions * 3,
-    'ap_armor_light@钢': n.divisions, 'ap_mob_wheel@钢': n.divisions,
-    'ap_frame_heavy@钢': Math.round(n.divisions / 2), 'ap_wpn_hmg@钢': Math.round(n.divisions / 2),
-    'ap_armor_composite@钢': Math.round(n.divisions / 3), 'ap_wpn_howitzer@钢': Math.round(n.divisions / 4),
-    'ap_sup_radar@钢': Math.round(n.divisions / 6), 'ap_sup_supply@钢': Math.round(n.divisions / 5),
+    'ap_frame_light@钢': gm(n.divisions * 3), 'ap_wpn_rifle@钢': gm(n.divisions * 4),
+    'ap_armor_light@钢': gm(n.divisions * 1.5), 'ap_mob_wheel@钢': gm(n.divisions * 1.5),
+    'ap_frame_heavy@钢': gm(n.divisions), 'ap_wpn_hmg@钢': gm(n.divisions),
+    'ap_armor_composite@钢': gm(n.divisions * 0.8), 'ap_wpn_howitzer@钢': gm(n.divisions * 0.6),
+    'ap_sup_radar@钢': gm(n.divisions * 0.4), 'ap_sup_supply@钢': gm(n.divisions * 0.4),
   };
   for (const key in gear) {
     const [partId, material] = key.split('@');
@@ -1476,8 +1479,9 @@ function apply1936Start(acc, inst, countryId) {
     acc.hoiWorkforce = (wf && wf.workers) || 0;
     acc.hoiLines = (wf && wf.lines) || [];
   } catch (e) { /* 忽略 */ }
-  // 6d) 阵营（德意同盟等）
+  // 6d) 阵营（德意同盟等）+ 德国专属附庸（斯洛伐克领地）
   try { setupBloc(acc, n); } catch (e) { /* 忽略 */ }
+  try { setupGermanPuppets(acc); } catch (e) { /* 忽略 */ }
   // 6e) 岗位分配：让每座建筑都有人工作（扣掉生产线工人后按优先级填岗）
   try {
     const st = staffBuildings(inst.pop, inst);

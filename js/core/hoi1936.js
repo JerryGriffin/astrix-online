@@ -10,10 +10,10 @@
 //   * HOI4 风格国策（三支六策，按天推进）               → focus 系列
 //   * 海域（制海权争夺 + 海战）                          → sea 系列
 import { HOI_NATIONS, HOI_BY_ID, HOI_DEEP, HOI_SEAS, ARMY_MEN, popOf, BLOC_NAME, HOI_SCENARIO_ID,
-  workforceOf, ARMY_POWER_PER_DIV, NAVY_MUL, GEAR_PARTS, SHIP_NAMES, ARMY_BP_NAME, HOI_BG } from '../data/hoi1936.js?v=26.7';
-import { BUILDING_BY_ID } from '../data/buildings.js?v=26.7';
-import { JOBS_BY_BUILDING, assignWorkers, jobCapacity, getAvailable } from './population.js?v=26.7';
-import { ELITE_DIVISIONS, ELITE_MUL } from '../data/hoi1936.js?v=26.7';
+  workforceOf, ARMY_POWER_PER_DIV, NAVY_MUL, GEAR_PARTS, SHIP_NAMES, ARMY_BP_NAME, HOI_BG, SHIP_CLASSES, POST_WAR_OPTIONS, GER_PUPPETS } from '../data/hoi1936.js?v=26.8';
+import { BUILDING_BY_ID } from '../data/buildings.js?v=26.8';
+import { JOBS_BY_BUILDING, assignWorkers, jobCapacity, getAvailable } from './population.js?v=26.8';
+import { ELITE_DIVISIONS, ELITE_MUL } from '../data/hoi1936.js?v=26.8';
 
 // 依赖注入（避免与 state.js / production.js 形成循环导入）
 let _getInst = null;
@@ -197,7 +197,8 @@ export function setupArmies(acc, nation) {
   const deep = HOI_DEEP[n.id] || {};
   // v0.2.6 rev3：**师数 = 1936 年真实师数**（德国 30 / 苏联 92 / 中国 120 …），每师 500 人
   const count = Math.max(2, Math.min(130, Math.round(n.divisions)));
-  const perPower = ARMY_POWER_PER_DIV;
+  // v0.2.6 rev8：高工业国家师级战力增强（工业越高，师装备越精良）
+  const perPower = Math.round(ARMY_POWER_PER_DIV * (1 + Math.min(1.2, n.ic / 120)));
   acc.armies = [];
   for (let i = 0; i < count; i++) {
     acc.armies.push({
@@ -293,6 +294,8 @@ export function setupNavy(acc, nation, createShipFn, defaultBlueprintsFn) {
   for (let i = 0; i < bps.length && i < sn.length; i++) {
     try { bps[i].nameCn = sn[i]; } catch (e) { /* 忽略 */ }
   }
+  // v0.2.6 rev8：史实舰级表（含航母 / 战列舰）—— 有航母战列舰的国家就有对应舰种
+  acc.hoiShipClasses = SHIP_CLASSES[n.id] || sn;
   acc.blueprints = bps;
   if (!acc.blueprint && bps.length) acc.blueprint = bps[0];
   const hulls = bps.length ? bps : [];
@@ -391,13 +394,27 @@ export function setupLines(inst, nation) {
   if (!specs.length) return done;
   // ① 先规划所有线（建筑 / 配方 / 工人数）
   const plan = [];
-  const mainTotal = Math.round(total * 0.45);
+  // v0.2.6 rev8：优先资源生产 —— 资源线 72%、装备线 28%
+  const mainTotal = Math.round(total * 0.72);
   const per = Math.max(20, Math.round(mainTotal / specs.length));
   for (const L of specs) plan.push({ buildingId: L.buildingId, recipeId: L.recipeId, workers: per });
   const mat = (deep.gear && deep.gear[0] && deep.gear[0].material) || '钢';
-  const gearTotal = Math.round(total * 0.55);
+  const gearTotal = Math.round(total * 0.28);
   const perGear = Math.max(20, Math.round(gearTotal / GEAR_PARTS.length));
   for (const pid of GEAR_PARTS) plan.push({ buildingId: 'fabricator', recipeId: 'part_' + pid, workers: perGear, material: mat });
+  // ①a 必备资源线（所有国家）：碳 / 钢 / 铝 / 铁 —— 保证基础资源永不断供
+  const MUST_LINES = [
+    { buildingId: 'furnace', recipeId: 'r_furnace_carbon' },     // 碳
+    { buildingId: 'furnace', recipeId: 'r_furnace_wood' },       // 木炭
+    { buildingId: 'refinery', recipeId: 'r_refine_steel' },      // 钢
+    { buildingId: 'blast_furnace', recipeId: 'r_bf_aluminum' },  // 铝
+    { buildingId: 'blast_furnace', recipeId: 'r_bf_iron' },      // 铁
+  ];
+  for (const L of MUST_LINES) {
+    if (!plan.some((x) => x.buildingId === L.buildingId && x.recipeId === L.recipeId)) {
+      plan.push({ buildingId: L.buildingId, recipeId: L.recipeId, workers: 220 });
+    }
+  }
   // ①b 高工业国家（ic ≥ 40）：高炉各类矿 + 全部化工复合资源铺线，避免缺料
   if (n.ic >= 40) {
     for (const rid of ['r_bf_iron', 'r_bf_copper', 'r_bf_zinc', 'r_bf_aluminum', 'r_bf_manganese', 'r_bf_tungsten']) {
@@ -593,6 +610,63 @@ export function repairScenarioEstates(acc) {
     if (!(Number(inst.pop.happiness) > 0.55)) inst.pop.happiness = 0.72;
   }
   return fixed;
+}
+
+/**
+ * 战后处置（v0.2.6 rev8）：迫降某国后可选「吞并」或「成立傀儡政权」（史实名）
+ *   · 吞并：按对方工业值折半直接并入（钢材/物资入库 + 工业建筑增加）
+ *   · 傀儡：对方转为附庸盟友（提供贡品，并出现在盟友列表）
+ */
+export function postwarOptionsFor(nationId) {
+  return POST_WAR_OPTIONS[nationId] || [{ key: 'annex', nameCn: '吞并（并入本土工业）' }];
+}
+
+export function applyPostwarChoice(acc, nationId, choice) {
+  const n = HOI_BY_ID[nationId];
+  if (!acc || !n) return { ok: false, reason: '国家数据缺失' };
+  const inst = _getInst ? _getInst(acc.homePlanetCode) : null;
+  const isPuppet = choice === 'puppet';
+  if (!isPuppet) {
+    // 吞并：工业与库存并入
+    const steel = Math.round(n.ic * 400), iron = Math.round(n.ic * 500);
+    try {
+      if (inst) {
+        if (inst.buildings) {
+          inst.buildings.refinery = (Number(inst.buildings.refinery) || 0) + Math.max(2, Math.round(n.ic / 6));
+          inst.buildings.blast_furnace = (Number(inst.buildings.blast_furnace) || 0) + Math.max(2, Math.round(n.ic / 8));
+        }
+        for (const [mat, qty] of [['钢', steel], ['铁', iron], ['铝', Math.round(n.ic * 200)]]) {
+          const e = (inst.inventory || []).find((x) => x && x.mat === mat);
+          if (e) e.owned = (Number(e.owned) || 0) + qty;
+        }
+      }
+    } catch (e) { /* 忽略 */ }
+    acc.warLog.unshift({ at: Date.now(), text: '【战后处置】吞并 ' + n.nameCn
+      + '：并入钢材 ' + steel + '、铁矿 ' + iron + ' 与部分工业建筑。' });
+    const p = POST_WAR_OPTIONS[nationId];
+    const label = p && p[1] ? p[1].nameCn : n.nameCn;
+    return { ok: true, mode: 'annex', text: '已吞并 ' + n.nameCn + '（对应傀儡方案「' + label + '」未采用）', steel, iron };
+  }
+  // 傀儡：转附庸（盟友 + 贡品标记）
+  if (!Array.isArray(acc.npcAllies)) acc.npcAllies = [];
+  const p = POST_WAR_OPTIONS[nationId];
+  const puppetName = (p && p[1] ? p[1].nameCn.replace(/^成立「|」.*$/g, '') : n.nameCn + ' 傀儡政府');
+  if (acc.npcAllies.indexOf(n.nameCn) < 0) acc.npcAllies.push(n.nameCn);
+  acc.puppets = Array.isArray(acc.puppets) ? acc.puppets : [];
+  acc.puppets.push({ nationId: n.id, nameCn: puppetName, at: Date.now() });
+  acc.warLog.unshift({ at: Date.now(), text: '【战后处置】成立傀儡政权「' + puppetName + '」（' + n.nameCn + ' 转为附庸）。' });
+  return { ok: true, mode: 'puppet', puppetName, text: '已成立「' + puppetName + '」' };
+}
+
+/** 德国专属：开局即拥有斯洛伐克领地（附庸 + 小属地） */
+export function setupGermanPuppets(acc) {
+  if (!acc || acc.nation !== 'ger') return 0;
+  acc.puppets = Array.isArray(acc.puppets) ? acc.puppets : [];
+  if (!acc.puppets.some((x) => x && x.nationId === 'slovakia')) {
+    acc.puppets.push({ nationId: 'slovakia', nameCn: GER_PUPPETS.slovakia.nameCn, at: Date.now(), initial: true });
+  }
+  acc.warLog.unshift({ at: Date.now(), text: '【附庸】' + GER_PUPPETS.slovakia.desc + '（本土以南，提供原材料贡品）' });
+  return 1;
 }
 
 export function backgroundOf(acc) {

@@ -16,17 +16,18 @@ import {
   ensureReady, cloudStatus, cloudUser,
   loginWithName, registerWithName, signOutCloud,
   listPublicPlanets, publishMyPlanet, postIncident, fetchInbox, markIncidentResolved,
-} from '../core/cloud.js?v=26.7';
-import { currentAccount, getPlanetInstance, ownedOf, spendOwned } from '../core/state.js?v=26.7';
-import { ensureEntry } from '../core/production.js?v=26.7';
-import { listFleets, fleetPowerOf, defenseBonusOf } from '../core/fleet.js?v=26.7';
-import { totalArmyPowerOf, listArmies, disbandArmy, resolveBattle, armyToUnit, armyPowerOfInstance } from '../core/army.js?v=26.7';
+} from '../core/cloud.js?v=26.8';
+import { currentAccount, getPlanetInstance, ownedOf, spendOwned } from '../core/state.js?v=26.8';
+import { ensureEntry } from '../core/production.js?v=26.8';
+import { listFleets, fleetPowerOf, defenseBonusOf } from '../core/fleet.js?v=26.8';
+import { totalArmyPowerOf, listArmies, disbandArmy, resolveBattle, armyToUnit, armyPowerOfInstance } from '../core/army.js?v=26.8';
 // v0.2.1：内嵌殖民地管理（含内联报告），取代在线模式独立的「星球选择」tab
-import { renderColony } from './colony.js?v=26.7';
-import { PLANETS } from '../data/planets.js?v=26.7';
-import { HOI_NATIONS, HOI_BY_ID, HOI_SCENARIO_ID } from '../data/hoi1936.js?v=26.7';   // v0.2.6 官方 mod
-import { declareWar, activeWarsOf, warWith, addWarScore, canForceSurrender, draftTreaty, endWar, surrenderWar } from '../core/war.js?v=26.7';
-import { fmtNum } from '../core/format.js?v=26.7';
+import { renderColony } from './colony.js?v=26.8';
+import { PLANETS } from '../data/planets.js?v=26.8';
+import { HOI_NATIONS, HOI_BY_ID, HOI_SCENARIO_ID } from '../data/hoi1936.js?v=26.8';   // v0.2.6 官方 mod
+import { declareWar, activeWarsOf, warWith, addWarScore, canForceSurrender, draftTreaty, endWar, surrenderWar } from '../core/war.js?v=26.8';
+import { postwarOptionsFor, applyPostwarChoice } from '../core/hoi1936.js?v=26.8';
+import { fmtNum } from '../core/format.js?v=26.8';
 
 function el(tag, cls, text) {
   const e = document.createElement(tag);
@@ -996,7 +997,29 @@ function buildNpcCard(f, ctx, rerender, acc) {
       const nid = f.hoi ? f.hoi.id : f.id;
       if (!acc.defeatedNations.includes(nid)) acc.defeatedNations.push(nid);
       endWar(acc, f.id, 'me', terms, '迫降 ' + f.nameCn + ' 并签订条约');
-      alert('迫降成功！条约赔款 ' + fmtNum(terms.reparations) + ' Ascoin 已入账，「' + f.nameCn + '」承认战败。');
+      // v0.2.6 rev8：战后处置 —— 吞并 / 成立傀儡政权（史实名）
+      const nidPost = f.hoi ? f.hoi.id : null;
+      const opts = nidPost ? postwarOptionsFor(nidPost) : [];
+      if (opts.length > 1 && ctx.openModal) {
+        const wrap2 = el('div');
+        wrap2.appendChild(el('p', 'modal-tip', '「' + f.nameCn + '」已承认战败，赔款 '
+          + fmtNum(terms.reparations) + ' Ascoin 入账。请决定战后处置：'));
+        for (const op of opts) {
+          const b = el('button', 'btn btn-sm btn-primary', op.nameCn);
+          b.style.minHeight = '44px';
+          b.style.marginRight = '8px';
+          b.addEventListener('click', () => {
+            const r = applyPostwarChoice(acc, nidPost, op.key);
+            ctx.closeModal && ctx.closeModal();
+            alert(r.ok ? r.text : (r.reason || '处置失败'));
+            refresh();
+          });
+          wrap2.appendChild(b);
+        }
+        ctx.openModal({ title: '战后处置：' + f.nameCn, body: wrap2 });
+      } else {
+        alert('迫降成功！条约赔款 ' + fmtNum(terms.reparations) + ' Ascoin 已入账，「' + f.nameCn + '」承认战败。');
+      }
       refresh();
     });
     const sur = el('button', 'btn btn-sm', '我方投降');
