@@ -12,17 +12,17 @@
 //
 // 重要：本模块**不 import state.js**（state.js 会 import 本模块，互相 import 会成环）。
 // 所有星球实例数据（inst.buildings / inst.pop / inst.inventory / inst.facilities / 静态 inst.power）
-// 都直接从传入的 inst 对象上读；建筑表来自 '../data/buildings.js?v=21.17'（纯数据，无环）。
+// 都直接从传入的 inst 对象上读；建筑表来自 '../data/buildings.js?v=21.18'（纯数据，无环）。
 
-import { BUILDING_BY_ID } from '../data/buildings.js?v=21.17';
-import { POWER_FACILITY_BY_ID } from '../data/facilities.js?v=21.17';
-import { RECIPES } from '../data/recipes.js?v=21.17';
-import { jobsOfBuilding, jobOutput, assignedToBuilding, buildingSlots } from '../core/population.js?v=21.17';
-import { facilityStockOf, linesOf } from './production.js?v=21.17';
+import { BUILDING_BY_ID } from '../data/buildings.js?v=21.18';
+import { POWER_FACILITY_BY_ID } from '../data/facilities.js?v=21.18';
+import { RECIPES } from '../data/recipes.js?v=21.18';
+import { jobsOfBuilding, jobOutput, assignedToBuilding, buildingSlots } from '../core/population.js?v=21.18';
+import { facilityStockOf, linesOf } from './production.js?v=21.18';
 // v0.1.2（需求 18/19）：永久升级「发电效率」的乘方效果，唯一实现在 data/upgrades.js#upgradeMul
-import { upgradeMul } from '../data/upgrades.js?v=21.17';
+import { upgradeMul } from '../data/upgrades.js?v=21.18';
 // v0.2.2：离线 mod 发电倍率（叶子模块，无循环依赖）
-import { modEffects } from './mods.js?v=21.17';
+import { modEffects } from './mods.js?v=21.18';
 
 // ============================================================================
 // v0.0.7：玩家在制造车间为设施选定的「燃料 / 板面材料」
@@ -70,10 +70,56 @@ function getStatic(inst) {
   return { totalEnergy: 0, hydro: 0, wind: 0, solar: 0 };
 }
 
+// 燃料持有量（**跨层聚合**）：同一材料可能同时存在于地表/浅层/深层/地核/精炼多条，
+//   只取第一条会把其它层的库存算漏（state.js 的铁律：按材料算总量一律走聚合）。
+//   power.js 不 import state.js（否则与 state→power 形成循环依赖），故本地实现同口径聚合。
 function fuelOwnedOf(inst, fuelName) {
-  const inv = inst.inventory || [];
-  const e = inv.find((x) => x && x.mat === fuelName);
-  return e ? num(e.owned, 0) : 0;
+  const inv = (inst && inst.inventory) || [];
+  let s = 0;
+  for (const e of inv) if (e && e.mat === fuelName) s += num(e.owned, 0);
+  return s;
+}
+
+// 从持有最多的条目开始扣燃料（与 state.js#spendOwned 同口径），返回实际扣掉的量。
+function spendFuelAcrossLayers(inst, fuelName, amt) {
+  let need = num(amt, 0);
+  if (!(need > 0)) return 0;
+  const list = ((inst && inst.inventory) || [])
+    .filter((e) => e && e.mat === fuelName)
+    .sort((a, b) => num(b.owned, 0) - num(a.owned, 0));
+  let taken = 0;
+  for (const e of list) {
+    if (need <= 1e-12) break;
+    const have = Math.max(0, num(e.owned, 0));
+    const use = Math.min(have, need);
+    e.owned = have - use;
+    taken += use;
+    need -= use;
+  }
+  return taken;
+}
+
+// rev18：火力设施**每秒**要烧掉的燃料，按材料聚合：{ 燃料名: 每秒消耗 }。
+//   单一来源 —— tickPower 的真实扣料与 state.js#computeNetRates 的净增长都读它，
+//   避免「净增长漏算燃料消耗」：此前玩家在采某种燃料（例如甲烷）时，物品栏净增长
+//   显示为正（绿），而库存其实在被燃机烧掉、逐秒减少 —— 正是设计者报的「开采时反而减少」。
+//   注：耗电设施在完全没料时不会发电（computePower 里有 fuelShort 门槛），
+//   但既有实现是「有多少烧多少」，此处保持同一口径。
+export function thermalFuelRates(inst) {
+  const out = {};
+  const facilities = (inst && inst.facilities) || {};
+  for (const fid in facilities) {
+    const cnt = num(facilities[fid], 0);
+    if (!(cnt > 0)) continue;
+    const f = POWER_FACILITY_BY_ID[fid];
+    if (!f || f.kind !== 'thermal') continue;
+    const need = num(f.fuelPerSec, 0) * cnt;
+    if (!(need > 0)) continue;
+    const fuelName = facilityFuelOf(inst, f);
+    if (!fuelName) continue;
+    out[fuelName] = (out[fuelName] || 0) + need;
+  }
+  return out;
 }
 
 // 有配方的建筑 = 「加工建筑」，它们的耗电与运转状态由生产线决定（v0.0.7）
@@ -409,21 +455,14 @@ export function tickPower(inst, dt, acc) {
 
   // 4) 火力设施烧燃料：fuelPerSec × 座数 × dt；不够按比例少烧
   //    v0.0.7：燃料名改为玩家选定（facilityFuelOf），超大型燃机可选除核燃料外的任何燃料
-  for (const fid in facilities) {
-    const cnt = num(facilities[fid], 0);
-    if (cnt <= 0) continue;
-    const f = POWER_FACILITY_BY_ID[fid];
-    if (!f || f.kind !== 'thermal') continue;
-    const need = num(f.fuelPerSec, 0) * cnt * dt;
-    if (need <= 0) continue;
-    const fuelName = facilityFuelOf(inst, f);
-    if (!fuelName) continue;
-    const owned = fuelOwnedOf(inst, fuelName);
-    const burn = Math.min(owned, need);
-    if (burn > 0) {
-      const e = (inst.inventory || []).find((x) => x && x.mat === fuelName);
-      if (e) e.owned = Math.max(0, num(e.owned, 0) - burn);
-    }
+  //    rev18：改为读 thermalFuelRates()（与 computeNetRates 的净增长同源），
+  //      并修掉两处旧缺陷：① 扣料只打第一条匹配条目（跨层时会算漏/漏扣）；
+  //      ② 多座燃机各自拿「聚合持有量」当上限，会重复透支同一批燃料。
+  const fuelRates = thermalFuelRates(inst);
+  for (const fuelName in fuelRates) {
+    const need = fuelRates[fuelName] * dt;
+    if (!(need > 0)) continue;
+    spendFuelAcrossLayers(inst, fuelName, need);
   }
 
   return { cleanDraw };

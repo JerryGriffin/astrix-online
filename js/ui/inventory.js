@@ -24,18 +24,18 @@
 // 所有数字显示一律走 format.js 的 fmtNum / fmtRate / fmtRateBody / fmtSci。
 // 样式集中在 css/planet.css。
 
-import { MATERIALS } from '../data/materials.js?v=21.17';
-import { fmtNum, fmtRate, fmtSci, richText } from '../core/format.js?v=21.17';
-import { getPlanetInstance, tick, currentAccount, atmosphereOf, ownedOf, rateOf } from '../core/state.js?v=21.17';
-import { computePower } from '../core/power.js?v=21.17';
-import { equipmentList } from '../core/shipyard.js?v=21.17';
-import { materialLabel, productionRates } from '../core/production.js?v=21.17';
-import { BUILDING_BY_ID } from '../data/buildings.js?v=21.17';
-import { NUTRIENT_NAMES, METABOLITE_NAMES, consumptionPerSec, metabolitePerSec } from '../core/population.js?v=21.17';
-import { playPing } from '../core/sound.js?v=21.17';
+import { MATERIALS } from '../data/materials.js?v=21.18';
+import { fmtNum, fmtRate, fmtSci, richText } from '../core/format.js?v=21.18';
+import { getPlanetInstance, tick, currentAccount, atmosphereOf, ownedOf, rateOf } from '../core/state.js?v=21.18';
+import { computePower, thermalFuelRates } from '../core/power.js?v=21.18';
+import { equipmentList } from '../core/shipyard.js?v=21.18';
+import { materialLabel, productionRates, farmRates, farmSupplyOf } from '../core/production.js?v=21.18';
+import { BUILDING_BY_ID } from '../data/buildings.js?v=21.18';
+import { NUTRIENT_NAMES, METABOLITE_NAMES, consumptionPerSec, metabolitePerSec } from '../core/population.js?v=21.18';
+import { playPing } from '../core/sound.js?v=21.18';
 // v0.2.3：军工与地面部队概览（真实数据，替换原装饰性假 HUD）
-import { ARMY_PART_BY_ID } from '../data/army_parts.js?v=21.17';
-import { stationedArmyPower } from '../core/army.js?v=21.17';
+import { ARMY_PART_BY_ID } from '../data/army_parts.js?v=21.18';
+import { stationedArmyPower } from '../core/army.js?v=21.18';
 
 // 地层扫描雷达配置
 const STRATA_CONFIG = [
@@ -67,11 +67,16 @@ const LAYER_ORDER = { surface: 0, underground: 1, deep: 2, core: 3, gas: 4 };
 //   现在把 state.js 已经算好的 `locked` 标记真正用起来，把原因如实说出来。
 const MINABLE_LAYERS = { surface: 1, underground: 1, deep: 1, core: 1, gas: 1 };
 
+// rev18：与 state.js#POWERED_GATHER_LAYERS 同口径 —— 这几层靠耗电建筑开采，缺电时按比例降速/停产。
+//   露天采集（surface）是纯手工劳动，不吃电力降速。
+const POWERED_LAYERS = { underground: 1, deep: 1, core: 1, gas: 1 };
+
 // 该层未解锁时需要什么（地表是科技门槛，其余是建筑门槛）
 const LAYER_UNLOCK_BUILDING = {
   underground: '浅层矿井', deep: '深层矿井', core: '地心矿井', gas: '大气收集器',
 };
 const SURFACE_UNLOCK_HINT = '需研究「A1 深度采集」';
+const NO_POWER_HINT = '电力不足，停产';
 
 // 某一层「采不到」的解锁条件（仅用于已 locked 的条目）
 function layerLockHint(layer) {
@@ -80,13 +85,31 @@ function layerLockHint(layer) {
   return need ? '需建造「' + need + '」' : '该层尚未开放';
 }
 
+// 原因文案的前缀图标（rev16 立规：需解锁条件用 🔒；rev18 补电力用 ⚡）
+function reasonPrefix(why) {
+  if (why.startsWith('需')) return '🔒 ';
+  if (why.startsWith('电力')) return '⚡ ';
+  return '';
+}
+
 // 某材料「净增长为 0」的真实原因。返回简短中文；正常在产或无采集层时返回 ''。
-//   '' 以外的取值只有四种：需研究…/需建造…（未解锁）、已采尽、未分配人力。
+//   '' 以外的取值只有五种：需研究…/需建造…（未解锁）、电力不足（停产）、已采尽、未分配人力。
 function noGainReasonOf(planet, mat) {
   const list = ((planet && planet.inventory) || [])
     .filter((e) => e && e.mat === mat && MINABLE_LAYERS[e.layer]);
   if (!list.length) return '';                                  // 加工产物（refined）不参与采集说明
-  if (list.some((e) => Number(e.rate) > 0)) return '';          // 有一层正在产 → 正常
+  const producing = list.filter((e) => Number(e.rate) > 0);
+  if (producing.length) {
+    // rev18：有层在采、净增长却仍为 0 —— 唯一常见成因是缺电：
+    //   耗电层（浅层/深层/地核/气体）按 powerInfo.ratio 降速，ratio = 0 时整层停产。
+    //   此前这里一律返回 ''（= 正常），于是缺电时净增长列一片空白、详情写「0（不增不减）」，
+    //   玩家明明派了矿工却看不到任何解释 —— 与 rev16 修的「不增不减」是同一类问题。
+    const ratio = Number(planet && planet.powerInfo && planet.powerInfo.ratio);
+    if (Number.isFinite(ratio) && ratio <= 0 && producing.some((e) => POWERED_LAYERS[e.layer])) {
+      return NO_POWER_HINT;
+    }
+    return '';                                                  // 正在产 → 正常
+  }
   // ① 还有「已解锁且尚有储量」的层 → 纯粹是没人干，与解锁无关（最关键：别把
   //    「石头地上就能挖、只是没派人」误报成「需建造浅层矿井」）。
   if (list.some((e) => !e.locked && stockOf(e, planet) > 0)) return '未分配人力';
@@ -464,7 +487,7 @@ export function renderInventory(container, planetOrCtx) {
           r.rateEl.setAttribute('style', 'color:' + (net > 0 ? NET_POS : NET_NEG));
         } else {
           const why = noGainReasonOf(planet, r.item.mat);
-          r.rateEl.textContent = why ? ' ' + (why.startsWith('需') ? '🔒 ' : '') + why : '';
+          r.rateEl.textContent = why ? ' ' + reasonPrefix(why) + why : '';
           r.rateEl.setAttribute('style', 'color:' + NET_ZERO);
         }
       } else {
@@ -581,9 +604,17 @@ function findCustomMaterial(planet, nameCn) {
 // v0.1.1（需求 8）：材料「来源 / 消耗」明细。
 //   来源 = 各层采集条目的 rate（state.js 每 tick 写，标注所属层）
 //        + 生产线产出（production.js productionRates 按建筑汇总，含速率）
+//        + 农田产出（农田工岗位驱动的固定配方）
 //        + 人口代谢排出（population.js metabolitePerSec）；
-//   消耗 = 生产线投入（按建筑汇总）+ 人口代谢消耗（population.js consumptionPerSec）。
+//   消耗 = 生产线投入（**只算真正从物品栏扣的**：气体投料走星球储量，不算）
+//        + 农田投料（同上）+ 火力设施燃料 + 人口代谢消耗（population.js consumptionPerSec）。
 //   生产线速率的电力比从 inst.powerInfo.ratio 取；拿不到按 1 估算并标 noPowerRatio。
+//
+// ⚠ rev18：本表必须与 state.js#computeNetRates（「净增长」列）**逐项同源**，否则
+//   详情写「+38.77 浅层采集」、净增长却写 0，玩家会直接判定「采集坏了」。
+//   因此：① 采集速率要乘电力降速比（缺电时不能谎报产出）；
+//        ② 投料改用 ownedInputs（气体投入不算物品栏负增长）；
+//        ③ 补上农田与火力燃料 —— 此前这两项在详情里完全看不到。
 function buildMaterialFlow(planet, mat) {
   const sources = [];
   const consumes = [];
@@ -592,9 +623,10 @@ function buildMaterialFlow(planet, mat) {
   const ratio = Number.isFinite(pwRatio) ? pwRatio : (noPowerRatio = true, 1);
 
   // ① 采集：每层一条（e.rate 是该层当前采集速率，未分配人力 / 已采尽时为 0）
+  //   rev18：耗电层乘电力降速比 —— 缺电时实际不产，这里就应当显示 0（甚至不列来源）。
   for (const e of ((planet && planet.inventory) || [])) {
     if (!e || e.mat !== mat) continue;
-    const r = Number(e.rate) || 0;
+    const r = (Number(e.rate) || 0) * (POWERED_LAYERS[e.layer] ? ratio : 1);
     if (r > 0) sources.push({ label: (LAYER_LABEL[e.layer] || e.layer) + '采集', rate: r });
   }
 
@@ -603,11 +635,31 @@ function buildMaterialFlow(planet, mat) {
   for (const bid in rates) {
     const slot = rates[bid];
     const bName = (BUILDING_BY_ID[bid] && BUILDING_BY_ID[bid].nameCn) || bid;
-    const out = Number(slot.outputs && slot.outputs[mat]) || 0;
-    if (out > 0) sources.push({ label: bName + '产出', rate: out });
-    const inp = Number(slot.inputs && slot.inputs[mat]) || 0;
+    for (const k in (slot.outputs || {})) {
+      if (k !== mat) continue;
+      const out = Number(slot.outputs[k]) || 0;
+      if (out > 0) sources.push({ label: bName + '产出', rate: out });
+    }
+    // rev18：只算真正从物品栏扣掉的投料（气体走 _consumeGas 扣星球储量 / 大气层）
+    const paid = (slot.ownedInputs && typeof slot.ownedInputs === 'object') ? slot.ownedInputs : (slot.inputs || {});
+    const inp = Number(paid[mat]) || 0;
     if (inp > 0) consumes.push({ label: bName + '投入', rate: inp });
   }
+
+  // ②b rev18：农田（农田工岗位驱动，不走生产线）
+  const farm = farmRates(planet, ratio);
+  if (farm.active) {
+    const supply = farmSupplyOf(planet);
+    const fRate = farm.rate * supply;
+    const fOut = Number(farm.outputs[mat]) || 0;
+    if (fOut > 0 && fRate > 0) sources.push({ label: '农田产出', rate: fOut * fRate });
+    const fIn = Number(farm.ownedInputs[mat]) || 0;
+    if (fIn > 0 && fRate > 0) consumes.push({ label: '农田投入', rate: fIn * fRate });
+  }
+
+  // ②c rev18：火力设施烧掉的燃料（真的从物品栏扣）
+  const fuel = thermalFuelRates(planet);
+  if (Number(fuel[mat]) > 0) consumes.push({ label: '火力设施燃料', rate: Number(fuel[mat]) });
 
   // ③ 人口代谢（population.js 以 key 计，这里翻回材料中文名对上号）
   const pop = planet && planet.pop ? planet.pop : null;

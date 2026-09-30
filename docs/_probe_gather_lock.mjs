@@ -118,9 +118,9 @@ function ok(cond, label) {
 }
 
 const app = byId.app;
-await import('../js/main.js?v=21.17');
-const S = await import('../js/core/state.js?v=21.17');
-const POP = await import('../js/core/population.js?v=21.17');
+await import('../js/main.js?v=21.18');
+const S = await import('../js/core/state.js?v=21.18');
+const POP = await import('../js/core/population.js?v=21.18');
 
 const allEls = () => walkAll(app).concat(app.children);
 const findButton = (kw) => allEls().filter((e) => e.tagName === 'BUTTON').find((b) => b.textContent.includes(kw));

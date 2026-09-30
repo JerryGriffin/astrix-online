@@ -22,8 +22,8 @@
 const ROOM = 'selftest-' + Math.random().toString(36).slice(2, 10);
 globalThis.location = { search: '?room=' + ROOM };
 
-const { createMqttClient, encodeConnect, decodePackets, PACKET_TYPE } = await import('../js/net/mqtt.js?v=21.17');
-const relay = await import('../js/core/relay.js?v=21.17');
+const { createMqttClient, encodeConnect, decodePackets, PACKET_TYPE } = await import('../js/net/mqtt.js?v=21.18');
+const relay = await import('../js/core/relay.js?v=21.18');
 
 const T = (ch) => `astrix/v022/${ROOM}/${ch}`;
 

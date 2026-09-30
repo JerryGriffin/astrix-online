@@ -1,7 +1,7 @@
 // 星际大厅与在线星图界面（Astrix v0.2.0）
 // 纯原生 ES 模块，深空玻璃拟态风格，移动端与 PC 端自适应（点击区 >= 44px）
 
-import { currentAccount, getPlanetInstance, ownedOf, getStorageMode, setStorageMode } from '../core/state.js?v=21.17';
+import { currentAccount, getPlanetInstance, ownedOf, getStorageMode, setStorageMode } from '../core/state.js?v=21.18';
 import {
   ensureCloudProfile, bindEmail, getShieldStatus, fetchGalaxyRegistry,
   getInbox, markMessageRead, markAllMessagesRead, unreadCount,
@@ -9,11 +9,11 @@ import {
   syncOnlineServer, fetchRemoteGalaxyRegistry, fetchOnlineChatMessages, sendOnlineChatMessage,
   fetchOnlineMarketListings, buyOnlineMarketListing, createOnlineMarketListing,
   getRelayStatus, onRelayStatus, currentTransport
-} from '../core/cloud.js?v=21.17';
-import { listFleets } from '../core/fleet.js?v=21.17';
-import { fmtNum } from '../core/format.js?v=21.17';
-import { openBattleView } from './combat.js?v=21.17';
-import { playWarp, playPing, playVictory } from '../core/sound.js?v=21.17';
+} from '../core/cloud.js?v=21.18';
+import { listFleets } from '../core/fleet.js?v=21.18';
+import { fmtNum } from '../core/format.js?v=21.18';
+import { openBattleView } from './combat.js?v=21.18';
+import { playWarp, playPing, playVictory } from '../core/sound.js?v=21.18';
 
 function escapeHtml(s) {
   return String(s ?? '').replace(/[&<>"']/g, (c) => (

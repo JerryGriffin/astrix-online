@@ -15,42 +15,42 @@
 //    开局自带 1 座建筑工厂（设计者：「开局有一个建筑工厂」）。
 // 5. 施工队列由 tick 推进：速度 = 建筑工有效人力（受建筑工厂工位限制），无人则为 0。
 
-import { PLANETS } from '../data/planets.js?v=21.17';
-import { BUILDING_BY_ID, buildingCost } from '../data/buildings.js?v=21.17';
-import { TECH_BY_ID, canResearch, missingPrereqs } from '../data/techs.js?v=21.17';
-import { UPGRADES, upgradeCost } from '../data/upgrades.js?v=21.17';
+import { PLANETS } from '../data/planets.js?v=21.18';
+import { BUILDING_BY_ID, buildingCost } from '../data/buildings.js?v=21.18';
+import { TECH_BY_ID, canResearch, missingPrereqs } from '../data/techs.js?v=21.18';
+import { UPGRADES, upgradeCost } from '../data/upgrades.js?v=21.18';
 import {
   createPopulation, tickPopulation, getAvailable, gatherLaborByLayer, jobsOfBuilding, getIntensity,
   consumptionPerSec, jobOutput,
   JOBS, freeSlots,
-} from './population.js?v=21.17';
-import { buildRateOf, buildBlockReason } from './construction.js?v=21.17';
-import { tickShip, defaultBlueprints, createShip, shipBuildTick } from './shipyard.js?v=21.17';
-import { tickArmyBuildLines, armyStatsOf } from './army.js?v=21.17';
+} from './population.js?v=21.18';
+import { buildRateOf, buildBlockReason } from './construction.js?v=21.18';
+import { tickShip, defaultBlueprints, createShip, shipBuildTick } from './shipyard.js?v=21.18';
+import { tickArmyBuildLines, armyStatsOf } from './army.js?v=21.18';
 // v0.0.6：电力系统与配方生产。
 // 注意这两个模块**不反向 import 本文件**（否则形成循环依赖），
 // 它们只从传入的 inst 上读 buildings / pop / inventory / recipes。
-import { energyOf, computePower, tickPower } from './power.js?v=21.17';
+import { energyOf, computePower, tickPower, thermalFuelRates } from './power.js?v=21.18';
 // v0.0.91：efficiencyBonus 由 production.js 导出（建筑总座数效率乘数），
 //   这里沿用既有的 state→production 单向边引入，不反向让 production import state，避免循环依赖。
-import { tickProduction, productionRates, ensureLines, lineWorkersTotal, efficiencyBonus, ensureEntry, addLine as addProductionLine, lineSlotInfo } from './production.js?v=21.17';
+import { tickProduction, productionRates, ensureLines, lineWorkersTotal, efficiencyBonus, ensureEntry, addLine as addProductionLine, lineSlotInfo, farmRates, farmSupplyOf } from './production.js?v=21.18';
 // v0.0.92：星际航行与殖民（管理模式 / 独立倾向 / 随机星球）
-import { tickIndependence, outputMulOf, happinessDeltaOf, ensureDiscoveredDefaults, discoverPlanet, purgeShopColonies, tickManagedColonies, SHOP_PLANET_CODE } from './planetgen.js?v=21.17';
+import { tickIndependence, outputMulOf, happinessDeltaOf, ensureDiscoveredDefaults, discoverPlanet, purgeShopColonies, tickManagedColonies, SHOP_PLANET_CODE } from './planetgen.js?v=21.18';
 // v0.1.2（需求 18/19）：永久升级的「效果」改乘方，唯一实现在 data/upgrades.js#upgradeMul
 // （UI 的 research.js 也用它，别在别处再写一套公式）。
 // 此前 upg_collect/refine/power/labor/research/build 六项付了钱却没有任何效果。
-import { upgradeMul } from '../data/upgrades.js?v=21.17';
-import { tickFleetMissions, ensureFleets } from './fleet.js?v=21.17';
+import { upgradeMul } from '../data/upgrades.js?v=21.18';
+import { tickFleetMissions, ensureFleets } from './fleet.js?v=21.18';
 // v0.2.2：离线 mod 系统（叶子模块，不 import 任何游戏模块，无循环依赖风险）
-import { modEffects, applyStartBonus, applyPendingStartResources } from './mods.js?v=21.17';
+import { modEffects, applyStartBonus, applyPendingStartResources } from './mods.js?v=21.18';
 // v0.1.0：电脑账号（离线存档里的 NPC 势力）与其交易池联动。
 //   注意 npc.js 是叶子模块（只 import 数据表），shop.js 与 state.js 互为函数级引用、无顶层副作用。
-import { ensureNpcs, tickNpcs } from './npc.js?v=21.17';
+import { ensureNpcs, tickNpcs } from './npc.js?v=21.18';
 import {
   priceOf as shopPriceOf, suggestPriceOf as shopSuggestPriceOf,
   npcListOnMarket, npcTakeFromMarket, tickShop as shopTick,
   tickListings as shopTickListings,
-} from './shop.js?v=21.17';
+} from './shop.js?v=21.18';
 
 export const AUTOSAVE_INTERVAL = 10;            // 自动存档间隔（秒）
 
@@ -971,12 +971,26 @@ export function getPlanetInstance(code) {
 // 净增长（v0.0.61，需求 2）
 // ============================================================================
 // 设计者要求「物品栏界面显示各资源的净增长，- 用红色，+ 用绿色」。
-// 净增长 = 产出 − 消耗，由三部分合成：
-//   ① 采集：各层条目的 rate 之和（露天采集不吃电力降速，地下/地核/气体吃）
-//   ② 加工：选中配方的产出为正、投料为负（未选配方的建筑不算，它本来就不运转）
-//   ③ 人口代谢：氧气 / 有机质 / 水 为负
-//      （呼吸排出的二氧化碳/甲烷/氨气不算「增长」——它们进的是大气层，不占物品栏）
+// 净增长 = 产出 − 消耗，由四部分合成（**必须与 tick 的真实结算逐项对齐**）：
+//   ① 采集：各层条目的 rate 之和（露天采集不吃电力降速，地下/深层/地核/气体吃）
+//   ② 加工：生产线（选中配方的产出为正、投料为负；只有从物品栏真正扣掉的投料才算负）
+//   ③ 农田：农田工岗位驱动的固定配方（产出有机质；投料只有「水」从物品栏扣，
+//          CO₂ 走星球大气层，不算物品栏负增长）—— rev18 补上
+//   ④ 火力设施燃料：燃机每秒烧掉的燃料是**真的从物品栏扣的** —— rev18 补上
+//   ⑤ 人口代谢：有机质 / 水 为负
+//      （呼吸排出的二氧化碳/甲烷/氨气不算「增长」——它们进的是大气层，不占物品栏；
+//        呼吸消耗的氧气也不算「消耗」——它扣的是星球气体储量，不碰物品栏）
 // 结果挂在 inst.netRates 上给 UI 读，UI 按正负上色。
+//
+// ⚠ rev18 修复（设计者报「物品栏重大 bug：开采时反而减少」）：
+//   此前③④两项**完全漏算**，于是「净增长」列 ≠ 物品栏真实变化：
+//     · 农田吃水没算 → 水可能显示 **正增长（绿）却实际在减少**（这就是「开采时反而减少」）；
+//     · 农田产有机质没算 → 有机质显示远低于真实；
+//     · 燃机烧燃料没算 → 燃料同理。
+//   另外旧代码把**气体投料**（走 _consumeGas 扣星球储量/大气层）也当成物品栏负增长，
+//   属于凭空多扣（与氧气呼吸同一条理由），现改用 productionRates 的 ownedInputs。
+//   新探针 docs/_probe_inv_decrease.mjs 会逐 tick 比对「净增长 × dt」与「实际增量」，
+//   任何不一致都会失败 —— 以后谁再往 tick 管线里加产出/消耗，必须同步这里。
 function computeNetRates(inst, ratio) {
   const net = {};
   const add = (mat, v) => {
@@ -991,16 +1005,30 @@ function computeNetRates(inst, ratio) {
     add(e.mat, e.rate * r);
   }
 
-  // ② 加工
+  // ② 加工（生产线）
+  //   ownedInputs = 真正从物品栏扣掉的投料；旧档 / 异常结构缺该字段时退回 inputs。
   const rates = productionRates(inst, ratio, currentAccount());
   for (const bid in rates) {
     const info = rates[bid];
     if (!info || !info.active) continue;
     for (const k in (info.outputs || {})) add(k, info.outputs[k]);
-    for (const k in (info.inputs || {})) add(k, -info.inputs[k]);
+    const paid = (info.ownedInputs && typeof info.ownedInputs === 'object') ? info.ownedInputs : (info.inputs || {});
+    for (const k in paid) add(k, -paid[k]);
   }
 
-  // ③ 人口代谢消耗
+  // ③ 农田（由「农田工」岗位驱动，不走生产线）—— rev18 补上
+  const farm = farmRates(inst, ratio);
+  if (farm.active) {
+    const supply = farmSupplyOf(inst);
+    for (const k in farm.outputs) add(k, farm.outputs[k] * farm.rate * supply);
+    for (const k in farm.ownedInputs) add(k, -farm.ownedInputs[k] * farm.rate * supply);
+  }
+
+  // ④ 火力设施燃料燃烧 —— rev18 补上
+  const fuelRates = thermalFuelRates(inst);
+  for (const k in fuelRates) add(k, -fuelRates[k]);
+
+  // ⑤ 人口代谢消耗
   // v0.1.2（需求 2）：**呼吸消耗的氧气不再计入净增长**。
   //   呼吸走 consumeGas（见本文件 723 行 → 262/272），扣的是星球大气层的
   //   remaining + atmosphere，压根不碰物品栏；把它算进 netRates 会在物品栏

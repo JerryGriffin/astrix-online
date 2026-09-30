@@ -13,19 +13,19 @@
 //   * 不修改 state.js / ui/* / data/buildings.js / data/materials.js / data/facilities.js /
 //     data/techs.js / version.js / index.html。
 
-import { RECIPES, RECIPE_BY_ID, recipesOfBuilding, getRecipe } from '../data/recipes.js?v=21.17';
-import { jobsOfBuilding, getIntensity, getAvailable, buildingSlots, jobOutput } from './population.js?v=21.17';
-import { MATERIALS } from '../data/materials.js?v=21.17';
-import { PART_BY_ID, craftableParts, craftWorkOf } from '../data/ship_parts.js?v=21.17';
-import { POWER_FACILITY_BY_ID } from '../data/facilities.js?v=21.17';
+import { RECIPES, RECIPE_BY_ID, recipesOfBuilding, getRecipe } from '../data/recipes.js?v=21.18';
+import { jobsOfBuilding, getIntensity, getAvailable, buildingSlots, jobOutput } from './population.js?v=21.18';
+import { MATERIALS } from '../data/materials.js?v=21.18';
+import { PART_BY_ID, craftableParts, craftWorkOf } from '../data/ship_parts.js?v=21.18';
+import { POWER_FACILITY_BY_ID } from '../data/facilities.js?v=21.18';
 // v0.0.92：殖民管理模式对产出的倍率（自由 1.25 / 剥削 1.60 / 领土 0.85 …）
-import { outputMulOf } from './planetgen.js?v=21.17';
-import { addEquipment } from './shipyard.js?v=21.17';
+import { outputMulOf } from './planetgen.js?v=21.18';
+import { addEquipment } from './shipyard.js?v=21.18';
 // v0.1.2（需求 18/19）：永久升级「冶炼 / 人力」的乘方效果，唯一实现在 data/upgrades.js#upgradeMul
-import { upgradeMul } from '../data/upgrades.js?v=21.17';
-import { ARMY_PARTS, ARMY_PART_BY_ID } from '../data/army_parts.js?v=21.17';
+import { upgradeMul } from '../data/upgrades.js?v=21.18';
+import { ARMY_PARTS, ARMY_PART_BY_ID } from '../data/army_parts.js?v=21.18';
 // v0.2.2：离线 mod 生产线倍率（叶子模块，无循环依赖）
-import { modEffects } from './mods.js?v=21.17';
+import { modEffects } from './mods.js?v=21.18';
 
 // nameCn → 材料对象（供 derivedStatsOf 查属性，纯查表不读 inst）
 const MATERIAL_BY_NAME = Object.fromEntries(MATERIALS.map((m) => [m.nameCn, m]));
@@ -53,6 +53,22 @@ export function efficiencyBonus(inst) {
 // 是否为气体类材料（投料走气体双来源规则）
 function isGasName(name) {
   return GAS_NAMES.has(name);
+}
+
+// rev18：对外暴露同一判定，供 state.js#computeNetRates 与 ui/inventory.js 对齐口径
+//   （「净增长」必须只统计**真正从物品栏扣掉**的量：气体走 _consumeGas 扣的是星球储量与大气层，
+//     不碰 owned，所以绝不能算进净增长 —— 与氧气呼吸同一条理由）。
+export function isGasMaterial(name) {
+  return isGasName(name);
+}
+
+// 该投入材料是否真的从「物品栏 owned」里扣。
+//   gasDual 建筑（熔炉家族 / bio_factory / 农田）的气体 → 走 inst._consumeGas（扣 remaining + 大气层）；
+//   其余（固体、或 chem_lab 这类非 gasDual）→ 走 spendTotal（扣物品栏）。
+//   inst._consumeGas 不存在（极老的裸实例）时退化为只扣物品栏。
+export function paidFromInventory(inst, mat, gasDual) {
+  if (!(gasDual && isGasName(mat))) return true;
+  return typeof (inst && inst._consumeGas) !== 'function';
 }
 
 // 气体类材料的「可用量」= 物品栏持有 + 大气层累积（需求 3）
@@ -819,6 +835,58 @@ function buildingCount(inst, buildingId) {
 }
 
 // ============================================================================
+// rev18：农田速率 —— 单一来源（tickProduction 与实际结算共用，杜绝「净增长」漏算）
+// ============================================================================
+// 背景（设计者报「物品栏存在重大 bug：开采时反而减少」）：
+//   农田由「农田工」岗位驱动，在 tickProduction 里**单独结算**（不走 inst.lines），
+//   于是 productionRates() 里完全没有它 —— 而 js/core/state.js#computeNetRates
+//   恰恰只用了「采集 + productionRates + 人口代谢」来算净增长。
+//   后果（已实测复现）：物品栏「净增长」列与实际结算不符 ——
+//     ① 农田产出（有机质）没算进去 → 净增长显示比真实低一大截；
+//     ② 农田投料（水）没算进去 → 净增长显示比真实高，**甚至出现「净增长为正（绿）
+//        而库存实际在减少」** —— 玩家看到的就是「我在采水，水反而越来越少」。
+//   现在把农田速率抽成这一个函数，tickProduction / computeNetRates / 详情弹窗共用。
+export const FARM_RECIPE_ID = 'r_farm_organic_water';
+
+// 农田当前「每秒批次数」。与 tickProduction 的算法完全一致：
+//   rate = 农田工有效人力 × 电力降速比 × 建筑座数效率 / 配方 work
+//   注意：**不乘** 殖民管理模式倍率 / 永久升级 / V012_LINE_RATE_MUL / mod 倍率
+//   —— 农田历来不走这条加成链，改动它会改变游戏节奏，故此处严格保持原口径。
+// 返回 { active, rate, inputs, outputs, ownedInputs }
+//   inputs / outputs  配方原样（供结算与展示）
+//   ownedInputs       其中**真正从物品栏扣的**那部分（气体走星球储量，不计入净增长）
+export function farmRates(inst, powerRatio) {
+  const out = { active: false, rate: 0, inputs: {}, outputs: {}, ownedInputs: {} };
+  if (!inst || !inst.pop) return out;
+  const labor = jobOutput(inst.pop, 'farm_worker');
+  if (!(labor > 0)) return out;
+  const ratio = Number(powerRatio);
+  if (!(ratio > 0)) return out;
+  const rec = resolveRecipe(inst, FARM_RECIPE_ID);
+  if (!rec) return out;
+  const work = Math.max(1, Number(rec.work) || 1);
+  const rate = (labor * ratio * efficiencyBonus(inst)) / work;
+  if (!(rate > 0)) return out;
+  out.active = true;
+  out.rate = rate;
+  out.inputs = Object.assign({}, rec.inputs || {});
+  out.outputs = Object.assign({}, rec.outputs || {});
+  for (const k in out.inputs) {
+    if (paidFromInventory(inst, k, true)) out.ownedInputs[k] = out.inputs[k];
+  }
+  return out;
+}
+
+// 农田本 tick 的「供给比」：0 = 断料停产，1 = 满速。
+//   tickProduction 每 tick 写入 inst._farmSupply（与生产线的 line._ratio 同款机制），
+//   净增长按它折算，保证「展示 = 实际结算」。
+export function farmSupplyOf(inst) {
+  const v = Number(inst && inst._farmSupply);
+  if (!Number.isFinite(v)) return 1;
+  return Math.max(0, Math.min(1, v));
+}
+
+// ============================================================================
 // 推进生产 dt 秒。powerRatio 由 power.js 的 computePower 给出（缺电全局降速）。
 // v0.0.7：改为**按生产线**结算 —— 每条线自带生产内容与人数，没人的线不运转。
 // 造船线（buildingId === 'dock'）由 shipyard 侧推进，这里跳过。
@@ -838,14 +906,13 @@ export function tickProduction(inst, dt, powerRatio, acc = null) {
   if (farmLabor > 0) {
     // v0.1.0：农田配方改走 resolveRecipe，配方调整后立即生效（不再硬编码常量）。
     //   找不到配方时安全兜底：跳过农田产出，不抛错。
-    const farmRecipe = resolveRecipe(inst, 'r_farm_organic_water');
+    // rev18：速率改由 farmRates() 统一给出（净增长与详情弹窗共用同一公式，杜绝两边各写一套）。
+    const farmRecipe = resolveRecipe(inst, FARM_RECIPE_ID);
     if (farmRecipe) {
-      const FARM_WORK = Number(farmRecipe.work) || 1;
       const FARM_CO2 = Number(farmRecipe.inputs['二氧化碳']) || 0;
       const FARM_WATER = Number(farmRecipe.inputs['水']) || 0;
       const FARM_ORGANIC = Number(farmRecipe.outputs['有机质']) || 0;
-      // v0.1.1（需求 7）：与生产线同款乘「建筑数量效率」（效率加成对农田同样生效）
-      const farmRate = (farmLabor * powerRatio * efficiencyBonus(inst)) / FARM_WORK;   // 次/秒
+      const farmRate = farmRates(inst, powerRatio).rate;   // 次/秒
       let farmStarved = false;
       // v0.1.2 R11：农田同款整数批次口径 —— 有料即满速，无料即停（与生产线一致，绝不「几乎不生产」）。
       // CO₂ 可用量含大气；水只算物品栏（需求 3 口径）
@@ -857,6 +924,8 @@ export function tickProduction(inst, dt, powerRatio, acc = null) {
         const perTime = FARM_WATER * farmRate * dt;
         if (!(perTime > 0) || Math.floor((ownedTotal(inst, '水') + 1e-9) / perTime) === 0) farmStarved = true;
       }
+      // rev18：把本 tick 的供给比记录下来，供 computeNetRates / 详情弹窗折算（与 line._ratio 同款机制）
+      inst._farmSupply = farmStarved ? 0 : 1;
       const farmActual = farmStarved ? 0 : farmRate;
       if (farmActual > 0 && FARM_ORGANIC > 0) {
         const co2Amt = FARM_CO2 * farmActual * dt;
@@ -1037,7 +1106,7 @@ export function productionRates(inst, powerRatio, acc = null) {
     if (!slot) {
       slot = out[bid] = {
         recipe, lines: [], active: false, rate: 0,
-        outputs: {}, inputs: {}, effectiveLabor: 0, producesFacility: null,
+        outputs: {}, inputs: {}, ownedInputs: {}, effectiveLabor: 0, producesFacility: null,
       };
     }
     slot.lines.push({ line, recipe, rate });
@@ -1050,6 +1119,14 @@ export function productionRates(inst, powerRatio, acc = null) {
     }
     for (const mat in inputs) {
       slot.inputs[mat] = (slot.inputs[mat] || 0) + (Number(inputs[mat]) || 0) * rate;
+    }
+    // rev18：把「真正从物品栏扣掉」的那部分投入单独记一份，供 state.js#computeNetRates
+    //   与详情弹窗使用 —— 气体走 _consumeGas 扣的是星球储量/大气层，不碰 owned，
+    //   算进净增长就会凭空显示一笔负增长（与氧气呼吸同一条理由）。
+    const gasDualBid = GAS_DUAL_BUILDINGS.has(bid);
+    for (const mat in inputs) {
+      if (!paidFromInventory(inst, mat, gasDualBid)) continue;
+      slot.ownedInputs[mat] = (slot.ownedInputs[mat] || 0) + (Number(inputs[mat]) || 0) * rate;
     }
     // 设施配方：outputs 保持空（不编造材料名），UI 据此字段去 facilities.js 查显示名与产速
     if (recipe.producesFacility && !slot.producesFacility) slot.producesFacility = recipe.producesFacility;

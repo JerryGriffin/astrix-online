@@ -22,7 +22,7 @@
 //   3) 集市「先到先得」用固定仲裁窗口近似（见 CLAIM_WINDOW_MS），极高并发下仍可能
 //      出现双方各自扣款的极窄窗口；业余规模下可接受，文档已注明。
 
-import { createMqttClient, randomToken } from '../net/mqtt.js?v=21.17';
+import { createMqttClient, randomToken } from '../net/mqtt.js?v=21.18';
 
 // ---- 常量 -------------------------------------------------------------------
 

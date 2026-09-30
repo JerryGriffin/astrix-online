@@ -4,14 +4,14 @@
 import assert from 'assert';
 import {
   STATE, createAccount, currentAccount, getPlanetInstance, setAdapter, ownedOf
-} from '../js/core/state.js?v=21.17';
-import { ensureEntry } from '../js/core/production.js?v=21.17';
+} from '../js/core/state.js?v=21.18';
+import { ensureEntry } from '../js/core/production.js?v=21.18';
 import {
   ensureCloudProfile, bindEmail, getShieldStatus, buildLocalSnapshot,
   fetchGalaxyRegistry, sendGalaxyTrade, sendGalaxyRaid, addMaterial,
   getInbox, markMessageRead, unreadCount, SHIELD_DURATION_MS
-} from '../js/core/cloud.js?v=21.17';
-import { createFleet, addShipToFleet } from '../js/core/fleet.js?v=21.17';
+} from '../js/core/cloud.js?v=21.18';
+import { createFleet, addShipToFleet } from '../js/core/fleet.js?v=21.18';
 
 // 内存存储适配器（Node 环境无浏览器 localStorage）
 const mem = new Map();

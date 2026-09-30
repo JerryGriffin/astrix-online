@@ -21,13 +21,13 @@ globalThis.localStorage = {
   clear: () => _ls.clear(),
 };
 
-const S = await import('../js/core/state.js?v=21.17');
-const V = await import('../js/version.js?v=21.17');
-const P = await import('../js/core/power.js?v=21.17');
-const PR = await import('../js/core/production.js?v=21.17');
-const RC = await import('../js/data/recipes.js?v=21.17');
-const F = await import('../js/data/facilities.js?v=21.17');
-const PL = await import('../js/data/planets.js?v=21.17');
+const S = await import('../js/core/state.js?v=21.18');
+const V = await import('../js/version.js?v=21.18');
+const P = await import('../js/core/power.js?v=21.18');
+const PR = await import('../js/core/production.js?v=21.18');
+const RC = await import('../js/data/recipes.js?v=21.18');
+const F = await import('../js/data/facilities.js?v=21.18');
+const PL = await import('../js/data/planets.js?v=21.18');
 
 // ----- 计数器 -----
 let pass = 0, fail = 0;
@@ -495,7 +495,7 @@ function feedPop(inst) {
 //   任意数目的原料，任意比例合成一种新材料，你根据比例和材料推算新材料数值，
 //   精细加工厂可以选择任一种固体材料进行二合一。」
 console.log('\n===== E. 复合资源 / 自定义材料 / 通用精炼 =====');
-const MT = await import('../js/data/materials.js?v=21.17');
+const MT = await import('../js/data/materials.js?v=21.18');
 const MAT_BY_NAME = Object.fromEntries(MT.MATERIALS.map((m) => [m.nameCn, m]));
 const GASES = new Set(['氮气', '氧气', '氨气', '甲烷', '二氧化碳', '氢气']);
 
@@ -713,7 +713,7 @@ for (const c of COMPOSITES) {
 //   ② 四位小数会把小于 5e-5 的值四舍五入成 0.0000，显示成「+0/s」
 //      （粗金这类丰度 1e-7 的资源就落在这一档）。
 console.log('\n===== F. 速率显示精度 =====');
-const FMT = await import('../js/core/format.js?v=21.17');
+const FMT = await import('../js/core/format.js?v=21.18');
 {
   const cases = [
     [0.0523, '+0.0523', '普通小数保留 4 位'],
@@ -766,7 +766,7 @@ const FMT = await import('../js/core/format.js?v=21.17');
 // 3) 开局不给氧气，氧气直接扣星球储量
 // 4) 科研里取消舰船 MKI~MKIII 与 a/b/c/d（已在 selfcheck_v005 第六节覆盖）
 console.log('\n===== G. v0.0.61（跨层储量 / 净增长 / 氧气）=====');
-const POP = await import('../js/core/population.js?v=21.17');
+const POP = await import('../js/core/population.js?v=21.18');
 {
   // ---- G1：同名资源跨层各自成条，储量分开 ----
   // v0.0.91：原「地下」拆成「浅层(underground)」与「深层(deep)」两条，故石头现在是
@@ -843,19 +843,26 @@ const POP = await import('../js/core/population.js?v=21.17');
   S.tick(1);
   ok(inst4.netRates['木头'] === undefined,
     '装好熔炉但未选工作内容时，不应出现「木头」的净增长（R16 的未选不运转）', 'G');
-  // 差分断言：选了配方之后，投料（有机质 2）与耗氧（氧气 1）应把这两项的净增长拉低。
+  // 差分断言：选了配方之后，「有机质」投料（2，走物品栏）应把它的净增长拉低；
+  //   r_furnace_wood 的「氧气」投料（1）则走**星球气体储量/大气层**——熔炉属 gasDual 建筑，
+  //   经 _consumeGas 扣 e.remaining + atmosphere，**不碰 owned**，所以氧气**不得**出现在物品栏净增长里
+  //   （与 G3「呼吸耗氧不进净增长」同一口径：净增长只统计真正从物品栏扣掉的量）。
+  //   氧气确实被消耗了，但体现在星球 remaining 上 → 改断言 remaining 下降。
   // 注意不能直接断言「有机质为负」——地表有机质丰度 2、露天采集工还在采，
-  // 采集带来的正增长远大于熔炉投料，净增长本来就是正的。
+  //   采集带来的正增长远大于熔炉投料，净增长本来就是正的。
   const omBefore = Number(inst4.netRates['有机质']) || 0;
-  const o2Before = Number(inst4.netRates['氧气']) || 0;
+  const o2Entry = inst4.inventory.find((e) => e && e.mat === '氧气' && e.layer === 'gas');
+  const o2RemBefore = o2Entry ? Number(o2Entry.remaining) || 0 : 0;
   mkLine(inst4, 'furnace', 'r_furnace_wood', 8);   // v0.0.9：工位减半，人数按实际工位夹取
   S.tick(1);
   ok(Number(inst4.netRates['木头']) > 0,
     `选了配方后「木头」应有正净增长，实际 ${inst4.netRates['木头']}`, 'G');
   ok(Number(inst4.netRates['有机质']) < omBefore,
     `熔炉投料应把「有机质」的净增长拉低（${omBefore} → ${inst4.netRates['有机质']}）`, 'G');
-  ok(Number(inst4.netRates['氧气']) < o2Before,
-    `熔炉耗氧也应体现在「氧气」的净增长里（${o2Before} → ${inst4.netRates['氧气']}）`, 'G');
+  ok(inst4.netRates['氧气'] === undefined || Number(inst4.netRates['氧气']) === 0,
+    `熔炉的氧气投料走星球储量、不碰物品栏，故氧气不得出现在净增长里，实际 ${inst4.netRates['氧气']}`, 'G');
+  ok(!!o2Entry && (Number(o2Entry.remaining) || 0) < o2RemBefore,
+    `熔炉耗氧应体现在星球气体储量上（${o2RemBefore} → ${o2Entry && o2Entry.remaining}）`, 'G');
 }
 
 // =====================================================================

@@ -3,8 +3,8 @@
 import {
   ANOMALY_POOL, generateMissionAnomaly, resolveFleetAnomaly,
   createFleet, addShipToFleet, ensureFleets,
-} from '../js/core/fleet.js?v=21.17';
-import { STATE } from '../js/core/state.js?v=21.17';
+} from '../js/core/fleet.js?v=21.18';
+import { STATE } from '../js/core/state.js?v=21.18';
 
 let pass = 0, fail = 0;
 function check(name, cond, detail) {

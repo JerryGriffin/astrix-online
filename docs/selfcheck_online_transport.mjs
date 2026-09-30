@@ -109,9 +109,9 @@ globalThis.fetch = async (url, opts) => {
 };
 
 // ---- 加载被测模块 -----------------------------------------------------------
-const cloud = await import('../js/core/cloud.js?v=21.17');
-const relay = await import('../js/core/relay.js?v=21.17');
-const { createMqttClient } = await import('../js/net/mqtt.js?v=21.17');
+const cloud = await import('../js/core/cloud.js?v=21.18');
+const relay = await import('../js/core/relay.js?v=21.18');
+const { createMqttClient } = await import('../js/net/mqtt.js?v=21.18');
 
 // ============================================================================
 console.log('\n== A) 静态托管（HuggingFace）环境：应自动选中继 ==');

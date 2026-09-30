@@ -2,8 +2,8 @@
 // 验证：安装/校验拒绝、启停、效果合成、新档开局加成（Ascoin + 母星资源落库）。
 import {
   listMods, installMod, setModEnabled, removeMod, modEffects,
-} from '../js/core/mods.js?v=21.17';
-import { STATE, createAccount, getPlanetInstance, BASE_COLLECT_RATE } from '../js/core/state.js?v=21.17';
+} from '../js/core/mods.js?v=21.18';
+import { STATE, createAccount, getPlanetInstance, BASE_COLLECT_RATE } from '../js/core/state.js?v=21.18';
 
 let pass = 0, fail = 0;
 function check(name, cond, detail) {

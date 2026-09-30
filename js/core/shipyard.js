@@ -10,15 +10,15 @@
 // 全部公式集中在这里，方便策划调参
 // ============================================================================
 
-import { MATERIALS } from '../data/materials.js?v=21.17';
+import { MATERIALS } from '../data/materials.js?v=21.18';
 import {
   PART_BY_ID, HULLS, ENGINES, WEAPONS, FACILITIES, MARKS,
   MATERIAL_SLOTS, DEFAULT_MATERIAL, PART_CATEGORIES,
   craftableParts, craftWorkOf, isPartUnlocked,
-} from '../data/ship_parts.js?v=21.17';
-import { POWER_FACILITY_BY_ID } from '../data/facilities.js?v=21.17';
-import { FUEL_BY_NAME } from '../data/fuels.js?v=21.17';
-import { PLANETS } from '../data/planets.js?v=21.17';
+} from '../data/ship_parts.js?v=21.18';
+import { POWER_FACILITY_BY_ID } from '../data/facilities.js?v=21.18';
+import { FUEL_BY_NAME } from '../data/fuels.js?v=21.18';
+import { PLANETS } from '../data/planets.js?v=21.18';
 
 // 自建材料中文名索引（materials.js 只导出 MATERIALS 数组）
 const MAT_BY_NAME = Object.fromEntries(MATERIALS.map((m) => [m.nameCn, m]));

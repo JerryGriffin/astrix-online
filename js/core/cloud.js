@@ -2,16 +2,16 @@
 // 提供指挥官云身份、星系注册表、异步贸易与远征进攻、战报收件箱系统。
 // 遵循零构建原生 ES 模块规范，具备离线/断网平滑降级（自动混入 NPC 星系）。
 
-import { currentAccount, ownedOf, spendOwned, getPlanetInstance } from './state.js?v=21.17';
-import { listFleets, ensureFleets } from './fleet.js?v=21.17';
-import { fmtNum } from './format.js?v=21.17';
-import { ensureEntry } from './production.js?v=21.17';
-import { stationedArmyPower } from './army.js?v=21.17';
+import { currentAccount, ownedOf, spendOwned, getPlanetInstance } from './state.js?v=21.18';
+import { listFleets, ensureFleets } from './fleet.js?v=21.18';
+import { fmtNum } from './format.js?v=21.18';
+import { ensureEntry } from './production.js?v=21.18';
+import { stationedArmyPower } from './army.js?v=21.18';
 import {
   ensureRelay, getRelayStatus, onRelayStatus, onWorldEvent, publishPresence, publishBye,
   listPlayers, listChat, sendChat, listListings, createListing, claimListing, broadcastRaid,
   getRelayRoom, setRelayRoom,
-} from './relay.js?v=21.17';
+} from './relay.js?v=21.18';
 
 // 中继链路状态对 UI 可见（用于显示「用的是哪条链路 / 当前在线人数」）。
 // 由 cloud.js 统一转发，UI 不必直接依赖 net 层。

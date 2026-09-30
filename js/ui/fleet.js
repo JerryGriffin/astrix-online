@@ -2,7 +2,7 @@
 // 提供编队战备管理、实时战术交互交战视窗、船载物流、殖民地政令与星港贸易。
 // 纯原生 ES 模块，深空玻璃拟态风格，移动端与 PC 端自适应（点击区 >= 44px）。
 
-import { fmtNum, fmtRate, fmtTime } from '../core/format.js?v=21.17';
+import { fmtNum, fmtRate, fmtTime } from '../core/format.js?v=21.18';
 import {
   listFleets, createFleet, disbandFleet, addShipToFleet, removeShipFromFleet,
   fleetSpeedOf, fleetPowerOf, executeCommand,
@@ -11,22 +11,22 @@ import {
   shipCargoMassOf, shipCargoCellsOf, shipCargoCellsMax, effectiveSpeedOf,
   resolveFleetAnomaly,
   listLandTargets, estimateGarrisonOf, embarkedArmiesOf, findPlanetDef, MISSION_DISTANCE, EXPLORE_FUEL_PER_DIST,
-} from '../core/fleet.js?v=21.17';
-import { embarkableArmies } from '../core/army.js?v=21.17';
-import { equipmentList } from '../core/shipyard.js?v=21.17';
+} from '../core/fleet.js?v=21.18';
+import { embarkableArmies } from '../core/army.js?v=21.18';
+import { equipmentList } from '../core/shipyard.js?v=21.18';
 import {
   MANAGEMENT_MODES, MANAGEMENT_BY_ID, modeOf, setManagement,
   TERRITORY_ASSIMILATE_SEC, TERRITORY_HAPPY_THRESHOLD,
-} from '../core/planetgen.js?v=21.17';
+} from '../core/planetgen.js?v=21.18';
 import {
   SHOP_PLANET, shopPrices, sell, pendingOrders, deliverOrder, ascoinBalance,
   suggestPriceOf, listForSale, marketListings, cancelListing, buyListing, priceOf, shopStateOf,
   MARKET_FEE,
-} from '../core/shop.js?v=21.17';
-import { getPlanetInstance, currentAccount, ownedOf } from '../core/state.js?v=21.17';
-import { openBattleView } from './combat.js?v=21.17';
-import { detectShipRole, SHIP_ROLES } from '../core/combat.js?v=21.17';
-import { isSoundEnabled, toggleSound, playPing, playVictory, playWarp, playExplosion } from '../core/sound.js?v=21.17';
+} from '../core/shop.js?v=21.18';
+import { getPlanetInstance, currentAccount, ownedOf } from '../core/state.js?v=21.18';
+import { openBattleView } from './combat.js?v=21.18';
+import { detectShipRole, SHIP_ROLES } from '../core/combat.js?v=21.18';
+import { isSoundEnabled, toggleSound, playPing, playVictory, playWarp, playExplosion } from '../core/sound.js?v=21.18';
 
 // HTML 转义
 function esc(s) {
