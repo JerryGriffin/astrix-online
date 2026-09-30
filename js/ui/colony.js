@@ -12,27 +12,27 @@
 //  - 所有数字走 js/core/format.js；文本一律用 el({text})（textContent）做 HTML 转义。
 //  - 样式内联注入，不碰 css/ 目录。
 
-import { HOI_NATIONS } from '../data/hoi1936.js?v=31.1';
-import { fociOf, startJustify, justifyStatusOf, canJustify } from '../core/hoi1936.js?v=31.1';
-import { PLANETS } from '../data/planets.js?v=31.1';
+import { HOI_NATIONS } from '../data/hoi1936.js?v=32.1';
+import { fociOf, startJustify, justifyStatusOf, canJustify } from '../core/hoi1936.js?v=32.1';
+import { PLANETS } from '../data/planets.js?v=32.1';
 import {
   STATE, getPlanetInstance, shelterRatio, ownedOf,
-} from '../core/state.js?v=31.1';
-import { fmtNum } from '../core/format.js?v=31.1';
+} from '../core/state.js?v=32.1';
+import { fmtNum } from '../core/format.js?v=32.1';
 // v0.1.2（R8）：调派人力从母星扣「可用人力」，走 population.js 既有接口，不硬改字段
-import { getAvailable } from '../core/population.js?v=31.1';
+import { getAvailable } from '../core/population.js?v=32.1';
 // v0.1.5（需求 2）：运输物资到殖民地 —— 复用 fleet.js 的运输任务（startMission + listFleets）
-import { startMission, listFleets } from '../core/fleet.js?v=31.1';
+import { startMission, listFleets } from '../core/fleet.js?v=32.1';
 // v0.0.93：商店星 Ast1（独立星球入口）+ 商店面板（舰队页复用）
-import { SHOP_PLANET } from '../core/shop.js?v=31.1';
+import { SHOP_PLANET } from '../core/shop.js?v=32.1';
 // v0.1.1：发现门禁 + 商店星拦截 + 托管说明
 import {
   capturePlanet, ensureDiscoveredDefaults, purgeShopColonies,
   modeOf, TRIBUTE_RATES, MANAGEMENT_MODES,
-} from '../core/planetgen.js?v=31.1';
-import { renderShop } from './fleet.js?v=31.1';
+} from '../core/planetgen.js?v=32.1';
+import { renderShop } from './fleet.js?v=32.1';
 // v0.2.1：殖民地报告内联化 —— 每颗星球行内直接显示最新报告（不再弹右下角提示条）
-import { reportTextOf } from './reports.js?v=31.1';
+import { reportTextOf } from './reports.js?v=32.1';
 
 const CSS = `
   .col-panel { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; color: #e8eef2; padding: 12px; box-sizing: border-box; max-width: 960px; margin: 0 auto; }
@@ -735,6 +735,9 @@ export function renderColony(root, ctx) {
 
   draw();
 
+  // v0.3.0：1936 剧本追加「列强」区块（贸易 / 结盟 / 正当化宣战）—— 挂在已殖民星球列表之后
+  try { renderGreatPowers(root, ctx, currentAccountSafe()); } catch (e) { console.error('列强区块渲染失败', e); }
+
   // 面板是否还挂在页面上（切走 tab 后 root 内容会被清空，此时停掉计时器）
   function isMounted() {
     if (typeof root.querySelector === 'function') return !!root.querySelector('.col-panel');
@@ -762,15 +765,15 @@ function renderGreatPowers(root, ctx, acc) {
     canJustify: (a2, id) => canJustify(a2, id),
   };
   const nations = H.allNations().filter((x) => x.id !== acc.nation);
-  const sec = el('div', 'fac-group');
-  sec.appendChild(el('div', 'res-section-title', '列强（1936 年 · 可贸易 / 结盟 / 正当化宣战）'));
-  const note = el('div', 'muted');
+  const sec = el('div', { class: 'fac-group' });
+  sec.appendChild(el('div', { class: 'res-section-title', text: '列强（1936 年 · 可贸易 / 结盟 / 正当化宣战）' }));
+  const note = el('div', { class: 'muted' });
   note.style.cssText = 'font-size:12px;line-height:1.7;margin-bottom:6px;';
   const j = H.justifyOf(acc);
   note.textContent = '宣战需先「正当化」（60 游戏天；轴心国可正当化任意国家）。'
     + (j ? '　当前正当化：' + j.targetName + '（剩 ' + Math.ceil(j.daysLeft) + ' 天）' : '');
   sec.appendChild(note);
-  const grid = el('div', 'gx-grid');
+  const grid = el('div', { class: 'gx-grid' });
   for (const n of nations) {
     const card = el('div');
     card.style.cssText = 'background:#1b2530;border:1px solid #2a3645;border-radius:10px;padding:10px;font-size:13px;line-height:1.7;';
@@ -787,7 +790,7 @@ function renderGreatPowers(root, ctx, acc) {
     // 贸易：以 Ascoin 采购该国出售的资源（价格为其 1936 年出口价）
     const firstMat = Object.keys(n.sell || {})[0];
     if (firstMat) {
-      const tradeBtn = el('button', 'btn btn-sm btn-primary', '贸易（购 ' + firstMat + '）');
+      const tradeBtn = el('button', { class: 'btn btn-sm btn-primary', text: '贸易（购 ' + firstMat + '）' });
       tradeBtn.style.minHeight = '40px';
       tradeBtn.addEventListener('click', () => {
         const price = n.sell[firstMat][1];
@@ -806,7 +809,7 @@ function renderGreatPowers(root, ctx, acc) {
     }
     // 结盟（非交战、非盟友、非同阵营冲突）
     if (!allied && !atWar) {
-      const allyBtn = el('button', 'btn btn-sm btn-ok', '结盟');
+      const allyBtn = el('button', { class: 'btn btn-sm btn-ok', text: '结盟' });
       allyBtn.style.minHeight = '40px';
       allyBtn.addEventListener('click', () => {
         acc.npcAllies = acc.npcAllies || [];
@@ -821,7 +824,7 @@ function renderGreatPowers(root, ctx, acc) {
     if (!allied && !atWar) {
       const jj = H.justifyOf(acc, n.id);
       if (jj && jj.ready) {
-        const wb = el('button', 'btn btn-sm btn-danger', '正式宣战');
+        const wb = el('button', { class: 'btn btn-sm btn-danger', text: '正式宣战' });
         wb.style.minHeight = '40px';
         wb.addEventListener('click', () => {
           acc.wars = acc.wars || [];
@@ -837,7 +840,7 @@ function renderGreatPowers(root, ctx, acc) {
         });
         acts.appendChild(wb);
       } else if (!jj) {
-        const jb = el('button', 'btn btn-sm', '正当化战争');
+        const jb = el('button', { class: 'btn btn-sm', text: '正当化战争' });
         jb.style.minHeight = '40px';
         jb.addEventListener('click', () => {
           const r = H.startJustify(acc, n.id);
@@ -853,7 +856,4 @@ function renderGreatPowers(root, ctx, acc) {
   }
   sec.appendChild(grid);
   root.appendChild(sec);
-  // v0.3.0：1936 剧本追加「列强」区块（贸易 / 结盟 / 正当化宣战）
-  try { renderGreatPowers(root, ctx, currentAccountSafe()); } catch (e) { /* 忽略 */ }
-
 }

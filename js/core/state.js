@@ -15,45 +15,45 @@
 //    开局自带 1 座建筑工厂（设计者：「开局有一个建筑工厂」）。
 // 5. 施工队列由 tick 推进：速度 = 建筑工有效人力（受建筑工厂工位限制），无人则为 0。
 
-import { PLANETS } from '../data/planets.js?v=31.1';
-import { HOI_NATIONS, HOI_BY_ID, HOI_SCENARIO_ID } from '../data/hoi1936.js?v=31.1';   // v0.2.6 官方 mod 1936 剧本
+import { PLANETS } from '../data/planets.js?v=32.1';
+import { HOI_NATIONS, HOI_BY_ID, HOI_SCENARIO_ID } from '../data/hoi1936.js?v=32.1';   // v0.2.6 官方 mod 1936 剧本
 import {
   setHoiDeps, popOf, setupArmies, setupNavy, setupLines, setupBloc, setupFactories, setupColony, ensureShipNames, backgroundOf, repairScenarioEstates, setupGermanPuppets, tickWarsHoi4, tickJustify, tickDiploAI, staffBuildings, applyInfiniteReserve,
   ensureFocus, tickFocus, ensureSeas, scenarioDateOf, gameDaysOf,
-} from './hoi1936.js?v=31.1';
-import { BUILDING_BY_ID, buildingCost } from '../data/buildings.js?v=31.1';
-import { TECH_BY_ID, canResearch, missingPrereqs, missingBuilding } from '../data/techs.js?v=31.1';
-import { UPGRADES, upgradeCost } from '../data/upgrades.js?v=31.1';
+} from './hoi1936.js?v=32.1';
+import { BUILDING_BY_ID, buildingCost } from '../data/buildings.js?v=32.1';
+import { TECH_BY_ID, canResearch, missingPrereqs, missingBuilding } from '../data/techs.js?v=32.1';
+import { UPGRADES, upgradeCost } from '../data/upgrades.js?v=32.1';
 import {
   createPopulation, tickPopulation, getAvailable, gatherLaborByLayer, jobsOfBuilding, getIntensity,
   consumptionPerSec, jobOutput,
   JOBS, freeSlots,
-} from './population.js?v=31.1';
-import { buildRateOf, buildBlockReason } from './construction.js?v=31.1';
-import { tickShip, defaultBlueprints, createShip, shipBuildTick } from './shipyard.js?v=31.1';
+} from './population.js?v=32.1';
+import { buildRateOf, buildBlockReason } from './construction.js?v=32.1';
+import { tickShip, defaultBlueprints, createShip, shipBuildTick } from './shipyard.js?v=32.1';
 // v0.0.6：电力系统与配方生产。
 // 注意这两个模块**不反向 import 本文件**（否则形成循环依赖），
 // 它们只从传入的 inst 上读 buildings / pop / inventory / recipes。
-import { energyOf, computePower, tickPower } from './power.js?v=31.1';
+import { energyOf, computePower, tickPower } from './power.js?v=32.1';
 // v0.0.91：efficiencyBonus 由 production.js 导出（建筑总座数效率乘数），
 //   这里沿用既有的 state→production 单向边引入，不反向让 production import state，避免循环依赖。
-import { tickProduction, productionRates, ensureLines, lineWorkersTotal, efficiencyBonus, ensureEntry, addLine as addProductionLine, lineSlotInfo } from './production.js?v=31.1';
+import { tickProduction, productionRates, ensureLines, lineWorkersTotal, efficiencyBonus, ensureEntry, addLine as addProductionLine, lineSlotInfo } from './production.js?v=32.1';
 // v0.0.92：星际航行与殖民（管理模式 / 独立倾向 / 随机星球）
-import { tickIndependence, outputMulOf, happinessDeltaOf, ensureDiscoveredDefaults, discoverPlanet, capturePlanet, purgeShopColonies, tickManagedColonies, SHOP_PLANET_CODE } from './planetgen.js?v=31.1';
+import { tickIndependence, outputMulOf, happinessDeltaOf, ensureDiscoveredDefaults, discoverPlanet, capturePlanet, purgeShopColonies, tickManagedColonies, SHOP_PLANET_CODE } from './planetgen.js?v=32.1';
 // v0.1.2（需求 18/19）：永久升级的「效果」改乘方，唯一实现在 data/upgrades.js#upgradeMul
 // （UI 的 research.js 也用它，别在别处再写一套公式）。
 // 此前 upg_collect/refine/power/labor/research/build 六项付了钱却没有任何效果。
-import { upgradeMul } from '../data/upgrades.js?v=31.1';
-import { tickFleetMissions, ensureFleets } from './fleet.js?v=31.1';
-import { ensureArmies, armyBuildTick, advanceTraining, ARMY_LABOR_PER_BARRACKS } from './army.js?v=31.1';   // v0.2.0 军队
+import { upgradeMul } from '../data/upgrades.js?v=32.1';
+import { tickFleetMissions, ensureFleets } from './fleet.js?v=32.1';
+import { ensureArmies, armyBuildTick, advanceTraining, ARMY_LABOR_PER_BARRACKS } from './army.js?v=32.1';   // v0.2.0 军队
 // v0.1.0：电脑账号（离线存档里的 NPC 势力）与其交易池联动。
 //   注意 npc.js 是叶子模块（只 import 数据表），shop.js 与 state.js 互为函数级引用、无顶层副作用。
-import { ensureNpcs, tickNpcs } from './npc.js?v=31.1';
+import { ensureNpcs, tickNpcs } from './npc.js?v=32.1';
 import {
   priceOf as shopPriceOf, suggestPriceOf as shopSuggestPriceOf,
   tickShop as shopTick,
-} from './shop.js?v=31.1';
-import { tickAuctions, tickNpcAuctionSpawner } from './auction.js?v=31.1';   // v0.2.6 拍卖行；v0.2.10 NPC 挂单
+} from './shop.js?v=32.1';
+import { tickAuctions, tickNpcAuctionSpawner } from './auction.js?v=32.1';   // v0.2.6 拍卖行；v0.2.10 NPC 挂单
 
 const SAVE_PREFIX = 'astrix.save.';
 const INDEX_KEY = SAVE_PREFIX + 'index';
@@ -774,8 +774,11 @@ function advanceConstruction(inst, dt) {
 //   于是氧气成了一种「环境资源」——人口呼吸直接从星球大气/储量里取，
 //   玩家用大气收集器抽出来的氧气仍然进物品栏（那是他自己抽出来的存货）。
 //   有机质与水仍旧是仓储品，走物品栏，并按**跨层总量**判定、从持有最多的条目开始扣。
-function advancePopulation(inst, dt) {
+function advancePopulation(inst, dt, opts) {
   if (!inst.pop) return;
+  // v0.3.2：1936 剧本不把幸福度当生存机制 —— 人口按剧本无限供给、住房由剧本配足，
+  //   强制庇护按满算并享受母星式下限，避免「人口一涨、住房跟不上 → 幸福度持续掉」。
+  const isHoi = (opts && opts.scenario) === 'hoi1936';
 
   const supply = {
     oxygen: gasAvailable(inst, '氧气'),   // 需求 3：来自星球气体储量，不是物品栏
@@ -790,10 +793,11 @@ function advancePopulation(inst, dt) {
   //   population.js 会用「庇护总量 / 人口」的比值给人口增速加成（庇护远大于人数时长得更快）。
   //   注意不能只传 `shelter`：它已经被 min(1, …) 夹住，富余信息就丢了，加成永远不触发。
   const r = tickPopulation(inst.pop, dt, supply, {
-    shelter: shelterRatio(inst),
+    shelter: isHoi ? 1 : shelterRatio(inst),
     shelterCounts: inst.buildings || {},
     // v0.0.94：母星的幸福度基本不参与波动（见 population.js 的 homePlanet 分支）
-    homePlanet: !!inst.isHome,
+    // v0.3.2：1936 剧本同样享受下限（幸福度不被人口/住房波动拖垮）
+    homePlanet: !!inst.isHome || isHoi,
     // v0.2.11：管理模式（人口增长 / 有机质·水消耗乘数）
     manageMode: inst.manageMode,
   });
@@ -1143,7 +1147,7 @@ export function tick(dt = 1) {
     advanceArmyLines(inst, dt, acc);
     // ⑤d v0.2.6：军队计时训练推进（点训练后开进度条，满进度结算攻防/经验加成）
     try { advanceTraining(inst, dt, acc); } catch (e) { /* 忽略单星球异常 */ }
-    advancePopulation(inst, dt);               // ⑥
+    advancePopulation(inst, dt, { scenario: acc && acc.scenario });               // ⑥
     advanceConstruction(inst, dt);             // ⑦（不吃电力降速，防开局死锁）
     advanceResearch(inst, dt, pw.ratio);       // ⑧
     // ⑧b v0.0.92：独立倾向与领土同化（由幸福度驱动，母星恒 0）

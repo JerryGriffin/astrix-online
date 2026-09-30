@@ -10,10 +10,10 @@
 // 现在：版本号只在这里定义一次，任何地方要显示都从这里取；
 // index.html 的入口脚本带 ?v= 查询串（与 VERSION 同步），改版本号即自动击穿缓存。
 
-export const VERSION = 'v0.3.1';
+export const VERSION = 'v0.3.2';
 
 // 版本号数字形式（用于存档迁移判断）
-export const VERSION_NUM = 31;
+export const VERSION_NUM = 32;
 
 export const VERSION_DATE = '2026-09-30';
 
@@ -32,6 +32,11 @@ export const CACHE_TAG = VERSION_NUM + '.' + REVISION;
 
 // 更新日志：从新到旧。每项 [版本号, 日期, [条目...]]
 export const VERSIONS = [
+  ['v0.3.2', '2026-09-30', [
+    '**修复：舰队里舰只仍显示「飞船」**：舰队页与舰船详情是按 `className` 字段取名的，'
+      + '而 1936 剧本的战舰对象只有 `shipClass` —— 现已补 `className` 与航速 `stats`，'
+      + '并给舰队页加了「className → 舰名 → shipClass」的多级兜底；老存档进入时同样自动补齐',
+  ]],
   ['v0.3.1', '2026-09-30', [
     '**老存档自愈升级**（针对「舰队还是飞船 / 舰船页打不开 / 殖民地幸福度掉」）：进入 1936 存档时自动'
       + '重编舰队（补齐 blueprintId、mark、parts、capacity 等字段并改为史实舰名）、补足住房（庇护 100%）、'

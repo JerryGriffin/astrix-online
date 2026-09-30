@@ -19,7 +19,9 @@ const { chromium } = require('playwright-core');
 const browser = await chromium.launch({ executablePath: 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe', headless: true, args: ['--no-sandbox'] });
 const page = await (await browser.newContext()).newPage();
 const errs = [];
+const consoleErrs = [];
 page.on('pageerror', (e) => errs.push(e.message));
+page.on('console', (m) => { if (m.type() === 'error') consoleErrs.push(m.text()); });
 await page.goto('http://127.0.0.1:8780/index.html', { waitUntil: 'load' });
 await page.waitForTimeout(1200);
 
@@ -63,11 +65,11 @@ const aOk = stepA.hasSelect && stepA.optionCount === 12 && stepA.infoHasData;
 const resB = await page.evaluate(async () => {
   const chain = new Proxy({}, { get: (t, p) => (p === 'then' ? undefined : (..._a) => chain) });
   window.WorkBuddyCloud = { createWorkBuddyCloud: () => ({ auth: { getSession: async () => ({ data: null, error: null }) }, database: chain }) };
-  const S = await import('/js/core/state.js?v=31.1');
+  const S = await import('/js/core/state.js?v=32.1');
   S.STATE.adapter = { get: () => null, set: () => {}, del: () => {} };
   const acc = S.createAccount('冒烟德国', 'hoi1936', { countryId: 'ger' });
   S.STATE.mode = 'online';
-  const G = await import('/js/ui/galaxy.js?v=31.1');
+  const G = await import('/js/ui/galaxy.js?v=32.1');
   const root = document.createElement('div');
   document.body.appendChild(root);
   G.renderGalaxy(root, { account: acc, planetCode: acc.homePlanetCode, openModal: () => () => {}, closeModal: () => {}, onEnterPlanet: () => {} });
@@ -84,9 +86,9 @@ console.log('B. 场景国家星球:', JSON.stringify(resB));
 
 // ---- C. 国策面板（国策树 + 海域 + 剧本日历到天） ----
 const resC = await page.evaluate(async () => {
-  const S = await import('/js/core/state.js?v=31.1');
+  const S = await import('/js/core/state.js?v=32.1');
   const acc = S.currentAccount();
-  const H = await import('/js/ui/hoi.js?v=31.1');
+  const H = await import('/js/ui/hoi.js?v=32.1');
   const root = document.createElement('div');
   document.body.appendChild(root);
   H.renderHoi(root, { account: acc, planetCode: acc.homePlanetCode, openModal: () => () => {}, closeModal: () => {} });
@@ -102,10 +104,88 @@ const resC = await page.evaluate(async () => {
 });
 console.log('C. 国策面板:', JSON.stringify(resC));
 const cOk = resC.date && resC.focusTree && resC.sixFocus >= 3 && resC.seas === 6 && resC.hasRecruit;
+
+// ---- D. 舰船界面（hoi1936 历史战舰应以 HOI4 风格展示，而非「飞船」崩溃）----
+const resD = await page.evaluate(async () => {
+  const S = await import('/js/core/state.js?v=32.1');
+  const acc = S.currentAccount();
+  const SY = await import('/js/ui/shipyard.js?v=32.1');
+  const root = document.createElement('div');
+  document.body.appendChild(root);
+  SY.renderShipyard(root, { account: acc, planetCode: acc.homePlanetCode, openModal: () => () => {}, closeModal: () => {} });
+  await new Promise((r) => setTimeout(r, 400));
+  const txt = root.textContent;
+  const m = txt.match(/.{0,12}飞船.{0,12}/);
+  return {
+    hasShipTitle: txt.includes('我的舰船'),
+    shipCount: (acc.ships || []).length,
+    hasWarshipName: /战列舰|巡洋舰|驱逐舰|潜艇|航母/.test(txt),
+    noSpaceshipLabel: !/飞船(?!蓝图)/.test(txt),
+    spaceshipCtx: m ? m[0] : '',
+  };
+});
+console.log('D. 舰船界面:', JSON.stringify(resD));
+
+// ---- E. 星球选择内「列强」区块：可见其他国家并可贸易 / 结盟 / 正当化 ----
+const resE = await page.evaluate(async () => {
+  const S = await import('/js/core/state.js?v=32.1');
+  const acc = S.currentAccount();
+  const COL = await import('/js/ui/colony.js?v=32.1');
+  const root = document.createElement('div');
+  document.body.appendChild(root);
+  let colonyErr = null;
+  try {
+    COL.renderColony(root, { account: acc, planetCode: acc.homePlanetCode, openModal: () => () => {}, closeModal: () => {}, onEnterPlanet: () => {} });
+  } catch (e) { colonyErr = e.message + ' | ' + (e.stack || '').split('\n')[1]; }
+  await new Promise((r) => setTimeout(r, 400));
+  const txt = root.textContent;
+  return {
+    colonyErr,
+    scenario: acc.scenario,
+    hasGreatPowers: txt.includes('列强'),
+    showsOtherNation: ['苏维埃联盟', '不列颠', '美利坚', '中国'].filter((x) => txt.includes(x)).length,
+    hasTrade: txt.includes('贸易'),
+    hasAlly: txt.includes('结盟'),
+    hasJustify: txt.includes('正当化战争'),
+  };
+});
+console.log('E. 星球选择列强:', JSON.stringify(resE));
+
+// ---- F. 舰队页（hoi1936 历史战舰应以舰级显示，而非「飞船」）----
+const resF = await page.evaluate(async () => {
+  const S = await import('/js/core/state.js?v=32.1');
+  const acc = S.currentAccount();
+  const FL = await import('/js/ui/fleet.js?v=32.1');
+  const root = document.createElement('div');
+  document.body.appendChild(root);
+  FL.renderFleet(root, { account: acc, planetCode: acc.homePlanetCode, openModal: () => () => {}, closeModal: () => {} });
+  await new Promise((r) => setTimeout(r, 400));
+  const txt = root.textContent;
+  // v0.3.2：只检查真实的「舰船条目」span，避免误判帮助文案里的「飞船」
+  const shipNameSpans = Array.from(root.querySelectorAll('.fleet-ship span'));
+  const shipNameText = shipNameSpans.map((s) => s.textContent).join(' | ');
+  const hasFleet = txt.includes('编队') || txt.includes('舰队');
+  const hasWarshipClass = /战列舰|巡洋舰|驱逐舰|潜艇|航母/.test(shipNameText);
+  // 真实舰船条目绝不允许出现「飞船」兜底标签（用户核心抱怨）
+  const noSpaceshipLabel = !shipNameSpans.some((s) => (s.textContent || '').includes('飞船'));
+  return {
+    hasFleet,
+    hasWarshipClass,
+    noSpaceshipLabel,
+    fleetCount: (acc.fleets || []).length,
+    shipEntries: shipNameText,
+  };
+});
+console.log('F. 舰队界面:', JSON.stringify(resF));
+
 console.log('页面异常:', errs.length ? errs.slice(0, 3) : '无');
+console.log('console错误:', consoleErrs.length ? consoleErrs.slice(0, 3) : '无');
 await browser.close();
 server.close();
 const bOk = resB.npcNations === 4 && resB.hasDataCard && resB.hasWarBtn && resB.noGermanSelf;
-const allOk = aOk && bOk && cOk && !errs.length;
+const dOk = resD.hasShipTitle && resD.shipCount > 0 && resD.hasWarshipName && resD.noSpaceshipLabel;
+const eOk = resE.hasGreatPowers && resE.showsOtherNation >= 3 && resE.hasTrade && resE.hasAlly && resE.hasJustify;
+const fOk = resF.hasFleet && resF.hasWarshipClass && resF.noSpaceshipLabel && resF.fleetCount > 0;
+const allOk = aOk && bOk && cOk && dOk && eOk && fOk && !errs.length;
 console.log(allOk ? '冒烟通过' : '冒烟失败');
 process.exit(allOk ? 0 : 1);

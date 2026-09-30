@@ -12,8 +12,8 @@
 //   需要 STATE.planets 的操作（如把新星球实例挂进存档）由调用方传入或通过回调完成。
 //   同理也**不 import production.js / shop.js**（它们间接依赖 state.js / 会与本模块成环）。
 
-import { PLANETS } from '../data/planets.js?v=31.1';
-import { JOBS, getTotalLabor, buildingSlots } from './population.js?v=31.1';
+import { PLANETS } from '../data/planets.js?v=32.1';
+import { JOBS, getTotalLabor, buildingSlots } from './population.js?v=32.1';
 
 // ============================================================================
 // 管理模式（设计者已确认：同时影响 产出 / 幸福度 / 独立倾向）

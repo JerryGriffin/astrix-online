@@ -10,11 +10,11 @@
 //   * HOI4 风格国策（三支六策，按天推进）               → focus 系列
 //   * 海域（制海权争夺 + 海战）                          → sea 系列
 import { HOI_NATIONS, HOI_BY_ID, HOI_DEEP, HOI_SEAS, ARMY_MEN, popOf, BLOC_NAME, HOI_SCENARIO_ID,
-  workforceOf, ARMY_POWER_PER_DIV, NAVY_MUL, GEAR_PARTS, SHIP_NAMES, ARMY_BP_NAME, HOI_BG, SHIP_CLASSES, POST_WAR_OPTIONS, GER_PUPPETS, ARMY_BP_LINE, warshipTonnageOf, WAR_LINE, EXTRA_FOCUS_TEMPLATE, JUSTIFY_DAYS, NATION_SEA_REGION, SEA_INITIAL_CONTROL, NAVAL_INVASION_CONTROL } from '../data/hoi1936.js?v=31.1';
-import { BUILDING_BY_ID } from '../data/buildings.js?v=31.1';
-import { ARMY_BP_BY_ID, ARMY_BLUEPRINTS } from '../data/army_parts.js?v=31.1';
-import { JOBS_BY_BUILDING, assignWorkers, jobCapacity, getAvailable } from './population.js?v=31.1';
-import { ELITE_DIVISIONS, ELITE_MUL } from '../data/hoi1936.js?v=31.1';
+  workforceOf, ARMY_POWER_PER_DIV, NAVY_MUL, GEAR_PARTS, SHIP_NAMES, ARMY_BP_NAME, HOI_BG, SHIP_CLASSES, POST_WAR_OPTIONS, GER_PUPPETS, ARMY_BP_LINE, warshipTonnageOf, WAR_LINE, EXTRA_FOCUS_TEMPLATE, JUSTIFY_DAYS, NATION_SEA_REGION, SEA_INITIAL_CONTROL, NAVAL_INVASION_CONTROL } from '../data/hoi1936.js?v=32.1';
+import { BUILDING_BY_ID } from '../data/buildings.js?v=32.1';
+import { ARMY_BP_BY_ID, ARMY_BLUEPRINTS } from '../data/army_parts.js?v=32.1';
+import { JOBS_BY_BUILDING, assignWorkers, jobCapacity, getAvailable } from './population.js?v=32.1';
+import { ELITE_DIVISIONS, ELITE_MUL } from '../data/hoi1936.js?v=32.1';
 
 // 依赖注入（避免与 state.js / production.js 形成循环导入）
 let _getInst = null;
@@ -407,7 +407,9 @@ export function setupNavy(acc, nation, createShipFn, defaultBlueprintsFn) {
     acc.ships.push({
       id: 'warship_' + n.id + '_' + i,
       nameCn: cls + ' ' + (i + 1),
+      className: cls,          // v0.3.2：舰队页/详情页按 className 显示（缺它会退化成「飞船」）
       shipClass: cls,
+      stats: { speed: Math.max(6, Math.round(ton / 12)) },
       kind: 'warship',
       mark: 1,
       strength: Math.round(ton * 12 * (NAVY_MUL[n.id] || 1)),
@@ -681,10 +683,9 @@ export function ensureShipNames(acc, nation) {
   let i = 0;
   for (const sh of acc.ships) {
     if (!sh) continue;
-    // 按舰级循环命名（驱逐 / 巡洋 / 潜艇 …），保证仓库里的舰队也是史实编制感
-    const idx = i % names.length;
+    // v0.3.2：优先沿用舰只自身的舰级（className），否则按史实舰级循环
+    const cls = sh.className || names[i % names.length] || names[0];
     i++;
-    const cls = names[idx] || names[0];
     counters[cls] = (counters[cls] || 0) + 1;
     const expect = cls + ' ' + counters[cls];
     if (sh.nameCn !== expect) { sh.nameCn = expect; fixed++; }
@@ -738,6 +739,9 @@ export function repairScenarioEstates(acc) {
         if (sh.capacity == null) sh.capacity = 0;
         if (!sh.state) sh.state = { fuelMol: 2000 };
         if (!(Number(sh.strength) > 0)) sh.strength = Math.round(warshipTonnageOf(sh.shipClass || '') * 12);
+        if (!sh.className && sh.shipClass) sh.className = sh.shipClass;
+        if (!sh.className && classes.length) sh.className = classes[i2 % classes.length];
+        if (!sh.stats) sh.stats = { speed: Math.round(warshipTonnageOf(sh.className || '') / 12) };
         if (!sh.kind) sh.kind = 'warship';
         i2++;
       }

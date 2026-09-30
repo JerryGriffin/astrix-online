@@ -12,28 +12,28 @@
 //
 // 全部数值计算都在 js/core/shipyard.js，本文件只负责渲染与交互。
 
-import { MATERIALS } from '../data/materials.js?v=31.1';
+import { MATERIALS } from '../data/materials.js?v=32.1';
 import {
   HULLS, ENGINES, WEAPONS, FACILITIES,
   MATERIAL_SLOTS, DEFAULT_MATERIAL,
   isPartUnlocked,
-} from '../data/ship_parts.js?v=31.1';
-import { POWER_FACILITIES, POWER_FACILITY_BY_ID } from '../data/facilities.js?v=31.1';
-import { FUELS } from '../data/fuels.js?v=31.1';
+} from '../data/ship_parts.js?v=32.1';
+import { POWER_FACILITIES, POWER_FACILITY_BY_ID } from '../data/facilities.js?v=32.1';
+import { FUELS } from '../data/fuels.js?v=32.1';
 import {
   emptyBlueprint, evaluateBlueprint, launchShip, tickShip,
   resolvePart, materialMul, safeTempBand, tempStatus, envTempK, equilibriumTemp,
   ensureBlueprints, shipBuildCheck, findBlueprint, blueprintBuildCost,
-} from '../core/shipyard.js?v=31.1';
-import { BUILDING_BY_ID } from '../data/buildings.js?v=31.1';
-import { fmtNum, fmtTime } from '../core/format.js?v=31.1';
+} from '../core/shipyard.js?v=32.1';
+import { BUILDING_BY_ID } from '../data/buildings.js?v=32.1';
+import { fmtNum, fmtTime } from '../core/format.js?v=32.1';
 // v0.0.5：建筑计数已迁到星球实例（inst.buildings），船坞工占用来自人力系统
-import { getPlanetInstance, getBuildingCounts } from '../core/state.js?v=31.1';
-import { jobsOfBuilding, getJobCount, buildingSlots, assignedToBuilding, freeSlots, getIntensity } from '../core/population.js?v=31.1';
+import { getPlanetInstance, getBuildingCounts } from '../core/state.js?v=32.1';
+import { jobsOfBuilding, getJobCount, buildingSlots, assignedToBuilding, freeSlots, getIntensity } from '../core/population.js?v=32.1';
 // v0.1.1（需求 3）：建造按钮改为创建 dock 造船线，走生产线的工位与人力结算
-import { addLine, ensureLines, linesOf, removeLine, lineSlotInfo, freeLaborOf } from '../core/production.js?v=31.1';
+import { addLine, ensureLines, linesOf, removeLine, lineSlotInfo, freeLaborOf } from '../core/production.js?v=32.1';
 // R19-2：造船除装备外按部件扣材料（spendOwned 整笔扣，ownedOf 查库存），不碰 core/state.js
-import { ownedOf, spendOwned } from '../core/state.js?v=31.1';
+import { ownedOf, spendOwned } from '../core/state.js?v=32.1';
 
 const SHIP_BUILDING_ID = 'dock';
 const SHIP_TECH_ID = 't_e3';
@@ -707,6 +707,9 @@ function buildEvalPanel(bp, ev, planetCode) {
 // 飞船行 + 详情
 // ============================================================================
 function buildShipRow(ship, ctx, account, rerender) {
+  // v0.3.2：1936 剧本的历史战舰（kind='warship'）没有 Astrix 物理字段，
+  //   走 HOI4 风格卡片，避免读取 TempK/massT 等缺失字段导致整页崩溃。
+  if (ship.kind === 'warship') return buildHoiShipRow(ship, ctx, account, rerender);
   const st = ship.state;
   const ts = tempStatus(st.TempK, ship.stats.tempBandBonus);
   const row = el('div', 'yard-ship glass');
@@ -734,7 +737,51 @@ function buildShipRow(ship, ctx, account, rerender) {
   return row;
 }
 
+// v0.3.2：1936 历史战舰的舰船卡片（无 Astrix 物理字段，走 HOI4 风格）
+function buildHoiShipRow(ship, ctx, account, rerender) {
+  const row = el('div', 'yard-ship glass');
+  const fleet = (account.fleets || []).find((f) => (f.shipIds || []).includes(ship.id));
+  const info = el('div', 'ys-info');
+  info.innerHTML =
+    `<div class="ys-name">${esc(ship.nameCn)}</div>`
+    + `<div class="ys-meta muted">${esc(ship.className)} · 强度 ${fmtNum(ship.strength || 0)} · HP ${fmtNum(ship.hp || 0)}</div>`
+    + `<div class="ys-meta muted">航速 ${fmtNum((ship.stats && ship.stats.speed) || 0)} · ${esc(fleet ? ('隶属 ' + fleet.nameCn) : '未编队')}</div>`;
+  row.appendChild(info);
+  const open = el('button', 'btn btn-sm', '查看');
+  open.onclick = () => openHoiShipDetail(ship, ctx, account, rerender);
+  row.appendChild(open);
+  return row;
+}
+
+// v0.3.2：1936 历史战舰的详情弹窗（HOI4 风格：舰级 / 强度 / HP / 航速 / 隶属舰队 / 状态）
+function openHoiShipDetail(ship, ctx, account, rerender) {
+  const body = el('div', 'sp-detail');
+  const fleet = (account.fleets || []).find((f) => (f.shipIds || []).includes(ship.id));
+  const kv = el('div', 'sp-kv');
+  const rows = [
+    ['舰名', ship.nameCn],
+    ['舰级', ship.className],
+    ['强度', fmtNum(ship.strength || 0)],
+    ['装甲 / HP', fmtNum(ship.hp || 0)],
+    ['航速', fmtNum((ship.stats && ship.stats.speed) || 0)],
+    ['隶属舰队', fleet ? fleet.nameCn : '未编入任何舰队'],
+    ['状态', (fleet && fleet.mission) ? ('执行任务：' + (fleet.mission.type || '—')) : '驻港待命'],
+    ['服役日期', new Date(ship.commissionedAt || Date.now()).toLocaleDateString('zh-CN')],
+  ];
+  for (const [k, v] of rows) {
+    const r = el('div', 'sp-row');
+    r.innerHTML = `<span class="sp-k muted">${esc(k)}</span><span class="sp-v">${esc(v)}</span>`;
+    kv.appendChild(r);
+  }
+  body.appendChild(kv);
+  const tip = el('p', 'sp-temp-tip muted');
+  tip.textContent = '这是 1936 剧本的历史战舰：在「舰队」页可将其编入舰队、执行巡航 / 运输 / 登陆等任务。';
+  body.appendChild(tip);
+  ctx.openModal({ title: ship.nameCn, body, sheet: true });
+}
+
 function openShipDetail(ship, ctx, account, rerender) {
+  if (ship.kind === 'warship') { openHoiShipDetail(ship, ctx, account, rerender); return; }
   const body = el('div', 'sp-detail');
 
   // 每次操作后整体重建（温度/能量/船员都会变）

@@ -2,8 +2,8 @@
 // 汇总 planets.js 与 materials.js，导出便捷查询函数与映射表。
 // 本文件不持有数据，仅做索引与派生（ALL_RESOURCE_NAMES 由 PLANETS 动态派生，保证与星球数据一致）。
 
-import { PLANETS } from './planets.js?v=31.1';
-import { MATERIALS } from './materials.js?v=31.1';
+import { PLANETS } from './planets.js?v=32.1';
+import { MATERIALS } from './materials.js?v=32.1';
 
 export const PLANET_MAP = Object.fromEntries(PLANETS.map(p => [p.id, p]));
 export const MATERIAL_MAP = Object.fromEntries(MATERIALS.map(m => [m.id, m]));

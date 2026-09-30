@@ -1,8 +1,8 @@
 // 验证「向殖民地运输物资」核心链路：UI 只是调用 startMission(acc, fleetId, 'transport', colonyCode, {mat:qty})，
 // 这里走真实 state.js + fleet.js 把货从母星搬到殖民地，确认抵达后殖民地真的收到货。
-import * as S from '../js/core/state.js?v=31.1';
-import * as PG from '../js/core/planetgen.js?v=31.1';
-import * as FLEET from '../js/core/fleet.js?v=31.1';
+import * as S from '../js/core/state.js?v=32.1';
+import * as PG from '../js/core/planetgen.js?v=32.1';
+import * as FLEET from '../js/core/fleet.js?v=32.1';
 
 const mem = new Map();
 S.setAdapter({ get: (k) => (mem.has(k) ? mem.get(k) : null), set: (k, v) => mem.set(k, String(v)), del: (k) => mem.delete(k) });

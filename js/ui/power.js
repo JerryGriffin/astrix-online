@@ -8,13 +8,13 @@ import {
   computePower, energyOf,
   installedFacilities, installFacility, uninstallFacility, facilityStockOf,
   panelEffOf, facilityFuelOf, buildingCountBonus,
-} from '../core/power.js?v=31.1';
-import { POWER_FACILITIES, POWER_FACILITY_BY_ID } from '../data/facilities.js?v=31.1';
-import { BUILDING_BY_ID } from '../data/buildings.js?v=31.1';
-import { RECIPES } from '../data/recipes.js?v=31.1';
-import { linesOf } from '../core/production.js?v=31.1';
-import { jobsOfBuilding, jobOutput, assignedToBuilding, buildingSlots } from '../core/population.js?v=31.1';
-import { fmtNum, fmtRate, fmtRateBody } from '../core/format.js?v=31.1';
+} from '../core/power.js?v=32.1';
+import { POWER_FACILITIES, POWER_FACILITY_BY_ID } from '../data/facilities.js?v=32.1';
+import { BUILDING_BY_ID } from '../data/buildings.js?v=32.1';
+import { RECIPES } from '../data/recipes.js?v=32.1';
+import { linesOf } from '../core/production.js?v=32.1';
+import { jobsOfBuilding, jobOutput, assignedToBuilding, buildingSlots } from '../core/population.js?v=32.1';
+import { fmtNum, fmtRate, fmtRateBody } from '../core/format.js?v=32.1';
 
 const CSS = `
   .pwr-panel { font-family: system-ui, sans-serif; color: #e8eef2; padding: 12px; box-sizing: border-box; }

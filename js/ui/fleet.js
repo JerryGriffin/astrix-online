@@ -3,31 +3,31 @@
 // 更新：v0.1.1 五指令改为持续任务（startMission，任务行显示倒计时），
 //       新增船载仓库面板；编队 / 五指令区块挂船坞门禁；交易池区 2s 心跳局部刷新。
 
-import { fmtNum, fmtRate, fmtTime } from '../core/format.js?v=31.1';
+import { fmtNum, fmtRate, fmtTime } from '../core/format.js?v=32.1';
 import {
   listFleets, createFleet, disbandFleet, addShipToFleet, removeShipFromFleet,
   fleetSpeedOf, fleetPowerOf, executeCommand,
   startMission, cancelMission, fleetMissionLabel, defenseBonusOf,
   shipCargoOf, loadShipCargo, unloadShipCargo,
   shipCargoMassOf, shipCargoCellsOf, shipCargoCellsMax, effectiveSpeedOf,
-} from '../core/fleet.js?v=31.1';
-import { equipmentList } from '../core/shipyard.js?v=31.1';
+} from '../core/fleet.js?v=32.1';
+import { equipmentList } from '../core/shipyard.js?v=32.1';
 import {
   MANAGEMENT_MODES, MANAGEMENT_BY_ID, modeOf, setManagement,
   TERRITORY_ASSIMILATE_SEC, TERRITORY_HAPPY_THRESHOLD,
-} from '../core/planetgen.js?v=31.1';
+} from '../core/planetgen.js?v=32.1';
 import {
   SHOP_PLANET, shopPrices, sell, pendingOrders, deliverOrder, ascoinBalance,
   shopStateOf, applySharedPrice,
   marketBuy, marketSell, warehouseOf, ensureShopWarehouse,
-} from '../core/shop.js?v=31.1';
+} from '../core/shop.js?v=32.1';
 import {
   createAuction, placeBid, activeAuctions, auctionLog,
   myAuctionableResources, myAuctionableEquipment, myAuctionableShips, ensureAuctions,
-} from '../core/auction.js?v=31.1';
-import { getPlanetInstance, currentAccount, ownedOf, STATE } from '../core/state.js?v=31.1';
-import { cloudUser, fetchSharedWarehouse, upsertSharedWarehouseRow, upsertSharedPriceRow } from '../core/cloud.js?v=31.1';
-import { MATERIALS } from '../data/materials.js?v=31.1';
+} from '../core/auction.js?v=32.1';
+import { getPlanetInstance, currentAccount, ownedOf, STATE } from '../core/state.js?v=32.1';
+import { cloudUser, fetchSharedWarehouse, upsertSharedWarehouseRow, upsertSharedPriceRow } from '../core/cloud.js?v=32.1';
+import { MATERIALS } from '../data/materials.js?v=32.1';
 
 // HTML 转义（防 XSS，与其它面板一致）
 function esc(s) {
@@ -471,7 +471,7 @@ function buildCargoPanel(account, inst) {
   for (const s of ships) {
     const o = document.createElement('option');
     o.value = s.id;
-    o.textContent = (s.name || s.className || '飞船') + '（' + (s.className || '飞船') + '）';
+    o.textContent = (s.name || s.nameCn || s.className || s.shipClass || '飞船') + '（' + (s.className || s.shipClass || '战舰') + '）';
     shipSel.appendChild(o);
   }
 
@@ -639,7 +639,8 @@ export function renderFleet(container, ctx) {
     for (const sid of fleet.shipIds) {
       const s = (account.ships || []).find((x) => x && x.id === sid);
       const line = el('div', 'fleet-ship');
-      line.appendChild(el('span', null, s ? (s.className || '飞船') : sid));
+      // v0.3.2：舰名兜底顺序 className → nameCn → shipClass → id
+      line.appendChild(el('span', null, s ? (s.className || s.nameCn || s.shipClass || sid) : sid));
       const rm = btn('移出', 'btn-sm');
       rm.addEventListener('click', () => {
         const r = removeShipFromFleet(account, fleet.id, sid);
@@ -660,7 +661,7 @@ export function renderFleet(container, ctx) {
       for (const s of free) {
         const o = document.createElement('option');
         o.value = s.id;
-        o.textContent = (s.className || '飞船') + (s.stats ? '（航速 ' + fmtNum(s.stats.speed) + '）' : '');
+        o.textContent = (s.className || s.nameCn || s.shipClass || '飞船') + (s.stats ? '（航速 ' + fmtNum(s.stats.speed) + '）' : '');
         sel.appendChild(o);
       }
       const ab = btn('加入编队', 'btn-primary');
