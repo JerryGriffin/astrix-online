@@ -1,7 +1,7 @@
 // v0.2.6 探针：联盟战争（持续/分值/迫降条约/上限）+ 1936 剧本开局
-import { declareWar, activeWarsOf, warWith, addWarScore, canForceSurrender, draftTreaty, endWar, surrenderWar, WAR_FORCE_SURRENDER_SCORE } from '../js/core/war.js?v=26.2';
-import { STATE, createAccount, getPlanetInstance } from '../js/core/state.js?v=26.2';
-import { HOI_NATIONS, HOI_BY_ID, popOf } from '../js/data/hoi1936.js?v=26.2';
+import { declareWar, activeWarsOf, warWith, addWarScore, canForceSurrender, draftTreaty, endWar, surrenderWar, WAR_FORCE_SURRENDER_SCORE } from '../js/core/war.js?v=26.3';
+import { STATE, createAccount, getPlanetInstance } from '../js/core/state.js?v=26.3';
+import { HOI_NATIONS, HOI_BY_ID, popOf } from '../js/data/hoi1936.js?v=26.3';
 
 let pass = 0, fail = 0;
 function ok(cond, msg) { if (cond) { pass++; console.log('  ✓ ' + msg); } else { fail++; console.log('  ✗ ' + msg); } }
@@ -48,7 +48,7 @@ const inst = getPlanetInstance(a.homePlanetCode);
 ok(inst.nameCn.indexOf('莫斯科') === 0, '本土星球以首都命名（' + inst.nameCn + '）');
 const n = HOI_BY_ID.sov;
 ok(inst.pop.total === popOf(n), '人口按真实数据换算（德国 80000 基准，实际 ' + inst.pop.total + '）');
-ok(a.armies.length === Math.min(14, Math.round(n.divisions / 6)), '军队数按师数建制（' + a.armies.length + ' 支）');
+ok(a.armies.length === n.divisions, '军队数 = 历史师数（' + a.armies.length + ' 支）');
 ok(!!a.colonyCode && getPlanetInstance(a.colonyCode).nameCn === n.colony.name, '属地星球已建立（' + n.colony.name + '）');
 ok(Array.isArray(a.wars) && a.wars.length === 0, '开局无战争（玩家自行宣战）');
 ok(a.tech.includes('t_e3') && a.tech.includes('t_m3'), '工业与军事科技已按 1936 列强水平铺开');

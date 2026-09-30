@@ -12,9 +12,9 @@
 
 import {
   ARMY_BP_BY_ID, ARMY_PART_BY_ID, ARMY_SLOT_BY_CAT, armyBpPartNeeds,
-} from '../data/army_parts.js?v=26.2';
-import { MATERIAL_SLOTS } from '../data/ship_parts.js?v=26.2';
-import { materialMul } from './shipyard.js?v=26.2';   // 无循环：shipyard 不依赖本模块
+} from '../data/army_parts.js?v=26.3';
+import { MATERIAL_SLOTS } from '../data/ship_parts.js?v=26.3';
+import { materialMul } from './shipyard.js?v=26.3';   // 无循环：shipyard 不依赖本模块
 
 // ============================================================================
 // 一、账号军队列表（迁移 + 查询）
@@ -420,10 +420,27 @@ function sideToUnits(side, fallbackName) {
  * @returns {{ attackerWin:boolean, atkLossRatio:number, defLossRatio:number,
  *             plunderRatio:number, rounds:number, log:string, logLines:string[] }}
  */
-export function resolveBattle(seed, atkSide, defSide) {
+// v0.2.6 rev3（HOI4 化）：地形修正 / 预备队增援 / 装甲穿甲
+const BATTLE_TERRAIN = {
+  plain:   { atk: 1.05, def: 1.00, nameCn: '平原' },
+  forest:  { atk: 0.95, def: 1.10, nameCn: '森林' },
+  mountain:{ atk: 0.88, def: 1.18, nameCn: '山地' },
+  urban:   { atk: 0.90, def: 1.25, nameCn: '城市' },
+  desert:  { atk: 1.05, def: 0.97, nameCn: '沙漠' },
+};
+
+export function resolveBattle(seed, atkSide, defSide, opts) {
+  const o = opts || {};
+  const terrain = BATTLE_TERRAIN[o.terrain] || BATTLE_TERRAIN.plain;
   const rng = mulberry32(Number(seed) >>> 0 || 1);
   const atk = sideToUnits(atkSide, '远征军');
   const def = sideToUnits(defSide, '守备军');
+  // 预备队（HOI4 增援）：直接并入序列 —— 前线组织度打空的部队一旦撤出，
+  //   后排队列自然递补进战斗宽度（frontOf 只取前 3 支有组织度的部队）
+  if (o.atkReserves) { for (const u of sideToUnits(o.atkReserves, '援军')) { u._reserve = true; atk.push(u); } }
+  if (o.defReserves) { for (const u of sideToUnits(o.defReserves, '预备队')) { u._reserve = true; def.push(u); } }
+  const armorAtk = Math.max(0, Number(o.atkArmor) || 0);   // 穿甲/装甲优势（0~2）
+  const armorDef = Math.max(0, Number(o.defArmor) || 0);
   const atkHp0 = atk.reduce((s, u) => s + u.hp, 0);
   const defHp0 = def.reduce((s, u) => s + u.hp, 0);
   const log = [];
@@ -431,6 +448,9 @@ export function resolveBattle(seed, atkSide, defSide) {
   const frontOf = (side) => side.filter((u) => u.org > 0).slice(0, COMBAT_WIDTH);
   const alive = (side) => side.some((u) => u.org > 0);
 
+  log.push('地形：' + terrain.nameCn + '（攻方 ×' + terrain.atk + ' / 守方 ×' + terrain.def + '）'
+    + (armorAtk || armorDef ? '　装甲优势：攻 ' + armorAtk.toFixed(2) + ' / 守 ' + armorDef.toFixed(2) : '')
+    + ((o.atkReserves || o.defReserves) ? '　预备队已就位' : ''));
   let round = 0;
   for (; round < MAX_ROUNDS; round++) {
     const fA = frontOf(atk);
@@ -438,12 +458,12 @@ export function resolveBattle(seed, atkSide, defSide) {
     if (!fA.length || !fD.length) break;
     log.push('第' + (round + 1) + '回合：攻方 ' + fA.length + ' 支接战 · 守方 ' + fD.length + ' 支接战');
     // 火力结算：先算足双方本回合伤害，再统一落账（同回合并行，先后不影响确定性）
-    const applyFire = (shooters, targets, fortBonus) => {
+    const applyFire = (shooters, targets, fortBonus, sideMul) => {
       for (const t of targets) t._dmg = 0;
       shooters.forEach((s, i) => {
         const t = targets[i % targets.length];
         const effDef = (t.def || 0) * (1 + (fortBonus || 0));
-        const dmg = (s.atk || 0) * (0.85 + rng() * 0.3) * (40 / (40 + effDef)) * 0.5;
+        const dmg = (s.atk || 0) * (sideMul || 1) * (0.85 + rng() * 0.3) * (40 / (40 + effDef)) * 0.5;
         t._dmg += dmg;
       });
       for (const t of targets) {
@@ -453,8 +473,8 @@ export function resolveBattle(seed, atkSide, defSide) {
         if (t.org <= 0) log.push('　' + t.nameCn + ' 组织度被打空，撤出战斗');
       }
     };
-    applyFire(fD, fA, 0);      // 守方先手（防御方优势）
-    applyFire(fA, fD, 0.25);   // 攻方开火，守方吃 25% 工事减伤
+    applyFire(fD, fA, 0, terrain.def * (1 + armorDef * 0.15));      // 守方先手（防御 + 地形 + 装甲）
+    applyFire(fA, fD, 0.25, terrain.atk * (1 + armorAtk * 0.15));   // 攻方开火，守方吃 25% 工事减伤
   }
 
   const atkAlive = alive(atk);

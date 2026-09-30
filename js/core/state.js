@@ -15,45 +15,45 @@
 //    开局自带 1 座建筑工厂（设计者：「开局有一个建筑工厂」）。
 // 5. 施工队列由 tick 推进：速度 = 建筑工有效人力（受建筑工厂工位限制），无人则为 0。
 
-import { PLANETS } from '../data/planets.js?v=26.2';
-import { HOI_NATIONS, HOI_BY_ID, HOI_SCENARIO_ID } from '../data/hoi1936.js?v=26.2';   // v0.2.6 官方 mod 1936 剧本
+import { PLANETS } from '../data/planets.js?v=26.3';
+import { HOI_NATIONS, HOI_BY_ID, HOI_SCENARIO_ID } from '../data/hoi1936.js?v=26.3';   // v0.2.6 官方 mod 1936 剧本
 import {
-  setHoiDeps, popOf, setupArmies, setupNavy, setupLines, setupBloc,
+  setHoiDeps, popOf, setupArmies, setupNavy, setupLines, setupBloc, setupFactories, tickDiploAI,
   ensureFocus, tickFocus, ensureSeas, scenarioDateOf, gameDaysOf,
-} from './hoi1936.js?v=26.2';
-import { BUILDING_BY_ID, buildingCost } from '../data/buildings.js?v=26.2';
-import { TECH_BY_ID, canResearch, missingPrereqs, missingBuilding } from '../data/techs.js?v=26.2';
-import { UPGRADES, upgradeCost } from '../data/upgrades.js?v=26.2';
+} from './hoi1936.js?v=26.3';
+import { BUILDING_BY_ID, buildingCost } from '../data/buildings.js?v=26.3';
+import { TECH_BY_ID, canResearch, missingPrereqs, missingBuilding } from '../data/techs.js?v=26.3';
+import { UPGRADES, upgradeCost } from '../data/upgrades.js?v=26.3';
 import {
   createPopulation, tickPopulation, getAvailable, gatherLaborByLayer, jobsOfBuilding, getIntensity,
   consumptionPerSec, jobOutput,
   JOBS, freeSlots,
-} from './population.js?v=26.2';
-import { buildRateOf, buildBlockReason } from './construction.js?v=26.2';
-import { tickShip, defaultBlueprints, createShip, shipBuildTick } from './shipyard.js?v=26.2';
+} from './population.js?v=26.3';
+import { buildRateOf, buildBlockReason } from './construction.js?v=26.3';
+import { tickShip, defaultBlueprints, createShip, shipBuildTick } from './shipyard.js?v=26.3';
 // v0.0.6：电力系统与配方生产。
 // 注意这两个模块**不反向 import 本文件**（否则形成循环依赖），
 // 它们只从传入的 inst 上读 buildings / pop / inventory / recipes。
-import { energyOf, computePower, tickPower } from './power.js?v=26.2';
+import { energyOf, computePower, tickPower } from './power.js?v=26.3';
 // v0.0.91：efficiencyBonus 由 production.js 导出（建筑总座数效率乘数），
 //   这里沿用既有的 state→production 单向边引入，不反向让 production import state，避免循环依赖。
-import { tickProduction, productionRates, ensureLines, lineWorkersTotal, efficiencyBonus, ensureEntry, addLine as addProductionLine, lineSlotInfo } from './production.js?v=26.2';
+import { tickProduction, productionRates, ensureLines, lineWorkersTotal, efficiencyBonus, ensureEntry, addLine as addProductionLine, lineSlotInfo } from './production.js?v=26.3';
 // v0.0.92：星际航行与殖民（管理模式 / 独立倾向 / 随机星球）
-import { tickIndependence, outputMulOf, happinessDeltaOf, ensureDiscoveredDefaults, discoverPlanet, capturePlanet, purgeShopColonies, tickManagedColonies, SHOP_PLANET_CODE } from './planetgen.js?v=26.2';
+import { tickIndependence, outputMulOf, happinessDeltaOf, ensureDiscoveredDefaults, discoverPlanet, capturePlanet, purgeShopColonies, tickManagedColonies, SHOP_PLANET_CODE } from './planetgen.js?v=26.3';
 // v0.1.2（需求 18/19）：永久升级的「效果」改乘方，唯一实现在 data/upgrades.js#upgradeMul
 // （UI 的 research.js 也用它，别在别处再写一套公式）。
 // 此前 upg_collect/refine/power/labor/research/build 六项付了钱却没有任何效果。
-import { upgradeMul } from '../data/upgrades.js?v=26.2';
-import { tickFleetMissions, ensureFleets } from './fleet.js?v=26.2';
-import { ensureArmies, armyBuildTick, advanceTraining, ARMY_LABOR_PER_BARRACKS } from './army.js?v=26.2';   // v0.2.0 军队
+import { upgradeMul } from '../data/upgrades.js?v=26.3';
+import { tickFleetMissions, ensureFleets } from './fleet.js?v=26.3';
+import { ensureArmies, armyBuildTick, advanceTraining, ARMY_LABOR_PER_BARRACKS } from './army.js?v=26.3';   // v0.2.0 军队
 // v0.1.0：电脑账号（离线存档里的 NPC 势力）与其交易池联动。
 //   注意 npc.js 是叶子模块（只 import 数据表），shop.js 与 state.js 互为函数级引用、无顶层副作用。
-import { ensureNpcs, tickNpcs } from './npc.js?v=26.2';
+import { ensureNpcs, tickNpcs } from './npc.js?v=26.3';
 import {
   priceOf as shopPriceOf, suggestPriceOf as shopSuggestPriceOf,
   tickShop as shopTick,
-} from './shop.js?v=26.2';
-import { tickAuctions, tickNpcAuctionSpawner } from './auction.js?v=26.2';   // v0.2.6 拍卖行；v0.2.10 NPC 挂单
+} from './shop.js?v=26.3';
+import { tickAuctions, tickNpcAuctionSpawner } from './auction.js?v=26.3';   // v0.2.6 拍卖行；v0.2.10 NPC 挂单
 
 const SAVE_PREFIX = 'astrix.save.';
 const INDEX_KEY = SAVE_PREFIX + 'index';
@@ -1163,6 +1163,7 @@ export function tick(dt = 1) {
     try {
       if (acc.scenario === 'hoi1936') {
         tickFocus(acc, dt);
+        tickDiploAI(acc, dt);   // v0.2.6 rev3：AI 国家主动宣战 / 结盟
         const lm = (acc.hoiFocus && acc.hoiFocus.buffs && acc.hoiFocus.buffs.lineMul) || 1;
         for (const pl of STATE.planets) if (pl) pl.hoiLineMul = lm;
       }
@@ -1376,27 +1377,9 @@ function apply1936Start(acc, inst, countryId) {
   acc._armyTechV3 = true;
   acc.researchPoints = Math.round(n.ic * 2500);
 
-  // 3) 建筑规模：按真实工业产能铺开
+  // 3) 工业建筑群（v0.2.6 rev3：按工业规模铺开大量建筑，为生产线上万名工人提供工位）
   const ic = n.ic;
-  inst.buildings = {
-    workshop: Math.max(2, Math.round(ic / 8)),
-    house: Math.max(8, Math.round(n.popM / 3)),
-    manual_power: 3,
-    farm: Math.max(2, Math.round(ic / 12)),
-    gas_collector: 2,
-    furnace: Math.max(1, Math.round(ic / 14)),
-    blast_furnace: Math.max(1, Math.round(ic / 18)),
-    electrolyzer: 1,
-    thermal_plant: Math.max(1, Math.round(ic / 16)),
-    clean_plant: 1,
-    mine_shallow: Math.max(1, Math.round(ic / 16)),
-    mine_deep: 2, mine_core: 1, storage_plant: 2,
-    lab: Math.max(1, Math.round(ic / 20)),
-    fabricator: Math.max(1, Math.round(ic / 12)),
-    chem_lab: 1, refinery: 1, dock: 1, repair_bay: 1,
-    barracks: Math.max(1, Math.round(n.divisions / 18)),
-    training_ground: 1,
-  };
+  try { setupFactories(inst, n); } catch (e) { /* 忽略 */ }
 
   // 4) 物资：按工业与人口换算
   const bundle = {
@@ -1454,8 +1437,13 @@ function apply1936Start(acc, inst, countryId) {
   // 6b) 历史舰队：按 1936 真实海军实力造舰，以史实舰队名编队
   try { setupNavy(acc, n, createShip, defaultBlueprints); } catch (e) { acc.ships = acc.ships || []; }
 
-  // 6c) 侧重生产线与独特装备流水线（各国不同）+ 阵营（德意同盟等）
-  try { setupLines(inst, n); } catch (e) { /* 忽略 */ }
+  // 6c) 侧重生产线 + 装备流水线（工人总数 = 工业 × 415，德国 ≈ 20000 人）
+  try {
+    const wf = setupLines(inst, n);
+    acc.hoiWorkforce = (wf && wf.workers) || 0;
+    acc.hoiLines = (wf && wf.lines) || [];
+  } catch (e) { /* 忽略 */ }
+  // 6d) 阵营（德意同盟等）
   try { setupBloc(acc, n); } catch (e) { /* 忽略 */ }
 
   // 7) 属地星球：第二颗星球（历史属地命名，资源按属地类型倾斜）

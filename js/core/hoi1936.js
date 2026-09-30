@@ -9,7 +9,9 @@
 //   * 游玩时显示时间到天                                → scenarioDateOf()
 //   * HOI4 风格国策（三支六策，按天推进）               → focus 系列
 //   * 海域（制海权争夺 + 海战）                          → sea 系列
-import { HOI_NATIONS, HOI_BY_ID, HOI_DEEP, HOI_SEAS, ARMY_MEN, popOf, BLOC_NAME, HOI_SCENARIO_ID } from '../data/hoi1936.js?v=26.2';
+import { HOI_NATIONS, HOI_BY_ID, HOI_DEEP, HOI_SEAS, ARMY_MEN, popOf, BLOC_NAME, HOI_SCENARIO_ID,
+  workforceOf, ARMY_POWER_PER_DIV, NAVY_MUL, GEAR_PARTS, SHIP_NAMES, ARMY_BP_NAME } from '../data/hoi1936.js?v=26.3';
+import { BUILDING_BY_ID } from '../data/buildings.js?v=26.3';
 
 // 依赖注入（避免与 state.js / production.js 形成循环导入）
 let _getInst = null;
@@ -58,7 +60,23 @@ export function focusOptionsOf(acc) {
   const deep = HOI_DEEP[acc && acc.nation];
   if (!deep) return [];
   const f = ensureFocus(acc);
-  return deep.foci.map((x) => Object.assign({ done: f.done.indexOf(x.id) >= 0 }, x));
+  const byBranch = {};
+  for (const x of deep.foci) (byBranch[x.branch] = byBranch[x.branch] || []).push(x);
+  return deep.foci.map((x) => {
+    const done = f.done.indexOf(x.id) >= 0;
+    const list = byBranch[x.branch] || [];
+    const idx = list.findIndex((y) => y.id === x.id);
+    const prev = idx > 0 ? list[idx - 1] : null;
+    let locked = null;
+    // 规则 1：同支按序推进（后一策需前一策完成）
+    if (!done && prev && f.done.indexOf(prev.id) < 0) locked = '需先完成同支国策「' + prev.nameCn + '」';
+    // 规则 2：外交线互斥（选了一策后，同支另一策永久锁定）
+    if (!done && !locked && x.branch === '外交') {
+      const other = list.find((y) => y.id !== x.id && f.done.indexOf(y.id) >= 0);
+      if (other) locked = '与已完成的「' + other.nameCn + '」互斥';
+    }
+    return Object.assign({ done: done, locked: locked, branchIdx: idx }, x);
+  });
 }
 
 export function startFocus(acc, focusId) {
@@ -69,6 +87,8 @@ export function startFocus(acc, focusId) {
   const def = deep.foci.find((x) => x.id === focusId);
   if (!def) return { ok: false, reason: '找不到该策' };
   if (f.done.indexOf(focusId) >= 0) return { ok: false, reason: '该策已完成' };
+  const opt = focusOptionsOf(acc).find((x) => x.id === focusId);
+  if (opt && opt.locked) return { ok: false, reason: opt.locked };
   f.current = { id: def.id, nameCn: def.nameCn, progressDays: 0, needDays: def.days, branch: def.branch };
   return { ok: true, current: f.current, def };
 }
@@ -171,8 +191,9 @@ function getHomeInstLocal(acc) {
 export function setupArmies(acc, nation) {
   const n = typeof nation === 'string' ? HOI_BY_ID[nation] : nation;
   const deep = HOI_DEEP[n.id] || {};
-  const count = Math.max(2, Math.min(14, Math.round(n.divisions / 6)));
-  const perPower = Math.max(60, Math.round(n.divisions * 11));
+  // v0.2.6 rev3：**师数 = 1936 年真实师数**（德国 30 / 苏联 92 / 中国 120 …），每师 500 人
+  const count = Math.max(2, Math.min(130, Math.round(n.divisions)));
+  const perPower = ARMY_POWER_PER_DIV;
   acc.armies = [];
   for (let i = 0; i < count; i++) {
     acc.armies.push({
@@ -182,14 +203,55 @@ export function setupArmies(acc, nation) {
       men: ARMY_MEN,
       exp: 0, bonusAtk: 0, bonusDef: 0,
       stats: {
-        atk: Math.round(perPower * 0.5 * (deep.atkMul || 1)),
-        def: Math.round(perPower * 0.42 * (deep.defMul || 1)),
+        atk: Math.round(perPower * (deep.atkMul || 1)),
+        def: Math.round(perPower * (deep.defMul || 1)),
         speed: 8,
       },
       power: Math.round(perPower * ((deep.atkMul || 1) + (deep.defMul || 1)) / 2),
     });
   }
+  // v0.2.6 rev3：师蓝图历史化（如德国「装甲师（1936 编制）」）
+  if (ARMY_BP_NAME[n.id] && Array.isArray(acc.blueprints) && acc.blueprints.length) {
+    try { acc.blueprints[0].nameCn = ARMY_BP_NAME[n.id]; acc.blueprint = acc.blueprints[0]; } catch (e) { /* 忽略 */ }
+  }
   return acc.armies.length;
+}
+
+// ---------------------------------------------------------------------------
+// 工业建筑群（v0.2.6 rev3）：按国家工业与人口规模铺开大量建筑，
+//   为「生产线大量工人」提供工位（工位 = 建筑数 × 该建筑 jobs）
+// ---------------------------------------------------------------------------
+export function setupFactories(inst, nation) {
+  const n = typeof nation === 'string' ? HOI_BY_ID[nation] : nation;
+  if (!inst) return 0;
+  const ic = n.ic;
+  inst.buildings = {
+    workshop: Math.max(20, Math.round(ic * 5)),
+    house: Math.max(40, Math.round(n.popM * 12)),
+    manual_power: 10,
+    farm: Math.max(20, Math.round(ic * 6)),
+    gas_collector: Math.max(6, Math.round(ic / 4)),
+    furnace: Math.max(20, Math.round(ic * 10)),
+    blast_furnace: Math.max(10, Math.round(ic * 5)),
+    electrolyzer: Math.max(6, Math.round(ic * 1.5)),
+    thermal_plant: Math.max(10, Math.round(ic * 5)),
+    clean_plant: Math.max(4, Math.round(ic)),
+    mine_shallow: Math.max(10, Math.round(ic * 4)),
+    mine_deep: Math.max(6, Math.round(ic * 3)),
+    mine_core: Math.max(2, Math.round(ic)),
+    storage_plant: Math.max(6, Math.round(ic)),
+    lab: Math.max(4, Math.round(ic * 2)),
+    fabricator: Math.max(10, Math.round(ic * 5)),
+    chem_lab: Math.max(4, Math.round(ic * 2)),
+    refinery: Math.max(2, Math.round(ic)),
+    dock: Math.max(1, Math.round(n.navy / 4)),
+    repair_bay: Math.max(1, Math.round(n.navy / 6)),
+    barracks: Math.max(2, Math.round(n.divisions / 2)),
+    training_ground: Math.max(2, Math.round(n.divisions / 6)),
+  };
+  // 记录工业规模，供 UI 展示
+  inst.hoiIndustry = { ic: ic, buildings: Object.values(inst.buildings).reduce((a, b) => a + b, 0) };
+  return inst.hoiIndustry.buildings;
 }
 
 /** 舰队：按 1936 真实海军实力造舰，并以史实舰队名编队 */
@@ -198,9 +260,20 @@ export function setupNavy(acc, nation, createShipFn, defaultBlueprintsFn) {
   const deep = HOI_DEEP[n.id] || {};
   acc.ships = acc.ships || [];
   acc.fleets = acc.fleets || [];
-  // 舰艇数：按真实海军规模缩放（navy 6~66 → 2~20 艘），每舰实力反映吨位
-  const shipCount = Math.max(1, Math.min(20, Math.round(n.navy / 3.2)));
-  const bps = defaultBlueprintsFn ? defaultBlueprintsFn() : [];
+  // v0.2.6 rev3：舰艇数与吨位结构挂钩 1936 真实海军实力
+  //   （英国 66 舰 → 30 艘并偏大型舰，中国 4 舰 → 2 艘小型舰）
+  const shipCount = Math.max(1, Math.min(40, Math.round(n.navy / 2.2)));
+  // 优先复用账号已有的舰船蓝图（保证历史化命名落到玩家真正使用的蓝图对象上）
+  const bps = (Array.isArray(acc.blueprints) && acc.blueprints.length)
+    ? acc.blueprints
+    : (defaultBlueprintsFn ? defaultBlueprintsFn() : []);
+  // v0.2.6 rev3：舰船蓝图历史化（德国 Z 级驱逐舰 / U 型潜艇，英国皇家方舟级航母…）
+  const sn = SHIP_NAMES[n.id] || [];
+  for (let i = 0; i < bps.length && i < sn.length; i++) {
+    try { bps[i].nameCn = sn[i]; } catch (e) { /* 忽略 */ }
+  }
+  acc.blueprints = bps;
+  if (!acc.blueprint && bps.length) acc.blueprint = bps[0];
   const hulls = bps.length ? bps : [];
   for (let i = 0; i < shipCount; i++) {
     const bp = hulls[i % Math.max(1, hulls.length)];
@@ -208,7 +281,7 @@ export function setupNavy(acc, nation, createShipFn, defaultBlueprintsFn) {
     try {
       const r = createShipFn(bp, { ships: acc.ships, account: acc, planetCode: acc.homePlanetCode, researched: acc.tech });
       if (r && r.ok && r.ship) {
-        r.ship.nameCn = n.nameCn + ' ' + (i + 1) + ' 号舰';
+        r.ship.nameCn = (bp.nameCn || (n.nameCn + ' 舰')) + ' ' + (i + 1);
         r.ship.state = r.ship.state || {};
         r.ship.state.fuelMol = Math.max(Number(r.ship.state.fuelMol) || 0, 2000);
         acc.ships.push(r.ship);
@@ -233,7 +306,8 @@ export function setupNavy(acc, nation, createShipFn, defaultBlueprintsFn) {
       lastResult: null,
     });
   }
-  return { ships: acc.ships.length, fleets: acc.fleets.length };
+  acc.hoiNavyMul = NAVY_MUL[n.id] || 1;   // 海军传统加成（强国同吨位更强）
+  return { ships: acc.ships.length, fleets: acc.fleets.length, navyMul: acc.hoiNavyMul };
 }
 
 /** 国策加成舰队补充（effects.navy） */
@@ -251,20 +325,54 @@ export function addNavyShips(acc, count) {
   return 0;
 }
 
-/** 侧重生产线 + 独特装备流水线：铺设到本土星球（不占农田，跳过 farm） */
+/**
+ * 侧重生产线 + 装备流水线（v0.2.6 rev3）：
+ *   · 工人总数 = 工业 × 415（德国 ≈ 20000 人）
+ *   · 按各国侧重权重分配到不同配方（钢 / 铁 / 铝 / 塑料 / 橡胶 / 陶瓷…）
+ *   · 若建筑工位不足，自动加建该建筑（工位 = 建筑数 × jobs）
+ *   · 装备流水线（part_<部件id>）一并拉好，材料取本国独特装备材料
+ */
 export function setupLines(inst, nation) {
   const n = typeof nation === 'string' ? HOI_BY_ID[nation] : nation;
   const deep = HOI_DEEP[n.id] || {};
-  const added = [];
-  if (!inst) return added;
-  for (const L of (deep.lines || [])) {
+  const done = { lines: [], workers: 0 };
+  if (!inst || !_addLine) return done;
+  const total = workforceOf(n);
+  const specs = (deep.lines || []);
+  if (!specs.length) return done;
+  // ① 先规划所有线（建筑 / 配方 / 工人数）
+  const plan = [];
+  const mainTotal = Math.round(total * 0.45);
+  const per = Math.max(20, Math.round(mainTotal / specs.length));
+  for (const L of specs) plan.push({ buildingId: L.buildingId, recipeId: L.recipeId, workers: per });
+  const mat = (deep.gear && deep.gear[0] && deep.gear[0].material) || '钢';
+  const gearTotal = Math.round(total * 0.55);
+  const perGear = Math.max(20, Math.round(gearTotal / GEAR_PARTS.length));
+  for (const pid of GEAR_PARTS) plan.push({ buildingId: 'fabricator', recipeId: 'part_' + pid, workers: perGear, material: mat });
+  // ② 按建筑汇总工位需求，一次性加建到位（工位 = 建筑数 × jobs）
+  const needBuild = {};
+  for (const pl of plan) needBuild[pl.buildingId] = (needBuild[pl.buildingId] || 0) + pl.workers;
+  for (const bid in needBuild) {
+    const jobs = (BUILDING_BY_ID[bid] && BUILDING_BY_ID[bid].jobs) || 4;
+    const need = Math.ceil((needBuild[bid] / Math.max(1, jobs)) * 1.2) + 2;
+    const cur = Number(inst.buildings[bid]) || 0;
+    if (cur < need) inst.buildings[bid] = need;
+  }
+  // ③ 挂线（工位已就位，逐条按计划施工人）
+  for (const pl of plan) {
     try {
-      if (!_addLine) continue;
-      const r = _addLine(inst, L.buildingId, L.recipeId, { workers: L.workers });
-      if (r && r.ok !== false) added.push(L.buildingId + ':' + L.recipeId);
+      const opts = pl.material ? { workers: pl.workers, material: pl.material } : { workers: pl.workers };
+      let r = _addLine(inst, pl.buildingId, pl.recipeId, opts);
+      if (!r || r.ok === false) {
+        // 工位仍不足（多条线共享同一建筑）→ 再加建 30% 后重试一次
+        const cur = Number(inst.buildings[pl.buildingId]) || 0;
+        inst.buildings[pl.buildingId] = Math.ceil(cur * 1.3) + 2;
+        r = _addLine(inst, pl.buildingId, pl.recipeId, opts);
+      }
+      if (r && r.ok !== false) { done.lines.push(pl.buildingId + ':' + pl.recipeId); done.workers += pl.workers; }
     } catch (e) { /* 忽略 */ }
   }
-  return added;
+  return done;
 }
 
 /** 阵营：同阵营国家自动成为盟友（德意同盟等） */
@@ -278,6 +386,51 @@ export function setupBloc(acc, nation) {
     if (acc.npcAllies.indexOf(m.nameCn) < 0) acc.npcAllies.push(m.nameCn);
   }
   return mates.map((m) => m.nameCn);
+}
+
+/**
+ * 外交 AI（v0.2.6 rev3）：AI 国家会主动行动 ——
+ *   · 每 30 游戏天判定一次：非盟友、非交战国可能「向我方宣战」（我方越弱越可能）
+ *   · 也可能「提议结盟」（我方越强、战争越少越可能）
+ *   · 结果写入 acc.wars / acc.npcAllies 与 warLog（战争面板可见）
+ */
+export function tickDiploAI(acc, dtSec) {
+  if (!acc || acc.scenario !== HOI_SCENARIO_ID) return null;
+  const days = (Number(dtSec) || 0) * GAME_DAYS_PER_SEC;
+  acc.hoiDiploDays = (Number(acc.hoiDiploDays) || 0) + days;
+  if (acc.hoiDiploDays < 30) return null;
+  acc.hoiDiploDays = 0;
+  const mine = HOI_BY_ID[acc.nation];
+  if (!mine) return null;
+  const allied = Array.isArray(acc.npcAllies) ? acc.npcAllies : [];
+  const wars = Array.isArray(acc.wars) ? acc.wars.filter((w) => w && w.status === 'active') : [];
+  const atWarNames = wars.map((w) => w.targetName);
+  const others = HOI_NATIONS.filter((x) => x.id !== acc.nation && allied.indexOf(x.nameCn) < 0 && atWarNames.indexOf(x.nameCn) < 0);
+  if (!others.length) return null;
+  // 我方国力（工业 + 师数/2 + 海军/2）与候选国比较
+  const myPower = mine.ic + mine.divisions / 2 + mine.navy / 2;
+  const pick = others[Math.floor(Math.random() * others.length)];
+  const theirPower = pick.ic + pick.divisions / 2 + pick.navy / 2;
+  const weak = myPower < theirPower * 0.85;
+  // 战争过多时不再主动开战
+  const warRoom = wars.length < 3;
+  if (weak && warRoom && Math.random() < 0.35) {
+    const w = {
+      id: 'war_ai_' + Date.now().toString(36), kind: 'npc', targetId: 'hoi_' + pick.id,
+      targetName: pick.nameCn, startedAt: Date.now(), myScore: 0, theirScore: 10,
+      battles: 0, status: 'active', endedAt: 0, treaty: null,
+      log: [{ at: Date.now(), text: pick.nameCn + ' 判断我方虚弱，主动向我方宣战！' }],
+    };
+    acc.wars.push(w);
+    acc.warLog.unshift({ at: Date.now(), text: pick.nameCn + ' 主动宣战（我方被动应战）' });
+    return { type: 'war', nation: pick.nameCn };
+  }
+  if (!weak && wars.length === 0 && Math.random() < 0.30) {
+    acc.npcAllies.push(pick.nameCn);
+    acc.warLog.unshift({ at: Date.now(), text: '与 ' + pick.nameCn + ' 缔结盟约（AI 主动示好）' });
+    return { type: 'ally', nation: pick.nameCn };
+  }
+  return null;
 }
 
 export function blocNameOf(acc) {

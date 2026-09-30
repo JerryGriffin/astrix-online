@@ -43,7 +43,7 @@ const step = (name, fn) => {
   try { const r = fn(); log.push('OK   ' + name + (r ? ' · ' + r : '')); }
   catch (e) { log.push('FAIL ' + name + ' -> ' + e.message); }
 };
-const VTAG = '26.2';   // 与 CACHE_TAG 同步（绝对路径动态 import 不会被动改写）
+const VTAG = '26.3';   // 与 CACHE_TAG 同步（绝对路径动态 import 不会被动改写）
 
 await page.goto(`http://127.0.0.1:${PORT}/index.html`, { waitUntil: 'load' });
 await page.waitForTimeout(1200);

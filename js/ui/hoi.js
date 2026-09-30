@@ -2,15 +2,15 @@
 //   · 顶部：剧本日历（到天）、国家、阵营、人口、军队 / 舰队概览
 //   · 国策树：工业 / 军事 / 外交三支，各两支；按游戏天数推进，完成即生效
 //   · 海域：六个 HOI4 风格海域，制海权争夺 + 海战结算
-import { fmtNum } from '../core/format.js?v=26.2';
-import { currentAccount, getPlanetInstance } from '../core/state.js?v=26.2';
-import { listArmies, totalArmyPowerOf } from '../core/army.js?v=26.2';
-import { listFleets, fleetPowerOf } from '../core/fleet.js?v=26.2';
+import { fmtNum } from '../core/format.js?v=26.3';
+import { currentAccount, getPlanetInstance } from '../core/state.js?v=26.3';
+import { listArmies, totalArmyPowerOf } from '../core/army.js?v=26.3';
+import { listFleets, fleetPowerOf } from '../core/fleet.js?v=26.3';
 import {
   scenarioDateOf, gameDaysOf, ensureFocus, focusOptionsOf, startFocus,
   ensureSeas, contestSea, blocNameOf, nationOf, deepOf, enemySeaPressure, HOI_SCENARIO_ID,
-} from '../core/hoi1936.js?v=26.2';
-import { HOI_SEAS } from '../data/hoi1936.js?v=26.2';
+} from '../core/hoi1936.js?v=26.3';
+import { HOI_SEAS } from '../data/hoi1936.js?v=26.3';
 
 function el(tag, attrs = {}, children = []) {
   const e = document.createElement(tag);
@@ -106,6 +106,9 @@ export function renderHoi(root, ctx) {
   addStat('陆军战力', fmtNum(totalArmyPowerOf(acc)));
   addStat('舰队战力', fmtNum(Math.round(navPower)));
   addStat('国内工业', n ? String(n.ic) : '—');
+  addStat('工业建筑', fmtNum(homeInst.hoiIndustry ? homeInst.hoiIndustry.buildings : 0) + ' 座');
+  addStat('产线工人', fmtNum(acc.hoiWorkforce || 0));
+  addStat('海军传统', '×' + (Number(acc.hoiNavyMul) || 1).toFixed(2));
   head.appendChild(stats);
   panel.appendChild(head);
 
@@ -135,6 +138,11 @@ export function renderHoi(root, ctx) {
         bar.appendChild(el('i', { style: 'width:' + Math.min(100, (cur.progressDays / cur.needDays) * 100) + '%' }));
         row.appendChild(bar);
         row.appendChild(el('span', 'tag', '进行中'));
+      } else if (o.locked) {
+        const tag = el('span', 'tag', '锁定');
+        tag.title = o.locked;
+        row.appendChild(tag);
+        row.appendChild(el('span', 'd', o.locked));
       } else {
         const b = el('button', cur ? '' : 'primary', cur ? '排队中' : '开始');
         if (!cur) {
@@ -198,7 +206,7 @@ export function renderHoi(root, ctx) {
       let pw = 0;
       try { pw = fleetPowerOf(acc, fl.id) || 0; } catch (e) { pw = 0; }
       // 舰队规模换算成海上战力（HOI4 风格：吨位与数量）
-      const myNavyStr = pw + (fl.shipIds || []).length * 60 + n.navy * 6;
+      const myNavyStr = (pw + (fl.shipIds || []).length * 60 + n.navy * 6) * (Number(acc.hoiNavyMul) || 1);
       const r = contestSea(acc, s.id, myNavyStr);
       if (!r.ok) { alert(r.reason); return; }
       // 失利损失舰艇：从该舰队移除船（船同时从 acc.ships 摘除）
@@ -221,7 +229,9 @@ export function renderHoi(root, ctx) {
   // ---- 口径说明 ----
   panel.appendChild(el('p', 'hoi-note',
     '说明：本页为官方 mod「1936 剧本」专属。交战采用钢铁雄心式多回合结算（编队宽度 3、组织度耗尽撤退）；'
-    + '海战按舰队实力与真实海军规模换算；国策按游戏天数推进。'));
+    + '海战按舰队实力与真实海军规模换算（含海军传统加成）；国策按游戏天数推进，'
+    + '同支国策需按序解锁，外交线两策互斥。'
+    + '另外：AI 国家会主动宣战或结盟（每 30 游戏天判定）；「星球管理 → 战时总动员」在全存档可用（产出 +30%、幸福度下滑）。'));
 
   root.appendChild(panel);
 }

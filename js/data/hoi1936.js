@@ -151,7 +151,7 @@ export const HOI_DEEP = {
     armyName: '装甲掷弹兵师', atkMul: 1.35, defMul: 0.95, bloc: 'axis',
     fleets: [{ nameCn: '公海舰队', share: 1 }],
     lines: [
-      { buildingId: 'blast_furnace', recipeId: 'r_refine_steel', workers: 12 },
+      { buildingId: 'refinery', recipeId: 'r_refine_steel', workers: 12 },
       { buildingId: 'blast_furnace', recipeId: 'r_bf_iron', workers: 8 },
       { buildingId: 'chem_lab', recipeId: 'r_chem_aluminum_alloy', workers: 6 },
       { buildingId: 'chem_lab', recipeId: 'r_chem_plastic', workers: 6 },
@@ -171,7 +171,7 @@ export const HOI_DEEP = {
     armyName: '阿尔卑斯山地师', atkMul: 1.0, defMul: 1.1, bloc: 'axis',
     fleets: [{ nameCn: '皇家海军（意）', share: 1 }],
     lines: [
-      { buildingId: 'blast_furnace', recipeId: 'r_refine_steel', workers: 8 },
+      { buildingId: 'refinery', recipeId: 'r_refine_steel', workers: 8 },
       { buildingId: 'furnace', recipeId: 'r_furnace_ceramic', workers: 6 },
       { buildingId: 'chem_lab', recipeId: 'r_chem_plastic', workers: 4 },
     ],
@@ -189,7 +189,7 @@ export const HOI_DEEP = {
     armyName: '远征军步兵师', atkMul: 0.95, defMul: 1.25, bloc: 'allies',
     fleets: [{ nameCn: '本土舰队', share: 0.6 }, { nameCn: '地中海舰队', share: 0.4 }],
     lines: [
-      { buildingId: 'blast_furnace', recipeId: 'r_refine_steel', workers: 10 },
+      { buildingId: 'refinery', recipeId: 'r_refine_steel', workers: 10 },
       { buildingId: 'chem_lab', recipeId: 'r_chem_rubber', workers: 8 },
       { buildingId: 'furnace', recipeId: 'r_furnace_ceramic', workers: 5 },
       { buildingId: 'electrolyzer', recipeId: 'r_el_water', workers: 4 },
@@ -208,7 +208,7 @@ export const HOI_DEEP = {
     armyName: '要塞步兵师', atkMul: 1.0, defMul: 1.3, bloc: 'allies',
     fleets: [{ nameCn: '地中海舰队（法）', share: 0.6 }, { nameCn: '大西洋舰队（法）', share: 0.4 }],
     lines: [
-      { buildingId: 'blast_furnace', recipeId: 'r_refine_steel', workers: 9 },
+      { buildingId: 'refinery', recipeId: 'r_refine_steel', workers: 9 },
       { buildingId: 'chem_lab', recipeId: 'r_chem_rubber', workers: 6 },
       { buildingId: 'furnace', recipeId: 'r_furnace_ceramic', workers: 5 },
     ],
@@ -226,7 +226,7 @@ export const HOI_DEEP = {
     armyName: '步兵军', atkMul: 1.1, defMul: 1.15, bloc: 'comintern',
     fleets: [{ nameCn: '波罗的海舰队', share: 0.6 }, { nameCn: '黑海舰队', share: 0.4 }],
     lines: [
-      { buildingId: 'blast_furnace', recipeId: 'r_refine_steel', workers: 16 },
+      { buildingId: 'refinery', recipeId: 'r_refine_steel', workers: 16 },
       { buildingId: 'blast_furnace', recipeId: 'r_bf_iron', workers: 10 },
       { buildingId: 'chem_lab', recipeId: 'r_chem_plastic', workers: 6 },
       { buildingId: 'electrolyzer', recipeId: 'r_el_water', workers: 6 },
@@ -263,7 +263,7 @@ export const HOI_DEEP = {
     armyName: '机械化步兵师', atkMul: 1.15, defMul: 1.1, bloc: 'neutral',
     fleets: [{ nameCn: '太平洋舰队', share: 0.6 }, { nameCn: '大西洋舰队', share: 0.4 }],
     lines: [
-      { buildingId: 'blast_furnace', recipeId: 'r_refine_steel', workers: 20 },
+      { buildingId: 'refinery', recipeId: 'r_refine_steel', workers: 20 },
       { buildingId: 'blast_furnace', recipeId: 'r_bf_aluminum', workers: 12 },
       { buildingId: 'chem_lab', recipeId: 'r_chem_plastic', workers: 10 },
       { buildingId: 'chem_lab', recipeId: 'r_chem_rubber', workers: 6 },
@@ -300,7 +300,7 @@ export const HOI_DEEP = {
     armyName: '步兵师（波）', atkMul: 0.95, defMul: 1.15, bloc: 'allies',
     fleets: [{ nameCn: '波兰海军', share: 1 }],
     lines: [
-      { buildingId: 'blast_furnace', recipeId: 'r_refine_steel', workers: 6 },
+      { buildingId: 'refinery', recipeId: 'r_refine_steel', workers: 6 },
       { buildingId: 'furnace', recipeId: 'r_furnace_ceramic', workers: 4 },
     ],
     gear: [{ partId: 'ap_wpn_rifle', material: '钢', qty: 50 }, { partId: 'ap_frame_light', material: '钢', qty: 30 }],
@@ -334,7 +334,7 @@ export const HOI_DEEP = {
     armyName: '安纳托利亚军', atkMul: 1.0, defMul: 1.2, bloc: 'neutral',
     fleets: [{ nameCn: '土耳其舰队', share: 1 }],
     lines: [
-      { buildingId: 'blast_furnace', recipeId: 'r_refine_steel', workers: 5 },
+      { buildingId: 'refinery', recipeId: 'r_refine_steel', workers: 5 },
       { buildingId: 'furnace', recipeId: 'r_furnace_ceramic', workers: 4 },
     ],
     gear: [{ partId: 'ap_wpn_rifle', material: '钢', qty: 40 }, { partId: 'ap_armor_light', material: '钢', qty: 15 }],
@@ -376,3 +376,53 @@ export const HOI_SEAS = [
   { id: 'pacific_w', nameCn: '西太平洋', base: 800 },
   { id: 'japan_sea', nameCn: '日本海', base: 350 },
 ];
+
+// ============================================================================
+// v0.2.6 rev3：生产线规模 / 陆军师规模 / 海军传统
+// ============================================================================
+// 生产线工人总数 = 工业 × 415（德国 48 → 19920 ≈ 20k，设计者给定基准）
+export const WORKFORCE_PER_IC = 415;
+// 每师基础战力：师数即历史师数（德国 30 个师就是 30 支）
+export const ARMY_POWER_PER_DIV = 52;
+// 海军传统加成（同吨位下战力差异：英/日/美 海军强国 > 德法意 > 苏/中/南美）
+export const NAVY_MUL = {
+  eng: 1.30, jap: 1.30, usa: 1.25, ger: 1.15, fra: 1.10, ita: 1.05,
+  sov: 0.85, pol: 0.70, tur: 0.72, spa: 0.70, bra: 0.65, chn: 0.60,
+};
+// 基础装备流水线（军用部件，制造车间 part_<部件id>）
+export const GEAR_PARTS = ['ap_frame_light', 'ap_wpn_rifle', 'ap_armor_light', 'ap_mob_wheel'];
+
+export function workforceOf(nation) {
+  const n = typeof nation === 'string' ? HOI_BY_ID[nation] : nation;
+  if (!n) return 0;
+  return Math.round(n.ic * WORKFORCE_PER_IC);
+}
+
+export function navyMulOf(nation) {
+  const n = typeof nation === 'string' ? HOI_BY_ID[nation] : nation;
+  return (n && NAVY_MUL[n.id]) || 1;
+}
+
+// v0.2.6 rev3：史实舰船/师蓝图命名（按国家）
+export const SHIP_NAMES = {
+  ger: ['Z 级驱逐舰', 'K 级轻巡洋舰', 'U 型潜艇'],
+  ita: ['航海家级驱逐舰', '扎拉级重巡洋舰', '马可尼级潜艇'],
+  eng: ['部族级驱逐舰', '郡级重巡洋舰', '皇家方舟级航母'],
+  fra: ['空想级驱逐舰', '黎塞留级战列舰', '絮库夫级潜艇'],
+  sov: ['列宁格勒级驱逐舰', '基洛夫级巡洋舰', '什奇级潜艇'],
+  jap: ['吹雪级驱逐舰', '妙高级重巡洋舰', '翔鹤级航母'],
+  usa: ['弗莱彻级驱逐舰', '巴尔的摩级巡洋舰', '埃塞克斯级航母'],
+  chn: ['宁海级轻巡洋舰', '逸仙号', '海圻号'],
+  pol: ['雷霆号驱逐舰', '鹰级潜艇'],
+  spa: ['加纳利级巡洋舰', '鲈鱼级潜艇'],
+  tur: ['亚武兹号', '穆阿文内特级'],
+  bra: ['米纳斯吉拉斯号', '巴伊亚号'],
+};
+
+export const ARMY_BP_NAME = {
+  ger: '装甲师（1936 编制）', ita: '山地师（1936 编制）', eng: '步兵师（1936 编制）',
+  fra: '要塞步兵师（1936 编制）', sov: '步兵军（1936 编制）', jap: '海军陆战师（1936 编制）',
+  usa: '机械化步兵师（1936 编制）', chn: '国民革命军步兵师（1936 编制）',
+  pol: '波兰步兵师（1936 编制）', spa: '山地旅（1936 编制）',
+  tur: '安纳托利亚军（1936 编制）', bra: '远征步兵师（1936 编制）',
+};
