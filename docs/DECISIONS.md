@@ -1,4 +1,4 @@
-# Astrix 设计决策记录（截至 v0.0.4）
+# Astrix 设计决策记录（截至 v0.2.2）
 
 > 记录每一版**已确认**的设计决策与**仍待定**的问题。已确认项若你要改，一句话我就同步全表。
 
@@ -152,6 +152,16 @@
 | 游戏心跳 | 全局 1 秒心跳（不再只挂在物品栏里），切到任何界面产出都不中断 |
 | 自动存档 | 每 **10 秒** 落盘一次；关页面前 `beforeunload` 强制再存一次 |
 
+### 线上部署与同步链路（v0.2.2-rev15）
+
+| 项 | 决策 |
+|---|---|
+| 公网发布链路 | GitHub `JerryGriffin/astrix-online` push → `.github/workflows/sync_to_hf.yml` → HuggingFace Space `Recapiut/astrix-online` |
+| Space SDK | **`sdk: static`**（写在 `README.md` 前置元数据里；rev14 后由 `docker` 改为 `static`，理由是「秒级部署 + 零配额」） |
+| 已知后果（记录在案） | Space 上**不执行 Dockerfile、不运行 `server.mjs`** → 公网 `/api/online/*`（心跳 / 指挥官 / 聊天 / 集市）全部 **404**；客户端 `js/core/cloud.js` 静默降级为「本地 + NPC 星系」，因此**公开站点目前实为单机可玩**，在线集市与聊天不生效 |
+| 恢复真联机的开关 | 把 `README.md` 改回 `sdk: docker` + `app_port: 7860`；`Dockerfile`（`CMD node server.mjs`、`EXPOSE 7860`）仍在，可直接切回 |
+| 同步链路保护 | `.gitignore` **不得**写成 `.github/`——那会把 `sync_to_hf.yml` 一并忽略，同步会**静默失效**；正确写法是 `.github/*` + `!.github/workflows/`（rev15 已修正） |
+
 ---
 
 ## 三、交付范围
@@ -187,3 +197,6 @@
 10. **自定义化工厂的自定义配方**：~~目前只有 3 个示例配方~~（v0.2.2 已落地：人力面板生产线区块提供「新建自定义材料配方」卡片，makeCustomMaterial 核心自 v0.0.61 就绪，UI 于 v0.2.2 接通）。
 11. **精细加工厂的「2→1 提升精细度」通用规则**：`js/core/production.js` 已导出 `refinePair(matName)`
     的语义函数，但还没接成「对任意材料生效」的 UI。
+12. **公网是否恢复真联机（v0.2.2-rev15 记录）**：HuggingFace Space 当前为 `sdk: static`，
+    公网 `/api/online/*` 不可用（详见「二、线上部署与同步链路」）。改回 `sdk: docker` 即可恢复真联机，
+    代价是 HF 构建配额与部署时间。**待设计者决定**，在决定前不视为 bug。
