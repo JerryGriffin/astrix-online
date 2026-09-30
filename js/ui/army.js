@@ -13,15 +13,15 @@
 import {
   ARMY_BLUEPRINTS, ARMY_PART_BY_ID, ARMY_SLOT_BY_CAT, ARMY_PART_COST,
   armyCapOf, armyBpPartNeeds, armyBpMaterialNeeds,
-} from '../data/army_parts.js?v=20.8';
+} from '../data/army_parts.js?v=20.9';
 import {
   armyStatsOfBp, armyPowerOf, armyPowerOfInstance, armyBuildCheck, listArmies, disbandArmy,
   getArmyBp, armyEffStats, armyPartMaterialOptions, trainArmy, cancelTraining, ARMY_LABOR_PER_BARRACKS,
-} from '../core/army.js?v=20.8';
-import { addLine, removeLine } from '../core/production.js?v=20.8';
-import { fmtNum, fmtTime } from '../core/format.js?v=20.8';
-import { currentAccount, getBuildingCounts } from '../core/state.js?v=20.8';
-import { TECH_BY_ID } from '../data/techs.js?v=20.8';
+} from '../core/army.js?v=20.9';
+import { addLine, removeLine } from '../core/production.js?v=20.9';
+import { fmtNum, fmtTime } from '../core/format.js?v=20.9';
+import { currentAccount, getBuildingCounts } from '../core/state.js?v=20.9';
+import { TECH_BY_ID } from '../data/techs.js?v=20.9';
 
 const ARMY_TECH = 't_m1';
 const ARMY_CATS = ['frame', 'mobility', 'weapon', 'armor', 'support'];

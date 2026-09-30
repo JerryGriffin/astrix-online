@@ -12,10 +12,10 @@
 //   3. 建筑工超过建筑工厂提供的工位总数时，多出来的人不产生施工速度。
 // 结论：人 → 建筑工厂工位 → 施工速度（人·秒/秒）。
 
-import { BUILDING_BY_ID } from '../data/buildings.js?v=20.8';
-import { getJobCount, jobOutput } from './population.js?v=20.8';
+import { BUILDING_BY_ID } from '../data/buildings.js?v=20.9';
+import { getJobCount, jobOutput } from './population.js?v=20.9';
 // v0.1.2（需求 18/19）：永久升级「建筑施工」的乘方效果，唯一实现在 data/upgrades.js#upgradeMul
-import { upgradeMul } from '../data/upgrades.js?v=20.8';
+import { upgradeMul } from '../data/upgrades.js?v=20.9';
 
 export const BUILDER_JOB_ID = 'builder';
 export const BUILD_FACTORY_ID = 'workshop';

@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="robots" content="noindex">
+<title>Astrix 云桥接</title>
+</head>
+<body>
+<!--
+  Astrix 云桥接页（cloud-bridge.html）
+  ============================================================================
+  用途：游戏部署在非 astrix.app.workbuddy.host 托管（GitHub Pages / 本地 / 其它静态站）时，
+  浏览器直连云 API 会被跨域预检拦下（服务端不回 OPTIONS 预检），在线模式无法登录。
+  本页由游戏以**隐藏 iframe** 加载——它与云 API 同源，直接调用 SDK，
+  父页通过 postMessage 走 RPC。父页与 workbuddy 版玩家进的是同一个星系（跨版联机）。
+
+  安全边界：
+    * publishableKey 本就是公开值，鉴权靠邮箱验证码 + RLS（owner 本人写）。
+    * 本页只接受白名单函数；?origin= 参数指定唯一可信父域（缺省同源）。
+    * 用户会话（token）只存在于本 iframe 的 localStorage（astrix 域），永不跨框传输。
+  已知限制：Safari ITP 可能阻 partitioned iframe 的存储 → 每次访问需重新登录（Chrome 正常）。
+-->
+<script type="module">
+import * as cloud from './js/core/cloud.js?v=20.9';
+
+const ALLOWED = new Set([
+  'ensureReady', 'cloudStatus', 'cloudUser', 'isCloudReady',
+  'signInWithPassword', 'sendEmailOtp', 'verifyEmailOtp', 'signOutCloud',
+  'listPublicPlanets', 'publishMyPlanet', 'postIncident', 'fetchInbox',
+  'markIncidentResolved',
+]);
+
+const params = new URLSearchParams(location.search);
+const PARENT_ORIGIN = params.get('origin') || location.origin;
+// file:// 等特殊 origin（字符串 "null"）无法作为 postMessage 的 targetOrigin，回退 '*'
+const SEND_TARGET = (!PARENT_ORIGIN || PARENT_ORIGIN === 'null' || !/^https?:/.test(PARENT_ORIGIN))
+  ? '*' : PARENT_ORIGIN;
+
+function send(id, result) {
+  parent.postMessage({ __astrixBridge: true, id, result }, SEND_TARGET);
+}
+
+window.addEventListener('message', async (ev) => {
+  if (SEND_TARGET !== '*' && ev.origin !== PARENT_ORIGIN) return;
+  const m = ev.data;
+  if (!m || m.__astrixBridge !== true) return;
+  if (m.id == null) return;
+  const fn = String(m.fn || '');
+  if (!ALLOWED.has(fn)) { send(m.id, { ok: false, reason: '桥接拒绝：' + fn }); return; }
+  try {
+    const r = await cloud[fn].apply(null, Array.isArray(m.args) ? m.args : []);
+    send(m.id, r === undefined ? null : r);
+  } catch (e) { send(m.id, { ok: false, reason: (e && e.message) || String(e) }); }
+});
+
+// 模块加载完成（监听器就绪）→ 通知父页握手
+parent.postMessage({ __astrixBridge: true, ready: true }, SEND_TARGET);
+</script>
+</body>
+</html>

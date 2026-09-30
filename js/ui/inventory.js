@@ -24,14 +24,14 @@
 // 所有数字显示一律走 format.js 的 fmtNum / fmtRate / fmtRateBody / fmtSci。
 // 样式集中在 css/planet.css。
 
-import { MATERIALS } from '../data/materials.js?v=20.8';
-import { fmtNum, fmtRate, fmtSci } from '../core/format.js?v=20.8';
-import { getPlanetInstance, tick, currentAccount, atmosphereOf, ownedOf, rateOf } from '../core/state.js?v=20.8';
-import { computePower } from '../core/power.js?v=20.8';
-import { equipmentList } from '../core/shipyard.js?v=20.8';
-import { materialLabel, productionRates } from '../core/production.js?v=20.8';
-import { BUILDING_BY_ID } from '../data/buildings.js?v=20.8';
-import { NUTRIENT_NAMES, METABOLITE_NAMES, consumptionPerSec, metabolitePerSec } from '../core/population.js?v=20.8';
+import { MATERIALS } from '../data/materials.js?v=20.9';
+import { fmtNum, fmtRate, fmtSci } from '../core/format.js?v=20.9';
+import { getPlanetInstance, tick, currentAccount, atmosphereOf, ownedOf, rateOf } from '../core/state.js?v=20.9';
+import { computePower } from '../core/power.js?v=20.9';
+import { equipmentList } from '../core/shipyard.js?v=20.9';
+import { materialLabel, productionRates } from '../core/production.js?v=20.9';
+import { BUILDING_BY_ID } from '../data/buildings.js?v=20.9';
+import { NUTRIENT_NAMES, METABOLITE_NAMES, consumptionPerSec, metabolitePerSec } from '../core/population.js?v=20.9';
 
 // 分组顺序与中文标题
 // v0.0.91：同事把星球数据拆成 surface(地表) / underground(浅层) / deep(深层) / core(地核) / gas(气体) 五层。
@@ -248,13 +248,15 @@ export function renderInventory(container, planetOrCtx) {
       for (const e of list) {
         const row = document.createElement('div');
         row.className = 'inv-row inv-row-equip';
+        // v0.2.8：装备名显示为「中文名@材料」（设计者要求，如 大型装甲@钢）；
+        // 军用部件此前不在 PART_BY_ID 里，会露出英文 partId——equipmentList 已补 ARMY_PART_BY_ID 回退。
         const name = document.createElement('span');
         name.className = 'inv-name';
-        name.textContent = e.part ? e.part.nameCn : e.partId;
+        const mat = e.material != null ? e.material : '通用材料';
+        name.textContent = (e.part ? e.part.nameCn : e.partId) + '@' + materialLabel(planet, mat);
         const val = document.createElement('span');
         val.className = 'inv-val';
-        const mat = e.material != null ? e.material : '通用材料';
-        val.textContent = materialLabel(planet, mat) + ' ×' + fmtNum(e.count);
+        val.textContent = '×' + fmtNum(e.count);
         const sep = document.createElement('span');
         sep.className = 'inv-sep muted';
         sep.textContent = ' · ';

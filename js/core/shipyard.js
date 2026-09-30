@@ -10,15 +10,18 @@
 // 全部公式集中在这里，方便策划调参
 // ============================================================================
 
-import { MATERIALS } from '../data/materials.js?v=20.8';
+import { MATERIALS } from '../data/materials.js?v=20.9';
 import {
   PART_BY_ID, HULLS, ENGINES, WEAPONS, FACILITIES, MARKS,
   MATERIAL_SLOTS, DEFAULT_MATERIAL, PART_CATEGORIES,
   craftableParts, craftWorkOf, isPartUnlocked,
-} from '../data/ship_parts.js?v=20.8';
-import { POWER_FACILITY_BY_ID } from '../data/facilities.js?v=20.8';
-import { FUEL_BY_NAME } from '../data/fuels.js?v=20.8';
-import { PLANETS } from '../data/planets.js?v=20.8';
+} from '../data/ship_parts.js?v=20.9';
+// 军用部件（ap_*）与舰船部件共用 inst.equipment 库存（key=partId@材料），
+// 装备清单/拍卖行列装备时必须两类都能解析出中文名（v0.2.8 修复：军用装备露出英文 id）
+import { ARMY_PART_BY_ID } from '../data/army_parts.js?v=20.9';
+import { POWER_FACILITY_BY_ID } from '../data/facilities.js?v=20.9';
+import { FUEL_BY_NAME } from '../data/fuels.js?v=20.9';
+import { PLANETS } from '../data/planets.js?v=20.9';
 
 // 自建材料中文名索引（materials.js 只导出 MATERIALS 数组）
 const MAT_BY_NAME = Object.fromEntries(MATERIALS.map((m) => [m.nameCn, m]));
@@ -647,7 +650,8 @@ function equipKey(partId, material) {
   return partId + '@' + (material == null ? '' : material);
 }
 
-// 列出全部装备：[{ key, partId, material, count, part }]（part 来自 PART_BY_ID，查不到为 null）
+// 列出全部装备：[{ key, partId, material, count, part }]
+// part 解析顺序：舰船部件（PART_BY_ID）→ 军用部件（ARMY_PART_BY_ID）→ null（未知 id）
 export function equipmentList(inst) {
   if (!inst || !inst.equipment || typeof inst.equipment !== 'object') return [];
   const out = [];
@@ -659,7 +663,7 @@ export function equipmentList(inst) {
       partId: e.partId,
       material: e.material,
       count: Number(e.count) || 0,
-      part: PART_BY_ID[e.partId] || null,
+      part: PART_BY_ID[e.partId] || ARMY_PART_BY_ID[e.partId] || null,
     });
   }
   return out;

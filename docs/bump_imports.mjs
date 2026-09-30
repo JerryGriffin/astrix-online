@@ -31,15 +31,21 @@ for (const f of files) {
   if (next !== src) { writeFileSync(f, next); changed++; }
 }
 
-// 2) index.html：css href / js src 的 ?v= 统一
-const htmlPath = join(ROOT, 'index.html');
-const html = readFileSync(htmlPath, 'utf8');
-const htmlNext = html.replace(/(\?v=)[^"']+/g, `$1${CACHE_TAG}`);
-if (htmlNext !== html) { writeFileSync(htmlPath, htmlNext); changed++; }
+// 2) 根目录 *.html（index.html + cloud-bridge.html 等）：css href / js src / 相对 import 的 ?v= 统一
+//    cloud-bridge.html（v0.2.8）里有对 js/core/cloud.js 的相对导入，也必须跟同一 CACHE_TAG，
+//    否则桥接 iframe 里的 cloud.js 与游戏主链形成两份模块实例（会话状态分裂）。
+import { readdirSync as rdRoot } from 'fs';
+for (const name of rdRoot(ROOT)) {
+  if (!name.endsWith('.html')) continue;
+  const htmlPath = join(ROOT, name);
+  const html = readFileSync(htmlPath, 'utf8');
+  const htmlNext = html.replace(/(\?v=)[^"']+/g, `$1${CACHE_TAG}`);
+  if (htmlNext !== html) { writeFileSync(htmlPath, htmlNext); changed++; }
+}
 
 // 3) docs/*.mjs：自检脚本里对 js/ 模块的 import 也必须带**同一个** CACHE_TAG。
 //    背景（v0.1.1 render 自检 13 项级联失败）：ESM 按 URL 区分模块实例——
-//    UI 链加载的是 state.js?v=11.0，而自检脚本若 import '../js/core/state.js?v=20.8'（无串）
+//    UI 链加载的是 state.js?v=11.0，而自检脚本若 import '../js/core/state.js?v=20.9'（无串）
 //    就会得到**第二份模块实例**（STATE 双份），于是 S.currentAccount() 恒为 null，
 //    表现为「Cannot set properties of null (setting 'tech')」并级联炸掉整条船坞链。
 //    所以这里与 js/ 用同一个正则，无串的补上、旧串的剥掉重写。

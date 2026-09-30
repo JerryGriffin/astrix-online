@@ -26,7 +26,7 @@ export const VERSION_DATE = '2026-09-29';
 //   VERSION     —— 玩家看到的版本（设计者说不变就不变）
 //   REVISION    —— 只要改了 css/ 或 js/，这里就 +1
 //   CACHE_TAG   —— 实际写进 index.html 的 ?v= 串
-export const REVISION = 8;
+export const REVISION = 9;
 // index.html 里所有 css 链接与 js/main.js 入口都用它；改代码后记得 +1
 export const CACHE_TAG = VERSION_NUM + '.' + REVISION;
 
@@ -54,6 +54,8 @@ export const VERSIONS = [
     '**统一研究速率描述**：全站统一为「每工位 0.02 研究点/秒（极限强度 0.048）」，消除 0.02 / 0.05 口径矛盾',
     '**修复舰队页商店崩溃**：建出船坞后点「舰队 → 舰队与殖民」整页报错的 bug（商店星嵌入区块函数缺失），现股市 / 拍卖 / 挂单池在舰队页内正常渲染',
     '**首页新增 GitHub 入口**：开始界面可跳转源码仓库；游戏同步发布到 GitHub Pages（https://jerrygriffin.github.io/astrix-online/）',
+    '**在线模式脱离部署域限制（云桥接）**：GitHub Pages / 本地等任意静态托管也能登录邮箱验证码玩在线模式 —— 跨域托管下云调用改经隐藏桥接页（与云 API 同源）转发，两版玩家进同一星系（跨版联机）；workbuddy 版行为不变',
+    '**装备名中文化**：物品栏装备显示为「中文名@材料」（如 复合装甲@钢），军用装备不再露出英文部件 id（制造车间/拍卖行的装备名同步修复）',
   ]],
   ['v0.2.4', '2026-09-29', [
     '**军队设计器（类钢铁雄心编制）**：「军队」页新增「设计与建造」子页（UI 与舰队设计同构）——'
