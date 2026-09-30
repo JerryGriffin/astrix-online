@@ -3,31 +3,31 @@
 // 更新：v0.1.1 五指令改为持续任务（startMission，任务行显示倒计时），
 //       新增船载仓库面板；编队 / 五指令区块挂船坞门禁；交易池区 2s 心跳局部刷新。
 
-import { fmtNum, fmtRate, fmtTime } from '../core/format.js?v=20.18';
+import { fmtNum, fmtRate, fmtTime } from '../core/format.js?v=20.19';
 import {
   listFleets, createFleet, disbandFleet, addShipToFleet, removeShipFromFleet,
   fleetSpeedOf, fleetPowerOf, executeCommand,
   startMission, cancelMission, fleetMissionLabel, defenseBonusOf,
   shipCargoOf, loadShipCargo, unloadShipCargo,
   shipCargoMassOf, shipCargoCellsOf, shipCargoCellsMax, effectiveSpeedOf,
-} from '../core/fleet.js?v=20.18';
-import { equipmentList } from '../core/shipyard.js?v=20.18';
+} from '../core/fleet.js?v=20.19';
+import { equipmentList } from '../core/shipyard.js?v=20.19';
 import {
   MANAGEMENT_MODES, MANAGEMENT_BY_ID, modeOf, setManagement,
   TERRITORY_ASSIMILATE_SEC, TERRITORY_HAPPY_THRESHOLD,
-} from '../core/planetgen.js?v=20.18';
+} from '../core/planetgen.js?v=20.19';
 import {
   SHOP_PLANET, shopPrices, sell, pendingOrders, deliverOrder, ascoinBalance,
-  shopStateOf,
+  shopStateOf, applySharedPrice,
   marketBuy, marketSell, warehouseOf, ensureShopWarehouse,
-} from '../core/shop.js?v=20.18';
+} from '../core/shop.js?v=20.19';
 import {
   createAuction, placeBid, activeAuctions, auctionLog,
   myAuctionableResources, myAuctionableEquipment, myAuctionableShips, ensureAuctions,
-} from '../core/auction.js?v=20.18';
-import { getPlanetInstance, currentAccount, ownedOf, STATE } from '../core/state.js?v=20.18';
-import { cloudUser, fetchSharedWarehouse, upsertSharedWarehouseRow } from '../core/cloud.js?v=20.18';
-import { MATERIALS } from '../data/materials.js?v=20.18';
+} from '../core/auction.js?v=20.19';
+import { getPlanetInstance, currentAccount, ownedOf, STATE } from '../core/state.js?v=20.19';
+import { cloudUser, fetchSharedWarehouse, upsertSharedWarehouseRow, upsertSharedPriceRow } from '../core/cloud.js?v=20.19';
+import { MATERIALS } from '../data/materials.js?v=20.19';
 
 // HTML 转义（防 XSS，与其它面板一致）
 function esc(s) {
@@ -144,6 +144,9 @@ async function sharedWarehousePull(acc) {
     _whCloud = {};
     for (const row of r.rows) _whCloud[row.mat] = Number(row.qty) || 0;
     if (!acc.shopWarehouse) acc.shopWarehouse = {};
+    // v0.2.12：全服共享行情（同一行带 price/base；过期 >8s 由本客户端推进随机游走）
+    sharedMarketPriceSync(acc, r.rows);
+    acc._sharedMarket = true;   // 在线模式：价格由共享市场统一，tickShop 跳过本地噪声
     for (const m of MATERIALS) {
       if (m.id === 'gold') continue;
       const base = warehouseBaseline(m);
@@ -171,6 +174,39 @@ function sharedWarehouseMaybePull(acc) {
   if (sharedWarehouseOn(acc) && Date.now() - _whPullAt > 10000) sharedWarehousePull(acc);
 }
 
+// v0.2.12：全服共享行情 —— 拉回来的价格应用到本地；过期 >8s 的行情由本客户端推进波动
+const _whPrice = {};
+function sharedMarketPriceSync(acc, rows) {
+  const now = Date.now();
+  for (const row of (rows || [])) {
+    const mat = row.mat;
+    if (!mat) continue;
+    let price = Number(row.price);
+    const base = Number(row.base);
+    if (!(price > 0)) continue;
+    const age = now - new Date(row.updated_at || 0).getTime();
+    if (Number.isFinite(age) && age > 8000 && base > 0) {
+      // 以「行情引擎」身份补算这段空窗的随机游走（每秒 ±0.18%，夹在 base×[0.2,4]）
+      const steps = Math.max(1, Math.min(30, Math.round(age / 1000)));
+      for (let i = 0; i < steps; i++) price *= (1 + (Math.random() * 2 - 1) * 0.0018);
+      price = Math.max(base * 0.2, Math.min(base * 4, price));
+      upsertSharedPriceRow(mat, Math.round(price), base).catch(() => {});
+    }
+    _whPrice[mat] = Math.round(price);
+    applySharedPrice(acc, mat, price, base);
+  }
+}
+
+/** 本客户端成交后把新价推回共享市场（所有玩家看到同一价格） */
+function sharedPricePush(acc, mat) {
+  if (!sharedWarehouseOn(acc)) return;
+  const st = shopStateOf(acc);
+  const cur = st[mat];
+  if (!cur) return;
+  _whPrice[mat] = Math.round(cur.price);
+  upsertSharedPriceRow(mat, Math.round(cur.price), Math.round(cur.base)).catch(() => {});
+}
+
 function sharedWarehouseDelta(acc, mat, delta) {
   if (!sharedWarehouseOn(acc)) return;
   const cur = (_whCloud[mat] != null) ? _whCloud[mat] : (Number(acc.shopWarehouse[mat]) || 0);
@@ -188,7 +224,9 @@ function buildMarketSection(account, inst, openModal, redraw) {
   sec.appendChild(el('div', 'res-section-title', SHOP_PLANET.nameCn + ' · 星际股市'));
   const bal = el('div', 'res-sub muted');
   bal.style.marginBottom = '8px';
-  bal.textContent = '即时交易，价格随成交实时涨跌（买涨卖跌）。当前余额 ' + fmtNum(ascoinBalance(account)) + ' Ascoin。';
+  bal.textContent = '即时交易，价格随成交实时涨跌（买涨卖跌），行情持续波动。当前余额 '
+    + fmtNum(ascoinBalance(account)) + ' Ascoin。'
+    + (sharedWarehouseOn(account) ? '　🌐 全服共享：仓库与行情所有玩家一致（10 秒同步）' : '');
   sec.appendChild(bal);
 
   const grid = el('div', 'shop-market-grid');
@@ -213,6 +251,7 @@ function buildMarketSection(account, inst, openModal, redraw) {
       const r = marketBuy(account, p.mat, qty.value, inst);
       if (!r.ok) { if (openModal) openModal({ title: '无法买入', body: '<p>' + esc(r.reason) + '</p>' }); else alert(r.reason); return; }
       sharedWarehouseDelta(account, p.mat, -(Number(r.qty) || 0));   // v0.2.10 全服共享仓库
+      sharedPricePush(account, p.mat);                               // v0.2.12 全服共享行情
       if (openModal) openModal({ title: '买入成功', body: '<p>' + esc(p.mat) + ' ×' + r.qty + '，花费 ' + fmtNum(r.cost) + ' Ascoin。</p>' });
       refresh();   // 即时刷新股价/仓库/余额
     });
@@ -220,6 +259,7 @@ function buildMarketSection(account, inst, openModal, redraw) {
       const r = marketSell(account, p.mat, qty.value, inst);
       if (!r.ok) { if (openModal) openModal({ title: '无法卖出', body: '<p>' + esc(r.reason) + '</p>' }); else alert(r.reason); return; }
       sharedWarehouseDelta(account, p.mat, Number(r.qty) || 0);   // v0.2.10 全服共享仓库
+      sharedPricePush(account, p.mat);                            // v0.2.12 全服共享行情
       if (openModal) openModal({ title: '卖出成功', body: '<p>' + esc(p.mat) + ' ×' + r.qty + '，获得 ' + fmtNum(r.gain) + ' Ascoin。</p>' });
       refresh();
     });
@@ -232,7 +272,9 @@ function buildMarketSection(account, inst, openModal, redraw) {
   sec.appendChild(grid);
 
   function refresh() {
-    bal.textContent = '即时交易，价格随成交实时涨跌（买涨卖跌）。当前余额 ' + fmtNum(ascoinBalance(account)) + ' Ascoin。';
+    bal.textContent = '即时交易，价格随成交实时涨跌（买涨卖跌），行情持续波动。当前余额 '
+    + fmtNum(ascoinBalance(account)) + ' Ascoin。'
+    + (sharedWarehouseOn(account) ? '　🌐 全服共享：仓库与行情所有玩家一致（10 秒同步）' : '');
     const st = shopStateOf(account);
     for (const [mat, ref] of refs) {
       const s = st[mat];

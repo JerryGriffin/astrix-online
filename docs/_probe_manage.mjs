@@ -1,5 +1,5 @@
 // v0.2.11 管理模式探针：增长乘数 / 消耗乘数 / consumptionPerSec 同步
-import { tickPopulation, consumptionPerSec, MANAGE_MODES, manageModeOf } from '../js/core/population.js?v=20.18';
+import { tickPopulation, consumptionPerSec, MANAGE_MODES, manageModeOf } from '../js/core/population.js?v=20.19';
 
 let pass = 0, fail = 0;
 function ok(cond, msg) { if (cond) { pass++; console.log('  ✓ ' + msg); } else { fail++; console.log('  ✗ ' + msg); } }

@@ -19,7 +19,7 @@
 //   → 「打别人 / 贸易别人」= 插入一条 target_uid 指向对方的事件；
 //     对方上线后在收件箱本地结算，并把回执（战报/贸易结算）作为新事件发回。
 
-import { CACHE_TAG } from '../version.js?v=20.18';
+import { CACHE_TAG } from '../version.js?v=20.19';
 
 const CLOUD_ENDPOINT = 'https://astrix.app.workbuddy.host';
 const CLOUD_PUBLISHABLE_KEY = 'wbpk_a83qn1S1YtnqmhL6Wb2oF3_dIuTVZ1qLa1Ph94JTqQhmspVf2q27z14';
@@ -468,25 +468,27 @@ export async function fetchSharedWarehouse() {
   return bridgeRpc('fetchSharedWarehouse');
 }
 
-export async function upsertSharedWarehouseRow(mat, qty) {
+export async function upsertSharedWarehouseRow(mat, qty, price, base) {
   const m = String(mat || '');
   const q = Number(qty) || 0;
   if (!m) return { ok: false, reason: '缺少物资名' };
+  // v0.2.12：同一行顺带存全服共享价格（price / base，可选）
+  const patch = { qty: q, updated_at: new Date().toISOString() };
+  if (price != null && Number(price) > 0) patch.price = Number(price);
+  if (base != null && Number(base) > 0) patch.base = Number(base);
   if (isNative()) {
     if (!(await nativeEnsureReady()) || !db()) return { ok: false, reason: state.error || '云服务不可用' };
     try {
-      const upd = await db().from('shop_warehouse')
-        .update({ qty: q, updated_at: new Date().toISOString() }).eq('mat', m).select();
+      const upd = await db().from('shop_warehouse').update(patch).eq('mat', m).select();
       if (upd.error) return { ok: false, reason: upd.error.message || '更新共享仓库失败' };
       if (Array.isArray(upd.data) && upd.data.length > 0) return { ok: true, updated: true };
-      const ins = await db().from('shop_warehouse')
-        .insert({ mat: m, qty: q, updated_at: new Date().toISOString() }).select();
+      const ins = await db().from('shop_warehouse').insert(Object.assign({ mat: m }, patch)).select();
       if (ins.error) return { ok: false, reason: ins.error.message || '写入共享仓库失败' };
       return { ok: true, created: true };
     } catch (e) { return { ok: false, reason: (e && e.message) || String(e) }; }
   }
   if (!(await bridgeEnsureReady())) return { ok: false, reason: state.error || '云服务不可用' };
-  return bridgeRpc('upsertSharedWarehouseRow', [m, q]);
+  return bridgeRpc('upsertSharedWarehouseRow', [m, q, price || null, base || null]);
 }
 
 // ============================================================================
@@ -549,9 +551,13 @@ async function nativeRegisterWithName(n, password) {
   try {
     const uid = await nameUidOf(n);
     const passhash = await nameHashHex('astrix:v1:' + n + ':' + password);
-    const dup = await db().from('player_accounts').select('name').eq('name', n).limit(1);
+    // v0.2.12：账号名唯一性（大小写不敏感、忽略首尾空白）
+    const norm = (x) => String(x || '').trim().toLowerCase();
+    const dup = await db().from('player_accounts').select('name').limit(1000);
     if (dup.error) return { ok: false, reason: dup.error.message || '读取账号失败' };
-    if (Array.isArray(dup.data) && dup.data.length > 0) return { ok: false, reason: '账号名已存在，请直接登录' };
+    if (Array.isArray(dup.data) && dup.data.some((r) => norm(r.name) === norm(n))) {
+      return { ok: false, reason: '账号名已存在（不区分大小写），请直接登录或换个名字' };
+    }
     const ins = await db().from('player_accounts').insert({ name: n, passhash, uid }).select();
     if (ins.error) return { ok: false, reason: ins.error.message || '注册失败' };
     lsSet('astrix_nuid', uid); lsSet('astrix_nname', n);
@@ -575,10 +581,13 @@ export async function registerWithName(name, password) {
 async function nativeLoginWithName(n, password) {
   if (!(await nativeEnsureReady()) || !db()) return { ok: false, reason: state.error || '云服务不可用' };
   try {
-    const q = await db().from('player_accounts').select('*').eq('name', n).limit(1);
+    // v0.2.12：登录也按大小写不敏感匹配（与注册口径一致）
+    const q = await db().from('player_accounts').select('*').limit(1000);
     if (q.error) return { ok: false, reason: q.error.message || '读取账号失败' };
-    if (!Array.isArray(q.data) || q.data.length === 0) return { ok: false, reason: '账号不存在' };
-    const row = q.data[0];
+    const norm = (x) => String(x || '').trim().toLowerCase();
+    const rows = Array.isArray(q.data) ? q.data : [];
+    const row = rows.find((r) => norm(r.name) === norm(n));
+    if (!row) return { ok: false, reason: '账号不存在' };
     const passhash = await nameHashHex('astrix:v1:' + n + ':' + password);
     if (row.passhash !== passhash) return { ok: false, reason: '密码错误' };
     lsSet('astrix_nuid', row.uid); lsSet('astrix_nname', n);
@@ -594,4 +603,23 @@ export async function loginWithName(name, password) {
   const r = await bridgeRpc('loginWithName', [n, password]);
   if (r && r.ok && r.user) state.user = r.user;
   return r || { ok: false, reason: '云服务不可用' };
+}
+
+/** v0.2.12：只更新共享价格（不动 qty —— 避免与并发仓库写入互相覆盖） */
+export async function upsertSharedPriceRow(mat, price, base) {
+  const m = String(mat || '');
+  const p = Number(price) || 0;
+  if (!m || !(p > 0)) return { ok: false, reason: '缺少物资名或价格' };
+  const patch = { price: p, updated_at: new Date().toISOString() };
+  if (base != null && Number(base) > 0) patch.base = Number(base);
+  if (isNative()) {
+    if (!(await nativeEnsureReady()) || !db()) return { ok: false, reason: state.error || '云服务不可用' };
+    try {
+      const upd = await db().from('shop_warehouse').update(patch).eq('mat', m).select();
+      if (upd.error) return { ok: false, reason: upd.error.message || '更新共享价格失败' };
+      return { ok: true, updated: Array.isArray(upd.data) && upd.data.length > 0 };
+    } catch (e) { return { ok: false, reason: (e && e.message) || String(e) }; }
+  }
+  if (!(await bridgeEnsureReady())) return { ok: false, reason: state.error || '云服务不可用' };
+  return bridgeRpc('upsertSharedPriceRow', [m, p, base || null]);
 }

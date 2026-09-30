@@ -244,7 +244,8 @@
 .shop-mk-row {
   display: grid;
   grid-template-columns: 1fr auto;
-  grid-template-areas: "name act" "price act";
+  /* v0.2.12 修复：stock 原来和 price 共用 "price" 区域 → 价格与库存数字重叠 */
+  grid-template-areas: "name act" "price act" "stock act";
   align-items: center;
   gap: 2px 8px;
   background: var(--panel);
@@ -253,9 +254,9 @@
   padding: 8px 10px;
 }
 .shop-mk-name { grid-area: name; font-weight: 600; font-size: 13px; color: var(--text); }
-.shop-mk-price { grid-area: price; font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums; }
-.shop-mk-stock { grid-area: price; align-self: end; font-size: 11px; color: var(--muted); margin-top: 2px; }
-.shop-mk-act { grid-area: act; display: flex; align-items: center; gap: 6px; }
+.shop-mk-price { grid-area: price; font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.shop-mk-stock { grid-area: stock; font-size: 11px; color: var(--muted); white-space: nowrap; }
+.shop-mk-act { grid-area: act; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
 
 /* ===== v0.2.6 拍卖行 ===== */
 .shop-auc-form {

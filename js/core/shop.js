@@ -7,14 +7,14 @@
 // 运输：本模块只负责「下单与结算」；**货必须由运输船运**（运输判定在 core/fleet.js，
 //   订单上带 cells 供其判断载货格数是否够）。
 
-import { MATERIALS } from '../data/materials.js?v=20.18';
-import { ownedOf, spendOwned, currentAccount, STATE } from './state.js?v=20.18';
-import { ensureEntry } from './production.js?v=20.18';
-import { ASCOIN_PER_GOLD } from './currency.js?v=20.18';
+import { MATERIALS } from '../data/materials.js?v=20.19';
+import { ownedOf, spendOwned, currentAccount, STATE } from './state.js?v=20.19';
+import { ensureEntry } from './production.js?v=20.19';
+import { ASCOIN_PER_GOLD } from './currency.js?v=20.19';
 // v0.1.2 R9：装备类交易键走 partId@材料（与 v0.1.1 贡品契约同口径），
 // 需能识别部件 id 并估值，故引入部件数据表（PART_BY_ID）与 resolvePart。
-import { PART_BY_ID } from '../data/ship_parts.js?v=20.18';
-import { resolvePart } from './shipyard.js?v=20.18';
+import { PART_BY_ID } from '../data/ship_parts.js?v=20.19';
+import { resolvePart } from './shipyard.js?v=20.19';
 
 const MAT_BY_NAME = Object.fromEntries(MATERIALS.map((m) => [m.nameCn, m]));
 
@@ -172,9 +172,12 @@ export function shopPrices(acc) {
 }
 
 /** 价格自然回归 + 仓库缓慢回补（由心跳每秒调用）。金恒价跳过回归 */
-export function tickShop(acc, dt) {
+export function tickShop(acc, dt, opts) {
   if (!acc) return;
   const st = shopStateOf(acc);
+  // v0.2.12：在线共享市场（fleet.js 共享同步已接管价格 / 仓库回补）——
+  //   跳过本地价格回归 + 仓库回补 + 随机噪声，保证全服价格与库存一致
+  if (opts && opts.skipNoise) return;
   const k = Math.min(1, 0.01 * (Number(dt) || 0));
   for (const mat in st) {
     if (isGold(mat)) continue;   // 需求22：金不参与回归，恒为 ASCOIN_PER_GOLD
@@ -190,6 +193,38 @@ export function tickShop(acc, dt) {
     const cur = Number(acc.shopWarehouse[m.nameCn]) || 0;
     if (cur < base) acc.shopWarehouse[m.nameCn] = cur + (base - cur) * kr;
   }
+  // v0.2.12：模拟行情持续波动 —— 每秒 ±0.18% 随机游走（受 base×[0.2, 4] 约束）
+  const amt = Math.min(2, Number(dt) || 0);
+  for (const mat in st) {
+    if (isGold(mat)) continue;
+    const s = st[mat];
+    const drift = (Math.random() * 2 - 1) * 0.0018 * amt;
+    s.price = clampShared(s.price * (1 + drift), s.base);
+  }
+}
+
+/** 价格安全区间：base 的 [0.2, 4] 倍（防止随机游走跑飞） */
+function clampShared(price, base) {
+  const p = Number(price) || 0;
+  const b = Number(base) || 1;
+  return Math.max(b * 0.2, Math.min(b * 4, p));
+}
+
+/** 当前价格快照 { mat: price }（共享市场同步用） */
+export function priceSnapshotOf(acc) {
+  const st = shopStateOf(acc);
+  const out = {};
+  for (const mat in st) out[mat] = Math.round(Number(st[mat].price) || 0);
+  return out;
+}
+
+/** 应用外部（全服共享）价格；base 由本地公式保底，price 夹在安全区间内 */
+export function applySharedPrice(acc, mat, price, base) {
+  if (!mat || isGold(mat)) return;
+  const st = shopStateOf(acc);
+  const cur = st[mat] || (st[mat] = { price: Number(price) || 1, base: Number(base) || 1 });
+  if (base != null && Number(base) > 0) cur.base = Number(base);
+  cur.price = clampShared(price, cur.base);
 }
 
 // ============================================================================

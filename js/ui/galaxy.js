@@ -16,15 +16,15 @@ import {
   ensureReady, cloudStatus, cloudUser,
   loginWithName, registerWithName, signOutCloud,
   listPublicPlanets, publishMyPlanet, postIncident, fetchInbox, markIncidentResolved,
-} from '../core/cloud.js?v=20.18';
-import { currentAccount, getPlanetInstance, ownedOf, spendOwned } from '../core/state.js?v=20.18';
-import { ensureEntry } from '../core/production.js?v=20.18';
-import { listFleets, fleetPowerOf, defenseBonusOf } from '../core/fleet.js?v=20.18';
-import { totalArmyPowerOf, listArmies, disbandArmy, resolveBattle } from '../core/army.js?v=20.18';
+} from '../core/cloud.js?v=20.19';
+import { currentAccount, getPlanetInstance, ownedOf, spendOwned } from '../core/state.js?v=20.19';
+import { ensureEntry } from '../core/production.js?v=20.19';
+import { listFleets, fleetPowerOf, defenseBonusOf } from '../core/fleet.js?v=20.19';
+import { totalArmyPowerOf, listArmies, disbandArmy, resolveBattle, armyToUnit, armyPowerOfInstance } from '../core/army.js?v=20.19';
 // v0.2.1：内嵌殖民地管理（含内联报告），取代在线模式独立的「星球选择」tab
-import { renderColony } from './colony.js?v=20.18';
-import { PLANETS } from '../data/planets.js?v=20.18';
-import { fmtNum } from '../core/format.js?v=20.18';
+import { renderColony } from './colony.js?v=20.19';
+import { PLANETS } from '../data/planets.js?v=20.19';
+import { fmtNum } from '../core/format.js?v=20.19';
 
 function el(tag, cls, text) {
   const e = document.createElement(tag);
@@ -70,7 +70,7 @@ function buildSnapshot(acc, ctx) {
   const u = cloudUser();
   const tag = (u && u.id) ? String(u.id).replace(/[^a-zA-Z0-9]/g, '').slice(-6).toLowerCase() : '';
   return {
-    ownerName: (acc && acc.name) || '深空旅人',
+    ownerName: myAccountName(acc),   // v0.2.12：用云账号名（注册时已保证唯一），星球卡一眼区分
     planetCode: code + (tag ? '-' + tag : ''),
     planetNameCn: (p && p.nameCn) || '母星',
     faction: '殖民者',
@@ -215,10 +215,15 @@ function renderShell(body, ctx, rerender) {
   body.appendChild(inboxSec);
 
   const planetsSec = el('div', 'gx-section');
-  planetsSec.appendChild(el('div', 'section-title', '已知玩家星球'));
+  const ph = el('div', 'gx-sec-head');
+  ph.appendChild(el('div', 'section-title', '玩家星球'));
+  const refreshBtn = el('button', 'btn btn-sm', '刷新');
+  ph.appendChild(refreshBtn);
+  planetsSec.appendChild(ph);
   const planetGrid = el('div', 'gx-grid');
   planetsSec.appendChild(planetGrid);
   body.appendChild(planetsSec);
+  refreshBtn.addEventListener('click', () => renderPlanetGrid(planetGrid, ctx, rerender, u, acc, query));
 
   if (!u) {
     inboxSec.appendChild(el('div', 'muted', '登录后可见贸易 / 进攻事件与对其他玩家星球的操作。'));
@@ -226,7 +231,11 @@ function renderShell(body, ctx, rerender) {
     return;
   }
 
-  // 收取件箱（含未读计数 → 顶栏徽标）+ 拉玩家星球网格
+  // v0.2.12：玩家星球网格**立即异步渲染**（不再等收件箱云请求 —— 之前链路断开就整片空白）；
+  //   收件箱单独拉取，两者互不阻塞。
+  renderPlanetGrid(planetGrid, ctx, rerender, u, acc, query);
+
+  // 收取件箱（含未读计数 → 顶栏徽标）
   fetchInbox().then((r) => {
     const title = body.querySelector && body.querySelector('.page-title');
     if (!title) return;
@@ -237,7 +246,6 @@ function renderShell(body, ctx, rerender) {
     } else {
       inboxSec.appendChild(el('div', 'muted', '收件箱读取失败：' + (r.reason || '')));
     }
-    renderPlanetGrid(planetGrid, ctx, rerender, u, acc, query);
   });
 
   // 进入本页即静默发布（60s 节流）
@@ -251,6 +259,84 @@ function renderShell(body, ctx, rerender) {
 // ============================================================================
 // 认证：登录 / 注册模态
 // ============================================================================
+// ============================================================================
+// 好友私信 / 模拟开战（v0.2.12）
+// ============================================================================
+/** 发消息：走事件信箱（type:'message'），对方登录后在星际页收件箱看到 */
+function openMessageModal(ctx, rerender, target) {
+  const openModal = ctx.openModal;
+  if (!openModal) return;
+  const acc = currentAccount();
+  const wrap = el('div');
+  wrap.appendChild(el('p', 'modal-tip',
+    '发送私信给「' + esc(target.owner_name || target.owner_id || '') + '」（对方登录后在星际页收件箱看到）。'));
+  const ta = document.createElement('textarea');
+  ta.placeholder = '输入消息内容…';
+  ta.style.cssText = 'width:100%;min-height:84px;padding:8px;border-radius:8px;'
+    + 'background:#101820;color:#fff;border:1px solid #34465a;box-sizing:border-box;font-family:inherit;';
+  const send = el('button', 'btn btn-primary', '发送');
+  const msg = el('div', 'muted');
+  send.addEventListener('click', async () => {
+    const text = ta.value.trim();
+    if (!text) { msg.textContent = '消息不能为空。'; return; }
+    send.disabled = true; msg.textContent = '发送中…';
+    try {
+      const r = await postIncident(target.owner_id, 'message', { fromName: myAccountName(acc), text: text.slice(0, 500) });
+      if (!r.ok) { send.disabled = false; msg.textContent = '发送失败：' + (r.reason || ''); return; }
+      msg.textContent = '已发送 ✓';
+    } catch (e) { send.disabled = false; msg.textContent = '发送失败：' + (e && e.message || ''); }
+  });
+  wrap.append(ta, send, msg);
+  openModal({ title: '发消息给 ' + (target.owner_name || ''), body: wrap });
+}
+
+/** 模拟开战：与好友按其公开快照合成守军，本地即时结算，无任何损失 */
+function openSparModal(ctx, acc, p) {
+  const openModal = ctx.openModal;
+  if (!openModal) return;
+  const s = p.summary || {};
+  const wrap = el('div');
+  const armies = listArmies(acc);
+  wrap.appendChild(el('p', 'modal-tip',
+    '与好友「' + esc(p.owner_name || '') + '」模拟开战：按对方公开快照合成守军（防御战力 '
+    + fmtNum(s.defense || 0) + ' · ' + fmtNum(s.armies || 0) + ' 支军队），钢铁雄心式多回合结算。'
+    + '**模拟战无任何损失**：不掠夺、不战损、不影响外交。'));
+  if (!armies.length) {
+    wrap.appendChild(el('div', 'muted', '你还没有建制军队 —— 先到「军队」页组一支再来。'));
+    openModal({ title: '模拟开战：' + (p.owner_name || ''), body: wrap });
+    return;
+  }
+  const sel = document.createElement('select');
+  sel.className = 'bp-select';
+  for (const a of armies) {
+    const o = document.createElement('option');
+    o.value = a.id;
+    o.textContent = (a.nameCn || a.id) + '（战力 ' + fmtNum(armyPowerOfInstance(a)) + '）';
+    sel.appendChild(o);
+  }
+  const go = el('button', 'btn btn-primary', '开战（模拟）');
+  const out = el('div', 'muted');
+  go.addEventListener('click', () => {
+    const a = armies.find((x) => x.id === sel.value);
+    const unit = armyToUnit(a);
+    const n = Math.max(1, Math.min(6, Number(s.armies) || 1));
+    const per = Math.max(1, Math.round((Number(s.defense) || 600) / n));
+    const defUnits = [];
+    for (let i = 0; i < n; i++) {
+      defUnits.push({
+        nameCn: (p.owner_name || '好友') + ' 守备 ' + (i + 1),
+        power: per, atk: Math.round(per * 0.45), def: Math.round(per * 0.55),
+      });
+    }
+    const res = resolveBattleSafe((Date.now() ^ 0x5a5a) >>> 0, [unit], defUnits);
+    out.innerHTML = '<b style="color:' + (res.attackerWin ? '#9FE1CB' : '#f09595') + '">'
+      + (res.attackerWin ? '模拟战获胜 ✓' : '模拟战失利 ✗') + '</b>（无损失）<br>'
+      + esc(String(res.log || '').replace(/;/g, '；').slice(0, 700));
+  });
+  wrap.append(sel, go, out);
+  openModal({ title: '模拟开战：' + (p.owner_name || ''), body: wrap });
+}
+
 function openLoginModal(ctx, rerender) {
   const openModal = ctx.openModal;
   if (!openModal) return;
@@ -298,13 +384,28 @@ const INCIDENT_LABEL = {
   alliance_offer: '结盟请求',
   alliance_accept: '结盟回应',
   alliance_break: '解除盟约',
+  friend_request: '好友申请',
+  friend_accept: '好友回应',
+  friend_break: '解除好友',
+  message: '私信',
 };
 
-/** v0.2.10 结盟字段兜底（老存档）：npcAllies = 盟友电脑势力名；allies = [{uid, name}] */
+/** v0.2.10 结盟/好友字段兜底（老存档）：npcAllies = 盟友电脑势力名；allies = [{uid, name}]；friends = [{uid, name}] */
 function ensureAllianceFields(acc) {
   if (!acc) return;
   if (!Array.isArray(acc.npcAllies)) acc.npcAllies = [];
   if (!Array.isArray(acc.allies)) acc.allies = [];
+  if (!Array.isArray(acc.friends)) acc.friends = [];   // v0.2.12 好友
+}
+
+/** 我的对外显示名：优先云账号名（保证全服唯一可识别），否则存档名 */
+function myAccountName(acc) {
+  const u = cloudUser();
+  return (u && u.name) || (acc && acc.name) || '深空旅人';
+}
+
+function isFriendOf(acc, uid) {
+  return !!(acc && Array.isArray(acc.friends) && uid && acc.friends.some((x) => x && x.uid === uid));
 }
 
 function isPlayerAlly(acc, uid) {
@@ -493,6 +594,43 @@ function renderInbox(sec, ctx, rerender, items, acc) {
       const seen = el('button', 'btn btn-sm', '已阅');
       seen.addEventListener('click', async () => { await markIncidentResolved(it.id); rerender(); });
       act.appendChild(seen);
+    } else if (it.type === 'friend_request') {
+      card.appendChild(el('div', null, '申请加你为好友（好友之间可私信 / 模拟开战，互不进攻）。'));
+      const yes = el('button', 'btn btn-sm btn-primary', '接受');
+      const no = el('button', 'btn btn-sm', '拒绝');
+      yes.addEventListener('click', async () => {
+        if (!Array.isArray(acc.friends)) acc.friends = [];
+        if (!acc.friends.some((x) => x && x.uid === it.owner_id)) {
+          acc.friends.push({ uid: it.owner_id, name: pay.fromName || '指挥官' });
+        }
+        try { await postIncident(it.owner_id, 'friend_accept', { fromName: myAccountName(acc) }); } catch (e) { /* 忽略 */ }
+        await markIncidentResolved(it.id);
+        rerender();
+      });
+      no.addEventListener('click', async () => { await markIncidentResolved(it.id); rerender(); });
+      act.append(yes, no);
+    } else if (it.type === 'friend_accept') {
+      if (!Array.isArray(acc.friends)) acc.friends = [];
+      if (it.owner_id && !acc.friends.some((x) => x && x.uid === it.owner_id)) {
+        acc.friends.push({ uid: it.owner_id, name: pay.fromName || '指挥官' });
+      }
+      card.appendChild(el('div', null, '对方接受了你的好友申请 —— 现在可以私信与模拟开战了。'));
+      const seen = el('button', 'btn btn-sm', '已阅');
+      seen.addEventListener('click', async () => { await markIncidentResolved(it.id); rerender(); });
+      act.appendChild(seen);
+    } else if (it.type === 'friend_break') {
+      acc.friends = (acc.friends || []).filter((x) => x && x.uid !== it.owner_id);
+      card.appendChild(el('div', null, '对方解除了好友关系。'));
+      const seen = el('button', 'btn btn-sm', '已阅');
+      seen.addEventListener('click', async () => { await markIncidentResolved(it.id); rerender(); });
+      act.appendChild(seen);
+    } else if (it.type === 'message') {
+      card.appendChild(el('div', null, '「' + (pay.text || '（空消息）') + '」'));
+      const reply = el('button', 'btn btn-sm btn-primary', '回复');
+      reply.addEventListener('click', () => openMessageModal(ctx, rerender, { owner_id: it.owner_id, owner_name: pay.fromName }));
+      const seen = el('button', 'btn btn-sm', '已阅');
+      seen.addEventListener('click', async () => { await markIncidentResolved(it.id); rerender(); });
+      act.append(reply, seen);
     }
     card.appendChild(act);
     sec.appendChild(card);
@@ -584,22 +722,26 @@ function renderNpcGrid(grid, ctx, rerender, acc, query) {
 }
 
 async function renderPlanetGrid(grid, ctx, rerender, u, acc, query) {
-  ensureAllianceFields(acc);   // v0.2.10 结盟字段兜底
+  ensureAllianceFields(acc);   // v0.2.10 结盟/好友字段兜底
   grid.innerHTML = '';
-  // v0.2.10：电脑势力星球已拆到独立区块（renderNpcGrid），此处只渲染玩家星球
   if (!u) {
-    grid.appendChild(el('div', 'muted', '登录云账号后可与其他玩家贸易 / 结盟 / 交战；电脑势力星球在上方独立区块，随时交互。'));
+    grid.appendChild(el('div', 'muted', '登录云账号后可看到其他玩家的星球（电脑势力星球在上方独立区块）。'));
     return;
   }
-  grid.appendChild(el('div', 'muted', '读取星系中…'));
-  const r = await listPublicPlanets();
-  // 守卫：期间可能已切走/重渲染
+  grid.appendChild(el('div', 'muted', '读取星系快照…'));
+  let r = await listPublicPlanets();
+  // v0.2.12：失败自动重试一次（移动网络抖动时不再直接空白）
+  if (!r.ok) {
+    await new Promise((res) => setTimeout(res, 900));
+    r = await listPublicPlanets();
+  }
   if (!grid.isConnected) return;
   grid.innerHTML = '';
   if (!r.ok) {
-    grid.appendChild(el('div', 'army-miss', '读取失败：' + (r.reason || '')));
+    grid.appendChild(el('div', 'army-miss', '读取失败：' + (r.reason || '') + '（点上方「刷新」重试）'));
     return;
   }
+  // 过滤掉自己 + 搜索过滤
   let others = r.planets.filter((p) => p.owner_id !== u.id);
   if (query) {
     others = others.filter((p) =>
@@ -635,7 +777,8 @@ function buildPlanetCard(p, ctx, rerender, acc) {
   const info = el('div', 'gx-card-info');
   info.innerHTML =
     '<div>指挥官：<b>' + esc(p.owner_name || '未知') + '</b>'
-    + (isPlayerAlly(acc, p.owner_id) ? ' <span style="color:#9FE1CB">🤝 盟友</span>' : '') + '</div>'
+    + (isPlayerAlly(acc, p.owner_id) ? ' <span style="color:#9FE1CB">🤝 盟友</span>' : '')
+    + (isFriendOf(acc, p.owner_id) ? ' <span style="color:#8ecbff">👥 好友</span>' : '') + '</div>'
     + '<div>人口 <b>' + fmtNum(s.pop || 0) + '</b> · 建筑 <b>' + fmtNum(s.buildings || 0)
     + '</b> · 幸福度 <b>' + fmtNum(s.happiness || 0) + '%</b></div>'
     + '<div>军队 <b>' + fmtNum(s.armies || 0) + '</b> 支 · 舰队 <b>' + fmtNum(s.ships || 0)
@@ -672,12 +815,40 @@ function buildPlanetCard(p, ctx, rerender, acc) {
       allyBtn.textContent = '已发出（等对方处理）';
     } catch (e) { allyBtn.disabled = false; allyBtn.textContent = '结盟'; }
   });
+  const isFriend = isFriendOf(acc, p.owner_id);
   const atkBtn = el('button', 'btn btn-sm btn-danger', '进攻');
   if (isAlly) { atkBtn.disabled = true; atkBtn.title = '盟友不可进攻（可先解除盟约）'; }
+  else if (isFriend) { atkBtn.disabled = true; atkBtn.title = '好友不可进攻（可发起「模拟开战」）'; }
   else atkBtn.addEventListener('click', () => openAttackModal(ctx, rerender, acc, p, refresh));
   act.appendChild(tradeBtn);
   act.appendChild(allyBtn);
   act.appendChild(atkBtn);
+  // v0.2.12 好友功能：加好友 / 发消息 / 模拟开战 / 解除
+  if (isFriend) {
+    const msgBtn = el('button', 'btn btn-sm', '💬 发消息');
+    msgBtn.addEventListener('click', () => openMessageModal(ctx, rerender, p));
+    const sparBtn = el('button', 'btn btn-sm', '⚔ 模拟开战');
+    sparBtn.addEventListener('click', () => openSparModal(ctx, acc, p));
+    const unBtn = el('button', 'btn btn-sm', '解除好友');
+    unBtn.addEventListener('click', async () => {
+      ensureAllianceFields(acc);
+      acc.friends = acc.friends.filter((x) => x && x.uid !== p.owner_id);
+      try { await postIncident(p.owner_id, 'friend_break', { fromName: myAccountName(acc) }); } catch (e) { /* 忽略 */ }
+      refresh();
+    });
+    act.append(msgBtn, sparBtn, unBtn);
+  } else {
+    const addBtn = el('button', 'btn btn-sm btn-ok', '加好友');
+    addBtn.addEventListener('click', async () => {
+      addBtn.disabled = true; addBtn.textContent = '已发出…';
+      try {
+        const r = await postIncident(p.owner_id, 'friend_request', { fromName: myAccountName(acc) });
+        if (!r.ok) { addBtn.disabled = false; addBtn.textContent = '加好友'; alert(r.reason || '发送失败'); return; }
+        addBtn.textContent = '已发出（等对方处理）';
+      } catch (e) { addBtn.disabled = false; addBtn.textContent = '加好友'; }
+    });
+    act.appendChild(addBtn);
+  }
   card.appendChild(act);
   return card;
 }
