@@ -92,11 +92,11 @@ function genModId(name) {
 // ---------------------------------------------------------------------------
 function validateMod(data) {
   if (!data || typeof data !== 'object' || Array.isArray(data)) {
-    return { ok: false, reason: 'mod 根节点必须是 JSON 对象' };
+    return { ok: false, reason: '模组文件的根节点必须是一个 JSON 对象' };
   }
   const name = String(data.name || '').trim();
-  if (!name) return { ok: false, reason: '缺少 mod 名称（name）' };
-  if (name.length > 40) return { ok: false, reason: 'mod 名称过长（≤40 字）' };
+  if (!name) return { ok: false, reason: '缺少模组名称字段（JSON 键名应为 name）' };
+  if (name.length > 40) return { ok: false, reason: '模组名称过长（不超过 40 个字）' };
 
   const effects = data.effects && typeof data.effects === 'object' && !Array.isArray(data.effects)
     ? data.effects : {};
@@ -105,7 +105,7 @@ function validateMod(data) {
   for (const k in effects) {
     if (k === 'startAscoin' || k === 'startResources') continue;
     if (!(k in MUL_FIELDS)) {
-      return { ok: false, reason: '不支持的效果字段「' + k + '」。可用：' + Object.keys(MUL_FIELDS).join(' / ') + ' / startAscoin / startResources' };
+      return { ok: false, reason: '不支持的效果字段「' + k + '」。可用字段：' + Object.keys(MUL_FIELDS).join(' / ') + ' / startAscoin（开局星币） / startResources（开局物资）' };
     }
     const v = Number(effects[k]);
     if (!Number.isFinite(v)) {
@@ -117,20 +117,20 @@ function validateMod(data) {
   // 开局 Ascoin
   if (effects.startAscoin != null) {
     const v = Math.floor(Number(effects.startAscoin));
-    if (!Number.isFinite(v) || v < 0) return { ok: false, reason: 'startAscoin 必须是非负整数' };
+    if (!Number.isFinite(v) || v < 0) return { ok: false, reason: '开局星币（startAscoin）必须是非负整数' };
     clean.startAscoin = Math.min(START_ASCOIN_MAX, v);
   }
   // 开局资源：值为非负数字，键为任意材料名（材料名合法性由落库时 ensureEntry 保证）
   if (effects.startResources != null) {
     const res = effects.startResources;
     if (!res || typeof res !== 'object' || Array.isArray(res)) {
-      return { ok: false, reason: 'startResources 必须是 { 材料名: 数量 } 对象' };
+      return { ok: false, reason: '开局物资（startResources）必须是「材料名: 数量」形式的对象' };
     }
     const out = {};
     for (const mat in res) {
       const v = Math.floor(Number(res[mat]));
       if (!Number.isFinite(v) || v < 0) {
-        return { ok: false, reason: 'startResources「' + mat + '」必须是非负整数' };
+        return { ok: false, reason: '开局物资「' + mat + '」的数量必须是非负整数' };
       }
       if (v > 0) out[mat] = Math.min(START_RES_MAX, v);
     }

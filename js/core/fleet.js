@@ -12,16 +12,16 @@
 //
 // 约定：不修改 state.js（账号对象由调用方传入）；互 import 仅限函数体内使用（无 TDZ 风险）。
 
-import { PLANETS } from '../data/planets.js?v=21.14';
+import { PLANETS } from '../data/planets.js?v=21.15';
 import {
   generateRandomPlanet, capturePlanet, captureDefaultPlanet, uncapturedDefaults,
-} from './planetgen.js?v=21.14';
-import { ownedOf, spendOwned, getPlanetInstance } from './state.js?v=21.14';
-import { CELL_VOLUME, cellsForEquipmentKey } from './footprint.js?v=21.14';   // 纯聚合工具，state.js 不 import 本文件，无环
-import { resolveBlueprint, totalMass, addEquipment } from './shipyard.js?v=21.14';          // 只读导出：蓝图部件 / 蓝图质量；addEquipment 用于登陆战缴获
-import { ARMY_PARTS, ARMY_PART_BY_ID } from '../data/army_parts.js?v=21.14';                 // v0.2.3：登陆战缴获军事部件用
-import { ensureEntry } from './production.js?v=21.14';                        // 装卸货 / 奖励入包（生产模块不 import 本文件，无环）
-import { fmtNum } from './format.js?v=21.14';
+} from './planetgen.js?v=21.15';
+import { ownedOf, spendOwned, getPlanetInstance } from './state.js?v=21.15';
+import { CELL_VOLUME, cellsForEquipmentKey } from './footprint.js?v=21.15';   // 纯聚合工具，state.js 不 import 本文件，无环
+import { resolveBlueprint, totalMass, addEquipment } from './shipyard.js?v=21.15';          // 只读导出：蓝图部件 / 蓝图质量；addEquipment 用于登陆战缴获
+import { ARMY_PARTS, ARMY_PART_BY_ID } from '../data/army_parts.js?v=21.15';                 // v0.2.3：登陆战缴获军事部件用
+import { ensureEntry } from './production.js?v=21.15';                        // 装卸货 / 奖励入包（生产模块不 import 本文件，无环）
+import { fmtNum } from './format.js?v=21.15';
 
 // ============================================================================
 // 编队
@@ -1169,7 +1169,7 @@ export function executeCommand(acc, fleetId, cmd, ctx) {
   }
   return {
     ok: false, cmd,
-    message: '「' + (MISSION_TYPE_LABEL[cmd] || cmd) + '」已改为持续任务：请用 startMission 发起，任务完成自动结算。',
+    message: '「' + (MISSION_TYPE_LABEL[cmd] || cmd) + '」已改为持续任务：请从舰队面板发起，任务完成后自动结算。',
   };
 }
 

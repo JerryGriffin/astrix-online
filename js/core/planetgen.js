@@ -12,8 +12,8 @@
 //   需要 STATE.planets 的操作（如把新星球实例挂进存档）由调用方传入或通过回调完成。
 //   同理也**不 import production.js / shop.js**（它们间接依赖 state.js / 会与本模块成环）。
 
-import { PLANETS } from '../data/planets.js?v=21.14';
-import { JOBS, getTotalLabor, buildingSlots } from './population.js?v=21.14';
+import { PLANETS } from '../data/planets.js?v=21.15';
+import { JOBS, getTotalLabor, buildingSlots } from './population.js?v=21.15';
 
 // ============================================================================
 // 管理模式（设计者已确认：同时影响 产出 / 幸福度 / 独立倾向）
@@ -735,7 +735,7 @@ export function settleTribute(acc, code, inst, mode, env = {}) {
   if (!deliver) {
     pending.mats = payload;
     pending.equip = equip;
-    return { ok: false, reason: '未提供 deliverToHome，贡品暂存在殖民地', pending: payload, ship: ship };
+    return { ok: false, reason: '母星物流暂不可用，本批贡品已暂存于殖民地', pending: payload, ship: ship };
   }
   const full = equip ? Object.assign({}, payload, { __equipment: equip }) : payload;
   let ok = true;

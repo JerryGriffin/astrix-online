@@ -8,3 +8,6 @@ launch.mjs
 
 .github/
 .workbuddy/
+
+# 一次性调试脚本（不进仓库，见项目约定）
+docs/_dbg_*.mjs

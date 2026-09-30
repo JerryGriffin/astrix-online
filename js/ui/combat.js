@@ -4,9 +4,9 @@
 import {
   createBattleSession, tickBattle, executeTacticalCommand, TACTICAL_COMMANDS,
   SHIP_ROLES, BATTLE_DOCTRINES, getBattleReport
-} from '../core/combat.js?v=21.14';
-import { fmtNum } from '../core/format.js?v=21.14';
-import { playLaser, playExplosion, playShield, playWarp, playVictory, playPing } from '../core/sound.js?v=21.14';
+} from '../core/combat.js?v=21.15';
+import { fmtNum } from '../core/format.js?v=21.15';
+import { playLaser, playExplosion, playShield, playWarp, playVictory, playPing } from '../core/sound.js?v=21.15';
 
 function esc(s) {
   return String(s ?? '').replace(/[&<>"']/g, (c) => (
@@ -61,7 +61,7 @@ export function openBattleView(arg1, arg2, arg3) {
     </div>
     <div style="display:flex;gap:8px;align-items:center;">
       <button id="bt-btn-speed" style="padding:4px 10px;min-height:36px;border-radius:4px;background:rgba(255,255,255,0.06);border:1px solid #475569;color:#cbd5e1;cursor:pointer;">1.0x 航速</button>
-      <button id="bt-btn-auto" style="padding:4px 10px;min-height:36px;border-radius:4px;background:rgba(255,255,255,0.06);border:1px solid #475569;color:#cbd5e1;cursor:pointer;">🤖 自动战术: 关</button>
+      <button id="bt-btn-auto" style="padding:4px 10px;min-height:36px;border-radius:4px;background:rgba(255,255,255,0.06);border:1px solid #475569;color:#cbd5e1;cursor:pointer;">🤖 自动战术：关</button>
     </div>
   `;
   root.appendChild(header);
@@ -431,11 +431,11 @@ export function openBattleView(arg1, arg2, arg3) {
         ${isWin ? '我方舰队在指挥官的精准战术部署下，成功瓦解敌方战术战斗群，全歼目标！' : '敌方火力过于凶悍，我方各舰船体受损过半，已按战术条令脱离接触。'}
       </p>
 
-      <!-- MVP 旗舰勋章 -->
+      <!-- 最有价值旗舰勋章 -->
       ${report.mvp ? `
         <div style="background:linear-gradient(135deg, rgba(250,204,21,0.15), rgba(56,189,248,0.1));padding:10px 14px;border-radius:8px;border:1px solid #facc15;margin-bottom:14px;text-align:left;display:flex;justify-content:space-between;align-items:center;">
           <div>
-            <div style="font-size:11px;color:#facc15;font-weight:bold;">⭐ 本场战斗 MVP 旗舰</div>
+            <div style="font-size:11px;color:#facc15;font-weight:bold;">⭐ 本场战斗最有价值旗舰</div>
             <div style="font-size:15px;font-weight:bold;color:#f1f5f9;margin-top:2px;">${esc(report.mvp.name)}</div>
           </div>
           <div style="text-align:right;font-size:12px;color:#c8d4e0;">
@@ -558,7 +558,7 @@ export function openBattleView(arg1, arg2, arg3) {
     if (btnAuto) {
       btnAuto.onclick = () => {
         autoBattle = !autoBattle;
-        btnAuto.textContent = `🤖 自动战术: ${autoBattle ? '开' : '关'}`;
+        btnAuto.textContent = `🤖 自动战术：${autoBattle ? '开' : '关'}`;
         btnAuto.style.background = autoBattle ? 'rgba(52,211,153,0.2)' : 'rgba(255,255,255,0.06)';
         btnAuto.style.color = autoBattle ? '#34d399' : '#cbd5e1';
       };

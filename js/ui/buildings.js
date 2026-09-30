@@ -16,14 +16,14 @@
 // 与人力系统的关系：
 //   建筑提供工位 → 人力面板按建筑分组分配人 → 分配了「建筑工」才有人施工（硬门槛）。
 
-import { BUILDINGS, BUILDING_BY_ID, CATEGORIES, buildingCost } from '../data/buildings.js?v=21.14';
-import { fmtNum, fmtTime, fmtRateBody } from '../core/format.js?v=21.14';
+import { BUILDINGS, BUILDING_BY_ID, CATEGORIES, buildingCost } from '../data/buildings.js?v=21.15';
+import { fmtNum, fmtTime, fmtRateBody, richText } from '../core/format.js?v=21.15';
 import {
   getBuildingCounts, buildingCount, costOfNext, isBuildingUnlocked,
   startBuild, cancelBuild, buildQueueOf, BUILD_QUEUE_MAX, currentAccount,
-} from '../core/state.js?v=21.14';
-import { buildingSlots, assignedToBuilding, freeSlots } from '../core/population.js?v=21.14';
-import { buildRateOf, buildBlockReason } from '../core/construction.js?v=21.14';
+} from '../core/state.js?v=21.15';
+import { buildingSlots, assignedToBuilding, freeSlots } from '../core/population.js?v=21.15';
+import { buildRateOf, buildBlockReason } from '../core/construction.js?v=21.15';
 
 const CSS = `
   .bld-panel { font-family: system-ui, sans-serif; color: #e8eef2; padding: 12px; box-sizing: border-box; }
@@ -140,9 +140,9 @@ export function renderBuildings(root, ctx) {
         const left = rate > 0 ? (item.work - item.progress) / rate : Infinity;
         const row = el('div', { class: 'bld-qitem' });
 
-        let stage = '🏗️ 阶段 I：地质勘探与耐压地基开挖';
-        if (pct >= 75) stage = '⚡ 阶段 III：超导管网并网与设备总调测';
-        else if (pct >= 35) stage = '⚙️ 阶段 II：合金骨架吊装与抗辐射封装';
+        let stage = '🏗️ 阶段一：地质勘探与耐压地基开挖';
+        if (pct >= 75) stage = '⚡ 阶段三：超导管网并网与设备总调测';
+        else if (pct >= 35) stage = '⚙️ 阶段二：合金骨架吊装与抗辐射封装';
 
         row.appendChild(el('div', { class: 'bld-qrow' }, [
           el('span', { class: 'qname', text: `${item.nameCn} · ${stage} (${pct.toFixed(1)}%) · 剩余 ${Number.isFinite(left) ? fmtTime(left) : '∞（无人施工）'}` }),
@@ -173,7 +173,7 @@ export function renderBuildings(root, ctx) {
         el('span', { text: b.nameCn }),
         n > 0 ? el('span', { class: 'own', text: '已有 ' + fmtNum(n) + ' 座' }) : null,
       ]));
-      main.appendChild(el('div', { class: 'b-desc', text: b.desc || '' }));
+      main.appendChild(el('div', { class: 'b-desc', html: richText(b.desc || '') }));
       // 发电 / 耗电 静态信息（文案不带单位，见 v0.0.7 去单位约定）
       if (b.powerOut > 0 || b.powerDraw > 0) {
         const parts = [];

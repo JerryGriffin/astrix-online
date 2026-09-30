@@ -1,17 +1,17 @@
 // 军队系统用户界面（Astrix v0.2.0）
 // 纯原生 ES 模块，深空玻璃拟态风格，移动端与 PC 端自适应（点击区 >= 44px）
 
-import { currentAccount, getPlanetInstance } from '../core/state.js?v=21.14';
+import { currentAccount, getPlanetInstance } from '../core/state.js?v=21.15';
 import {
   ARMY_BLUEPRINTS, ARMY_BP_BY_ID, ARMY_PART_BY_ID, armyBpPartNeeds, armyBpMaterialNeeds
-} from '../data/army_parts.js?v=21.14';
+} from '../data/army_parts.js?v=21.15';
 import {
   listArmies, ensureArmies, armyStatsOf, stationedArmyPower, toggleStationed, disbandArmy,
   getArmyPartStock, canAssembleArmy, startArmyAssemble, cancelArmyAssemble
-} from '../core/army.js?v=21.14';
-import { fmtNum } from '../core/format.js?v=21.14';
-import { playPing, playShield, playLaser, playVictory } from '../core/sound.js?v=21.14';
-import { openBattleView } from './combat.js?v=21.14';
+} from '../core/army.js?v=21.15';
+import { fmtNum, richText } from '../core/format.js?v=21.15';
+import { playPing, playShield, playLaser, playVictory } from '../core/sound.js?v=21.15';
+import { openBattleView } from './combat.js?v=21.15';
 
 function escapeHtml(s) {
   return String(s ?? '').replace(/[&<>"']/g, (c) => (
@@ -190,7 +190,7 @@ export function renderArmy(root, ctx) {
       const top = document.createElement('div');
       top.innerHTML = `
         <div style="font-size:16px;font-weight:bold;color:#f1f5f9;margin-bottom:4px;">${escapeHtml(bp.nameCn)}</div>
-        <div style="font-size:12px;color:#94a3b8;line-height:1.4;margin-bottom:8px;">${escapeHtml(bp.desc)}</div>
+        <div style="font-size:12px;color:#94a3b8;line-height:1.4;margin-bottom:8px;">${richText(bp.desc)}</div>
         <div style="background:rgba(0,0,0,0.3);padding:8px;border-radius:6px;font-size:12px;margin-bottom:8px;line-height:1.6;">
           <div style="display:flex;justify-content:space-between;">
             <span>⚔️ 火力: <b style="color:#f09595">${stats.atk}</b></span>

@@ -72,10 +72,10 @@ export const ARMY_PARTS = [
   // —— 支援（t_m4）——
   { id: 'ap_sup_radar', nameCn: '观测雷达', cat: 'support', tech: 't_m4', mass: 90, work: 860,
     inputs: { '钢': 12, '银': 4, '玻璃': 8 },
-    atk: 18, def: 0, speed: -2, desc: '校射观测，显著提升远程命中（atk 增益）。' },
+    atk: 18, def: 0, speed: -2, desc: '校射观测，显著提升远程命中（攻击增益）。' },
   { id: 'ap_sup_supply', nameCn: '补给单元', cat: 'support', tech: 't_m4', mass: 110, work: 700,
     inputs: { '铝': 14, '塑料': 10, '橡胶': 6 },
-    atk: 0, def: 14, speed: 2, desc: '弹药油料随队补给，延长持续作战（def 增益）。' },
+    atk: 0, def: 14, speed: 2, desc: '弹药油料随队补给，延长持续作战（防御增益）。' },
 ];
 
 export const ARMY_PART_BY_ID = Object.fromEntries(ARMY_PARTS.map((p) => [p.id, p]));

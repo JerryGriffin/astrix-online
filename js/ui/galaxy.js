@@ -1,18 +1,18 @@
 // 星际大厅与在线星图界面（Astrix v0.2.0）
 // 纯原生 ES 模块，深空玻璃拟态风格，移动端与 PC 端自适应（点击区 >= 44px）
 
-import { currentAccount, getPlanetInstance, ownedOf, getStorageMode, setStorageMode } from '../core/state.js?v=21.14';
+import { currentAccount, getPlanetInstance, ownedOf, getStorageMode, setStorageMode } from '../core/state.js?v=21.15';
 import {
   ensureCloudProfile, bindEmail, getShieldStatus, fetchGalaxyRegistry,
   getInbox, markMessageRead, markAllMessagesRead, unreadCount,
   sendGalaxyRaid, sendGalaxyTrade, evaluateFleetPower,
   syncOnlineServer, fetchRemoteGalaxyRegistry, fetchOnlineChatMessages, sendOnlineChatMessage,
   fetchOnlineMarketListings, buyOnlineMarketListing, createOnlineMarketListing
-} from '../core/cloud.js?v=21.14';
-import { listFleets } from '../core/fleet.js?v=21.14';
-import { fmtNum } from '../core/format.js?v=21.14';
-import { openBattleView } from './combat.js?v=21.14';
-import { playWarp, playPing, playVictory } from '../core/sound.js?v=21.14';
+} from '../core/cloud.js?v=21.15';
+import { listFleets } from '../core/fleet.js?v=21.15';
+import { fmtNum } from '../core/format.js?v=21.15';
+import { openBattleView } from './combat.js?v=21.15';
+import { playWarp, playPing, playVictory } from '../core/sound.js?v=21.15';
 
 function escapeHtml(s) {
   return String(s ?? '').replace(/[&<>"']/g, (c) => (
@@ -480,7 +480,7 @@ export function renderGalaxy(root, ctx) {
       </div>
     `;
 
-    openModal({ title: '🌐 全星区跳蚤集市 (Live Market)', body: div });
+    openModal({ title: '🌐 全星区星际跳蚤集市', body: div });
 
     setTimeout(() => {
       const tabBrowse = document.getElementById('market-tab-browse');

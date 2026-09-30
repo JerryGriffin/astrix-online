@@ -8,14 +8,14 @@ import {
   computePower, energyOf,
   installedFacilities, installFacility, uninstallFacility, facilityStockOf,
   panelEffOf, facilityFuelOf, buildingCountBonus,
-} from '../core/power.js?v=21.14';
-import { POWER_FACILITIES, POWER_FACILITY_BY_ID } from '../data/facilities.js?v=21.14';
-import { BUILDING_BY_ID } from '../data/buildings.js?v=21.14';
-import { RECIPES } from '../data/recipes.js?v=21.14';
-import { linesOf } from '../core/production.js?v=21.14';
-import { jobsOfBuilding, jobOutput, assignedToBuilding, buildingSlots } from '../core/population.js?v=21.14';
-import { fmtNum, fmtRate, fmtRateBody } from '../core/format.js?v=21.14';
-import { playPing, playLaser, playShield } from '../core/sound.js?v=21.14';
+} from '../core/power.js?v=21.15';
+import { POWER_FACILITIES, POWER_FACILITY_BY_ID } from '../data/facilities.js?v=21.15';
+import { BUILDING_BY_ID } from '../data/buildings.js?v=21.15';
+import { RECIPES } from '../data/recipes.js?v=21.15';
+import { linesOf } from '../core/production.js?v=21.15';
+import { jobsOfBuilding, jobOutput, assignedToBuilding, buildingSlots } from '../core/population.js?v=21.15';
+import { fmtNum, fmtRate, fmtRateBody, richText } from '../core/format.js?v=21.15';
+import { playPing, playLaser, playShield } from '../core/sound.js?v=21.15';
 
 const CSS = `
   .pwr-panel { font-family: system-ui, sans-serif; color: #e8eef2; padding: 12px; box-sizing: border-box; }
@@ -370,7 +370,7 @@ export function renderPower(root, ctx) {
         head.querySelector('.p-name').addEventListener('click', () => openDetail(f, openModal));
         card.appendChild(head);
 
-        card.appendChild(el('div', { class: 'p-sub', text: f.desc || '' }));
+        card.appendChild(el('div', { class: 'p-sub', html: richText(f.desc || '') }));
         card.appendChild(el('div', { class: 'p-line', text: '造价 ' + costText(f.baseCost) + '　工作量 ' + fmtNum(f.work) }));
         card.appendChild(el('div', { class: 'p-line', text: '效果 ' + effectText(f) }));
         card.appendChild(el('div', { class: 'p-line', text: '已装 ' + fmtNum(cnt) + ' 座' }));
@@ -422,7 +422,7 @@ export function renderPower(root, ctx) {
   function openDetail(f, openModal) {
     const body =
       '<div class="pwr-panel">' +
-      '<p class="p-sub">' + (f.desc || '') + '</p>' +
+      '<p class="p-sub">' + richText(f.desc || '') + '</p>' +
       '<p class="p-line"><b>类型</b>：' + ({ storage: '储电', solar: '太阳能', wind: '风力', thermal: '火力' })[f.kind] + '（' + f.sizeLabel + '）</p>' +
       '<p class="p-line"><b>造价</b>：' + costText(f.baseCost) + '</p>' +
       '<p class="p-line"><b>工作量</b>：' + fmtNum(f.work) + '</p>' +

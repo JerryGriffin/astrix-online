@@ -1,11 +1,11 @@
 // 开始界面：标题、离线/在线模式、账号选择、各次要入口模态层（Astrix）
-import {  STATE, createAccount, switchAccount, deleteAccount, currentAccount, START_MODES, setStorageMode, getStorageMode  } from '../core/state.js?v=21.14';
-import { fmtNum, fmtTime } from '../core/format.js?v=21.14';
-import { isSoundEnabled, toggleSound } from '../core/sound.js?v=21.14';
+import {  STATE, createAccount, switchAccount, deleteAccount, currentAccount, START_MODES, setStorageMode, getStorageMode  } from '../core/state.js?v=21.15';
+import { fmtNum, fmtTime } from '../core/format.js?v=21.15';
+import { isSoundEnabled, toggleSound } from '../core/sound.js?v=21.15';
 // 版本号与更新日志的唯一来源：任何地方要显示版本都从这里取，改版本只改 js/version.js 一处
-import { VERSION, VERSIONS } from '../version.js?v=21.14';
+import { VERSION, VERSIONS } from '../version.js?v=21.15';
 // v0.2.2：离线 mod 系统
-import { listMods, installMod, setModEnabled, removeMod, modEffects } from '../core/mods.js?v=21.14';
+import { listMods, installMod, setModEnabled, removeMod, modEffects } from '../core/mods.js?v=21.15';
 
 // 创建元素的小工具
 function el(tag, cls, text) {
@@ -81,7 +81,7 @@ export function renderStart(root, ctx) {
     ['更新日志', () => openChangelog(ctx)],
     ['玩法提示', () => openTips(ctx)],
     ['统计数据与成就', () => openStats(ctx)],
-    ['mod 管理', () => openMod(ctx)],
+    ['模组管理', () => openMod(ctx)],
     ['设置', () => openSettings(ctx)],
   ];
   entries.forEach(([label, fn]) => {
@@ -615,7 +615,7 @@ function openStats(ctx) {
 }
 
 // ============================================================================
-// mod 管理（v0.2.2 落地）：JSON 导入 / 启停 / 卸载，仅离线模式生效
+// 模组管理（v0.2.2 落地）：JSON 导入 / 启停 / 卸载，仅离线模式生效
 // ============================================================================
 const MOD_SAMPLE = {
   name: '畅玩加速包',
@@ -654,7 +654,7 @@ function openMod(ctx) {
   const body = document.createElement('div');
 
   body.appendChild(el('p', 'modal-tip',
-    '导入 JSON 格式 mod 文件，为离线游戏调整数值倍率或开局物资。倍率对离线模式的全部存档生效，开局物资只对导入后新建的存档生效。不会上传、不影响在线模式。'));
+    '导入 JSON 格式的模组文件，为离线游戏调整数值倍率或开局物资。倍率对离线模式的全部存档生效，开局物资只对导入后新建的存档生效。不会上传、不影响在线模式。'));
 
   // 当前生效的总效果
   const fx = modEffects();
@@ -690,7 +690,7 @@ function openMod(ctx) {
       const del = el('button', 'btn btn-sm btn-danger', '卸载');
       del.style.cssText = 'min-height:36px;';
       del.addEventListener('click', () => {
-        confirmModal(ctx, '卸载 mod', `确定卸载「${m.name}」吗？（开局资源类效果对已建存档不回滚）`, () => {
+        confirmModal(ctx, '卸载模组', `确定卸载「${m.name}」吗？（开局资源类效果对已建存档不回滚）`, () => {
           removeMod(m.id);
           closeModal();
           openMod(ctx);
@@ -700,17 +700,17 @@ function openMod(ctx) {
       body.appendChild(row);
     }
   } else {
-    body.appendChild(el('p', 'modal-tip muted', '尚未安装任何 mod。'));
+    body.appendChild(el('p', 'modal-tip muted', '尚未安装任何模组。'));
   }
 
   // 导入区
-  const impTitle = el('div', null, '导入新 mod');
+  const impTitle = el('div', null, '导入新模组');
   impTitle.style.cssText = 'font-size:13px;font-weight:bold;color:#7cd7ff;margin:12px 0 6px;';
   body.appendChild(impTitle);
 
   const ta = document.createElement('textarea');
   ta.id = 'mod-json-input';
-  ta.placeholder = '把 mod 的 JSON 内容粘贴到这里，或点击下方「载入示例」参考格式…';
+  ta.placeholder = '把模组的 JSON 内容粘贴到这里，或点击下方「载入示例」参考格式…';
   ta.style.cssText = 'width:100%;height:130px;box-sizing:border-box;background:#0b101c;color:#c8d4e0;border:1px solid #22354c;border-radius:6px;padding:10px;font:12px/1.5 ui-monospace,Consolas,monospace;white-space:pre;word-break:break-all;';
   body.appendChild(ta);
 
@@ -738,7 +738,7 @@ function openMod(ctx) {
     });
     inp.click();
   });
-  const btnInstall = el('button', 'btn btn-primary', '安装 mod');
+  const btnInstall = el('button', 'btn btn-primary', '安装模组');
   btnInstall.style.minHeight = '44px';
   btnInstall.addEventListener('click', () => {
     const r = installMod(ta.value);
@@ -749,9 +749,9 @@ function openMod(ctx) {
   btnRow.append(btnSample, btnFile, btnInstall);
   body.appendChild(btnRow);
 
-  body.appendChild(el('p', 'modal-tip mod-offline-only', '⚠ 只对离线模式生效；在线模式一律忽略 mod 数值。'));
+  body.appendChild(el('p', 'modal-tip mod-offline-only', '⚠ 只对离线模式生效；在线模式一律忽略模组数值。'));
 
-  ctx.openModal({ title: 'mod 管理', body });
+  ctx.openModal({ title: '模组管理', body });
 }
 
 function openSettings(ctx) {

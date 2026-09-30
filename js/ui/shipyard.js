@@ -12,33 +12,33 @@
 //
 // 全部数值计算都在 js/core/shipyard.js，本文件只负责渲染与交互。
 
-import { MATERIALS } from '../data/materials.js?v=21.14';
+import { MATERIALS } from '../data/materials.js?v=21.15';
 import {
   HULLS, ENGINES, WEAPONS, FACILITIES,
   MATERIAL_SLOTS, DEFAULT_MATERIAL,
   isPartUnlocked,
-} from '../data/ship_parts.js?v=21.14';
-import { POWER_FACILITIES, POWER_FACILITY_BY_ID } from '../data/facilities.js?v=21.14';
-import { FUELS } from '../data/fuels.js?v=21.14';
+} from '../data/ship_parts.js?v=21.15';
+import { POWER_FACILITIES, POWER_FACILITY_BY_ID } from '../data/facilities.js?v=21.15';
+import { FUELS } from '../data/fuels.js?v=21.15';
 import {
   emptyBlueprint, evaluateBlueprint, launchShip, tickShip,
   resolvePart, materialMul, safeTempBand, tempStatus, envTempK, equilibriumTemp,
   ensureBlueprints, shipBuildCheck, findBlueprint, blueprintBuildCost,
-} from '../core/shipyard.js?v=21.14';
-import { BUILDING_BY_ID } from '../data/buildings.js?v=21.14';
-import { fmtNum, fmtTime } from '../core/format.js?v=21.14';
+} from '../core/shipyard.js?v=21.15';
+import { BUILDING_BY_ID } from '../data/buildings.js?v=21.15';
+import { fmtNum, fmtTime } from '../core/format.js?v=21.15';
 // v0.0.5：建筑计数已迁到星球实例（inst.buildings），船坞工占用来自人力系统
-import { getPlanetInstance, getBuildingCounts } from '../core/state.js?v=21.14';
-import { jobsOfBuilding, getJobCount, buildingSlots, assignedToBuilding, freeSlots, getIntensity } from '../core/population.js?v=21.14';
+import { getPlanetInstance, getBuildingCounts } from '../core/state.js?v=21.15';
+import { jobsOfBuilding, getJobCount, buildingSlots, assignedToBuilding, freeSlots, getIntensity } from '../core/population.js?v=21.15';
 // v0.1.1（需求 3）：建造按钮改为创建 dock 造船线，走生产线的工位与人力结算
-import { addLine, ensureLines, linesOf, removeLine, lineSlotInfo, freeLaborOf } from '../core/production.js?v=21.14';
+import { addLine, ensureLines, linesOf, removeLine, lineSlotInfo, freeLaborOf } from '../core/production.js?v=21.15';
 // R19-2：造船除装备外按部件扣材料（spendOwned 整笔扣，ownedOf 查库存），不碰 core/state.js
-import { ownedOf, spendOwned } from '../core/state.js?v=21.14';
+import { ownedOf, spendOwned } from '../core/state.js?v=21.15';
 
 const SHIP_BUILDING_ID = 'dock';
 const SHIP_TECH_ID = 't_e3';
 
-import { playPing, playVictory } from '../core/sound.js?v=21.14';
+import { playPing, playVictory } from '../core/sound.js?v=21.15';
 
 function esc(s) {
   return String(s).replace(/[&<>"']/g, (c) => (
@@ -259,10 +259,10 @@ function buildDockLinesSection(account, inst, rerender) {
     card.appendChild(head);
 
     // 动态工程总装龙门架与阶段指示
-    let stageText = '🏗️ 阶段 I：龙骨铺设与耐压骨架焊接';
-    if (prog >= 0.9) stageText = '🚀 阶段 IV：微重力气密检漏与深空首航试注';
-    else if (prog >= 0.6) stageText = '🛡️ 阶段 III：偏转护盾谐振网与火控雷达标定';
-    else if (prog >= 0.25) stageText = '⚡ 阶段 II：次临界动力堆与脉冲引擎总装';
+    let stageText = '🏗️ 阶段一：龙骨铺设与耐压骨架焊接';
+    if (prog >= 0.9) stageText = '🚀 阶段四：微重力气密检漏与深空首航试注';
+    else if (prog >= 0.6) stageText = '🛡️ 阶段三：偏转护盾谐振网与火控雷达标定';
+    else if (prog >= 0.25) stageText = '⚡ 阶段二：次临界动力堆与脉冲引擎总装';
 
     const gantry = el('div', 'bp-gantry-box');
     gantry.style.cssText = 'background:rgba(0,0,0,0.35);border:1px solid #1e293b;border-radius:6px;padding:8px 10px;margin:8px 0;font-size:12px;';

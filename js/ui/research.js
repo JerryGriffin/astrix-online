@@ -9,15 +9,15 @@
 // 「船上设施」已从科技树移到「设施」子分类，科技树里只保留解锁它们的节点。
 //
 // 研究点存放在账号对象上（acc.researchPoints / acc.tech / acc.upgrades）。
-import { TECHS, TECH_BY_ID, BRANCHES, techsByTier, canResearch, missingPrereqs, facilityTechs } from '../data/techs.js?v=21.14';
-import { researchTech, buyUpgrade, currentAccount, getPlanetInstance, RESEARCH_UNIT } from '../core/state.js?v=21.14';
-import { UPGRADES, upgradeCost, upgradeMul, upgradeFactorAt } from '../data/upgrades.js?v=21.14';
-import { BUILDING_BY_ID } from '../data/buildings.js?v=21.14';
-import { FACILITIES, MATERIAL_SLOTS, DEFAULT_MATERIAL, isPartUnlocked } from '../data/ship_parts.js?v=21.14';
-import { materialMul, resolvePart } from '../core/shipyard.js?v=21.14';
-import { fmtNum, fmtTime, fmtRate } from '../core/format.js?v=21.14';
-import { jobsOfBuilding, jobOutput } from '../core/population.js?v=21.14';
-import { playPing, playVictory, playLaser } from '../core/sound.js?v=21.14';
+import { TECHS, TECH_BY_ID, BRANCHES, techsByTier, canResearch, missingPrereqs, facilityTechs } from '../data/techs.js?v=21.15';
+import { researchTech, buyUpgrade, currentAccount, getPlanetInstance, RESEARCH_UNIT } from '../core/state.js?v=21.15';
+import { UPGRADES, upgradeCost, upgradeMul, upgradeFactorAt } from '../data/upgrades.js?v=21.15';
+import { BUILDING_BY_ID } from '../data/buildings.js?v=21.15';
+import { FACILITIES, MATERIAL_SLOTS, DEFAULT_MATERIAL, isPartUnlocked } from '../data/ship_parts.js?v=21.15';
+import { materialMul, resolvePart } from '../core/shipyard.js?v=21.15';
+import { fmtNum, fmtTime, fmtRate, richText } from '../core/format.js?v=21.15';
+import { jobsOfBuilding, jobOutput } from '../core/population.js?v=21.15';
+import { playPing, playVictory, playLaser } from '../core/sound.js?v=21.15';
 
 function esc(s) {
   return String(s).replace(/[&<>"']/g, (c) => (
@@ -401,7 +401,7 @@ function renderFacilitySection(body, ctx, techSet, rerender) {
         + (unlocked ? '' : '<span class="fac-lock">未解锁</span>') + '</div>'
         + `<div class="fac-line2 muted">占地 ${fmtNum(b.footprint)} m³ · 质量 ${fmtNum(b.mass)} t`
         + (extra.length ? ' · ' + extra.join(' · ') : '') + '</div>'
-        + `<div class="fac-line3 muted">${esc(f.desc)}</div>`;
+        + `<div class="fac-line3 muted">${richText(f.desc)}</div>`;
 
       if (f.materialSlot) {
         const mats = (MATERIAL_SLOTS[f.materialSlot] || []).join(' / ');
@@ -423,7 +423,7 @@ function renderFacilitySection(body, ctx, techSet, rerender) {
 function openTechDetail(ctx, t, st, rerender) {
   const body = document.createElement('div');
   const lines = [];
-  lines.push('<p class="res-desc">' + esc(t.desc) + '</p>');
+  lines.push('<p class="res-desc">' + richText(t.desc) + '</p>');
   lines.push('<div class="res-kv"><span>编号</span><b>' + esc(t.code) + '</b></div>');
   lines.push('<div class="res-kv"><span>研究点花费</span><b>' + fmtNum(t.cost) + '</b></div>');
   lines.push('<div class="res-kv"><span>前置科技</span><b>'
@@ -485,7 +485,7 @@ function openUpgradeDetail(ctx, u, lv, cost, maxed, rerender) {
   const curMul = upgradeFactorAt(u, lv);
   const nextMul = upgradeFactorAt(u, lv + 1);
   body.innerHTML =
-    '<p class="res-desc">' + esc(u.desc) + '</p>'
+    '<p class="res-desc">' + richText(u.desc) + '</p>'
     + '<div class="res-kv"><span>当前等级</span><b>Lv ' + lv + ' / ' + u.maxLevel + '</b></div>'
     + '<div class="res-kv"><span>当前效果</span><b>' + (lv === 0 ? '未生效' : fmtEffPct(curMul)) + '</b></div>'
     + '<div class="res-kv"><span>升一级后</span><b>' + fmtEffPct(nextMul) + '</b></div>'
@@ -528,7 +528,7 @@ function openUpgradeDetail(ctx, u, lv, cost, maxed, rerender) {
 function openFacilityDetail(ctx, f, unlocked) {
   const body = document.createElement('div');
   const lines = [];
-  lines.push('<p class="res-desc">' + esc(f.desc) + '</p>');
+  lines.push('<p class="res-desc">' + richText(f.desc) + '</p>');
   lines.push('<div class="res-kv"><span>型号</span><b>' + esc(f.markLabel) + '</b></div>');
   lines.push('<div class="res-kv"><span>类别</span><b>船上设施</b></div>');
   lines.push('<div class="res-kv"><span>占地</span><b>' + fmtNum(f.footprint) + ' m³</b></div>');

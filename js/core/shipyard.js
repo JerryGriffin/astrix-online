@@ -10,15 +10,15 @@
 // 全部公式集中在这里，方便策划调参
 // ============================================================================
 
-import { MATERIALS } from '../data/materials.js?v=21.14';
+import { MATERIALS } from '../data/materials.js?v=21.15';
 import {
   PART_BY_ID, HULLS, ENGINES, WEAPONS, FACILITIES, MARKS,
   MATERIAL_SLOTS, DEFAULT_MATERIAL, PART_CATEGORIES,
   craftableParts, craftWorkOf, isPartUnlocked,
-} from '../data/ship_parts.js?v=21.14';
-import { POWER_FACILITY_BY_ID } from '../data/facilities.js?v=21.14';
-import { FUEL_BY_NAME } from '../data/fuels.js?v=21.14';
-import { PLANETS } from '../data/planets.js?v=21.14';
+} from '../data/ship_parts.js?v=21.15';
+import { POWER_FACILITY_BY_ID } from '../data/facilities.js?v=21.15';
+import { FUEL_BY_NAME } from '../data/fuels.js?v=21.15';
+import { PLANETS } from '../data/planets.js?v=21.15';
 
 // 自建材料中文名索引（materials.js 只导出 MATERIALS 数组）
 const MAT_BY_NAME = Object.fromEntries(MATERIALS.map((m) => [m.nameCn, m]));
@@ -372,7 +372,7 @@ export function evaluateBlueprint(bp, ctx = {}) {
   const massT = totalMass(bp);
   if (massT <= 0) errors.push('总质量为 0');
   if (engines.length && agg.thrust / Math.max(1, massT) < 2) {
-    warnings.push('推重比偏低（< 2 kN/t），航速会很慢');
+    warnings.push('推重比偏低（每吨质量推力不足 2 千牛），航速会很慢');
   }
   if (agg.tempBandBonus < 8) warnings.push('乘员仓偏少，温度安全区间很窄');
   if (agg.damage === 0) warnings.push('无武装');
