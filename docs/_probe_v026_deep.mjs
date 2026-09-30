@@ -173,7 +173,8 @@ ok(HOI_BY_ID.usa.ic > HOI_BY_ID.ger.ic * 2, '美国工业最强（' + HOI_BY_ID.
 ok(HOI_BY_ID.eng.ic > HOI_BY_ID.fra.ic && HOI_BY_ID.fra.ic > HOI_BY_ID.ita.ic, '西方工业梯队合理（英 > 法 > 意）');
 const elite = ger5.armies.filter((a) => a.elite);
 ok(elite.length >= 2 && elite[0].nameCn.indexOf(ELITE_DIVISIONS.ger[0]) >= 0, '德国王牌师存在（' + elite.map((a) => a.nameCn).join(' / ') + '）');
-const normalSlot0 = ger5.armies.filter((a) => !a.elite)[0];
+const bp0 = (ger5.hoiArmyBps || [])[0];
+const normalSlot0 = ger5.armies.find((a) => !a.elite && a.bpNameCn === bp0) || ger5.armies[3];
 ok(elite[0].power > normalSlot0.power * 1.4, '王牌师战力显著高于同编制普通师（' + elite[0].power + ' vs ' + normalSlot0.power + '）');
 const usa5 = createAccount('华盛顿5', 'hoi1936', { countryId: 'usa' });
 ok(usa5.armies[0].elite && usa5.armies[0].nameCn.indexOf('大红一师') >= 0, '美国王牌师（' + usa5.armies[0].nameCn + '）');
@@ -249,8 +250,10 @@ ok(gFix.ships.every((sh) => sh.mark != null && sh.parts && sh.capacity != null),
 ok((BPL9 || []).slice(0, 3).every((b) => /掷弹兵师|装甲师|游击/.test(b.nameCn)), '军队蓝图已历史化（' + (BPL9 || []).slice(0, 3).map((b) => b.nameCn).join(' / ') + '）');
 ok((BPL9 || [])[0].men === 500, '蓝图兵员 = 500');
 const p9 = gFix.armies.map((a) => a.power);
-const ne = gFix.armies.filter((a) => !a.elite);
-ok(ne.length >= 3 && ne[2].power > ne[0].power * 1.4, '装甲/突击编制战力大幅增强（非王牌：' + ne.slice(0, 3).map((a) => a.power).join(' / ') + '）');
+const bpL = gFix.hoiArmyBps || [];
+const infPower = (gFix.armies.find((a) => !a.elite && a.bpNameCn === bpL[0]) || {}).power || 0;
+const armPower = (gFix.armies.find((a) => !a.elite && a.bpNameCn === bpL[2]) || {}).power || 0;
+ok(armPower > infPower * 1.4, '装甲/突击编制战力大幅增强（步兵 ' + infPower + ' → 装甲 ' + armPower + '）');
 const mob9 = MM9.find((m) => m.id === 'mobilize');
 ok(mob9.organicMul === 8 && Math.abs(mob9.happinessDelta + 0.0015) < 1e-9, '战时总动员：有机 ×8、幸福度 -0.0015');
 
