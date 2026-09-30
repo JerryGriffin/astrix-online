@@ -12,7 +12,7 @@
 export const HOI_NATIONS = [
   {
     id: 'ger', nameCn: '德意志国', nameEn: 'Germany', capital: '柏林', flag: '⚫',
-    popM: 69.3, ic: 48, divisions: 30, navy: 24, airforce: 25,
+    popM: 69.3, ic: 60, divisions: 30, navy: 24, airforce: 25,
     sell: { '钢': [2600, 22], '塑料': [900, 40], '陶瓷': [700, 26] },
     buys: { '铁': 20, '铜': 34, '铝': 30, '橡胶': 46, '有机质': 6 },
     colony: { name: '非洲属地', typeId: '荒漠行星' },
@@ -20,7 +20,7 @@ export const HOI_NATIONS = [
   },
   {
     id: 'fra', nameCn: '法兰西', nameEn: 'France', capital: '巴黎', flag: '🔵',
-    popM: 41.9, ic: 39, divisions: 32, navy: 22, airforce: 14,
+    popM: 41.9, ic: 50, divisions: 32, navy: 22, airforce: 14,
     sell: { '钢': [2100, 24], '玻璃': [800, 30], '橡胶': [420, 44] },
     buys: { '钢': 26, '塑料': 38, '有机质': 7, '石英': 16 },
     colony: { name: '北非属地', typeId: '荒漠行星' },
@@ -28,7 +28,7 @@ export const HOI_NATIONS = [
   },
   {
     id: 'eng', nameCn: '不列颠', nameEn: 'United Kingdom', capital: '伦敦', flag: '🔴',
-    popM: 47.5, ic: 46, divisions: 16, navy: 66, airforce: 24,
+    popM: 47.5, ic: 58, divisions: 16, navy: 66, airforce: 24,
     sell: { '橡胶': [900, 38], '陶瓷': [650, 28], '有机质': [1800, 9] },
     buys: { '钢': 26, '铝': 32, '石英': 18, '钛合金': 380 },
     colony: { name: '南亚属地', typeId: '丛林行星' },
@@ -52,7 +52,7 @@ export const HOI_NATIONS = [
   },
   {
     id: 'chn', nameCn: '中国', nameEn: 'China', capital: '南京', flag: '🟡',
-    popM: 500.0, ic: 21, divisions: 120, navy: 4, airforce: 6,
+    popM: 500.0, ic: 10, divisions: 120, navy: 4, airforce: 6,
     sell: { '有机质': [4200, 4], '陶瓷': [700, 18], '石头': [2500, 3] },
     buys: { '钢': 30, '铁': 24, '铝': 34, '塑料': 44 },
     colony: { name: '西南大后方', typeId: '丛林行星' },
@@ -68,7 +68,7 @@ export const HOI_NATIONS = [
   },
   {
     id: 'usa', nameCn: '美利坚', nameEn: 'United States', capital: '华盛顿', flag: '🔷',
-    popM: 128.0, ic: 130, divisions: 18, navy: 60, airforce: 28,
+    popM: 128.0, ic: 165, divisions: 18, navy: 60, airforce: 28,
     sell: { '钢': [5200, 18], '塑料': [1800, 30], '玻璃': [1200, 22], '铝': [1400, 22] },
     buys: { '橡胶': 42, '陶瓷': 26, '石墨烯': 900, '钛合金': 340 },
     colony: { name: '太平洋属地', typeId: '丛林行星' },
@@ -148,7 +148,7 @@ export const BLOC_NAME = {
 //   foci      国策（HOI4 风格三支六策）
 export const HOI_DEEP = {
   ger: {
-    armyName: '装甲掷弹兵师', atkMul: 1.35, defMul: 0.95, bloc: 'axis',
+    armyName: '装甲掷弹兵师', atkMul: 1.55, defMul: 1.15, bloc: 'axis',
     fleets: [{ nameCn: '公海舰队', share: 1 }],
     lines: [
       { buildingId: 'refinery', recipeId: 'r_refine_steel', workers: 12 },
@@ -186,7 +186,7 @@ export const HOI_DEEP = {
     ],
   },
   eng: {
-    armyName: '远征军步兵师', atkMul: 0.95, defMul: 1.25, bloc: 'allies',
+    armyName: '远征军步兵师', atkMul: 1.10, defMul: 1.40, bloc: 'allies',
     fleets: [{ nameCn: '本土舰队', share: 0.6 }, { nameCn: '地中海舰队', share: 0.4 }],
     lines: [
       { buildingId: 'refinery', recipeId: 'r_refine_steel', workers: 10 },
@@ -205,7 +205,7 @@ export const HOI_DEEP = {
     ],
   },
   fra: {
-    armyName: '要塞步兵师', atkMul: 1.0, defMul: 1.3, bloc: 'allies',
+    armyName: '要塞步兵师', atkMul: 1.05, defMul: 1.45, bloc: 'allies',
     fleets: [{ nameCn: '地中海舰队（法）', share: 0.6 }, { nameCn: '大西洋舰队（法）', share: 0.4 }],
     lines: [
       { buildingId: 'refinery', recipeId: 'r_refine_steel', workers: 9 },
@@ -223,7 +223,7 @@ export const HOI_DEEP = {
     ],
   },
   sov: {
-    armyName: '步兵军', atkMul: 1.1, defMul: 1.15, bloc: 'comintern',
+    armyName: '步兵军', atkMul: 1.18, defMul: 1.22, bloc: 'comintern',
     fleets: [{ nameCn: '波罗的海舰队', share: 0.6 }, { nameCn: '黑海舰队', share: 0.4 }],
     lines: [
       { buildingId: 'refinery', recipeId: 'r_refine_steel', workers: 16 },
@@ -242,7 +242,7 @@ export const HOI_DEEP = {
     ],
   },
   jap: {
-    armyName: '海军陆战师', atkMul: 1.3, defMul: 1.0, bloc: 'neutral',
+    armyName: '海军陆战师', atkMul: 1.38, defMul: 1.02, bloc: 'neutral',
     fleets: [{ nameCn: '联合舰队', share: 1 }],
     lines: [
       { buildingId: 'blast_furnace', recipeId: 'r_bf_aluminum', workers: 10 },
@@ -260,7 +260,7 @@ export const HOI_DEEP = {
     ],
   },
   usa: {
-    armyName: '机械化步兵师', atkMul: 1.15, defMul: 1.1, bloc: 'neutral',
+    armyName: '机械化步兵师', atkMul: 1.45, defMul: 1.25, bloc: 'neutral',
     fleets: [{ nameCn: '太平洋舰队', share: 0.6 }, { nameCn: '大西洋舰队', share: 0.4 }],
     lines: [
       { buildingId: 'refinery', recipeId: 'r_refine_steel', workers: 20 },
@@ -279,7 +279,7 @@ export const HOI_DEEP = {
     ],
   },
   chn: {
-    armyName: '步兵师（国民革命军）', atkMul: 0.85, defMul: 1.2, bloc: 'neutral',
+    armyName: '步兵师（国民革命军）', atkMul: 0.62, defMul: 1.05, bloc: 'neutral',
     fleets: [{ nameCn: '长江舰队', share: 1 }],
     lines: [
       { buildingId: 'blast_furnace', recipeId: 'r_bf_iron', workers: 8 },
@@ -426,3 +426,20 @@ export const ARMY_BP_NAME = {
   pol: '波兰步兵师（1936 编制）', spa: '山地旅（1936 编制）',
   tur: '安纳托利亚军（1936 编制）', bra: '远征步兵师（1936 编制）',
 };
+
+// v0.2.6 rev5：各国王牌师（史实名，开局即建制，战力显著更强）
+export const ELITE_DIVISIONS = {
+  ger: ['大德意志师', '第一装甲师'],
+  ita: ['圣马可海军陆战团', '利托里奥装甲师'],
+  eng: ['皇家卫队步兵师', '第七装甲师（沙漠之鼠）'],
+  fra: ['第一摩洛哥师', '第三轻机械化师'],
+  sov: ['近卫第一师', '近卫坦克第五军'],
+  jap: ['近卫师团', '第五师团（广岛）'],
+  usa: ['第一步兵师（大红一师）', '第一装甲师（老铁壳）'],
+  chn: ['第八十八师', '第三十六师'],
+  pol: ['第一军团', '波德哈莱旅'],
+  spa: ['外籍军团', '第一纳瓦拉旅'],
+  tur: ['第一集团军', '海峡卫戍军'],
+  bra: ['第一步兵师', '远征师（抽烟斗的眼镜蛇）'],
+};
+export const ELITE_MUL = 1.6;      // 王牌师战力/属性倍率

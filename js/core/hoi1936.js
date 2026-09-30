@@ -10,15 +10,19 @@
 //   * HOI4 风格国策（三支六策，按天推进）               → focus 系列
 //   * 海域（制海权争夺 + 海战）                          → sea 系列
 import { HOI_NATIONS, HOI_BY_ID, HOI_DEEP, HOI_SEAS, ARMY_MEN, popOf, BLOC_NAME, HOI_SCENARIO_ID,
-  workforceOf, ARMY_POWER_PER_DIV, NAVY_MUL, GEAR_PARTS, SHIP_NAMES, ARMY_BP_NAME } from '../data/hoi1936.js?v=26.4';
-import { BUILDING_BY_ID } from '../data/buildings.js?v=26.4';
+  workforceOf, ARMY_POWER_PER_DIV, NAVY_MUL, GEAR_PARTS, SHIP_NAMES, ARMY_BP_NAME } from '../data/hoi1936.js?v=26.5';
+import { BUILDING_BY_ID } from '../data/buildings.js?v=26.5';
+import { JOBS_BY_BUILDING, assignWorkers, jobCapacity, getAvailable } from './population.js?v=26.5';
+import { ELITE_DIVISIONS, ELITE_MUL } from '../data/hoi1936.js?v=26.5';
 
 // 依赖注入（避免与 state.js / production.js 形成循环导入）
 let _getInst = null;
 let _addLine = null;
+let _lineWorkers = null;
 export function setHoiDeps(deps) {
   if (deps && typeof deps.getInst === 'function') _getInst = deps.getInst;
   if (deps && typeof deps.addLine === 'function') _addLine = deps.addLine;
+  if (deps && typeof deps.lineWorkers === 'function') _lineWorkers = deps.lineWorkers;
 }
 
 // ============================================================================
@@ -209,6 +213,19 @@ export function setupArmies(acc, nation) {
       },
       power: Math.round(perPower * ((deep.atkMul || 1) + (deep.defMul || 1)) / 2),
     });
+  }
+  // v0.2.6 rev5：王牌师（史实名，战力与属性显著更强）
+  const elites = ELITE_DIVISIONS[n.id] || [];
+  for (let i = 0; i < elites.length && i < acc.armies.length; i++) {
+    const a = acc.armies[i];
+    a.nameCn = elites[i] + '（王牌师）';
+    a.elite = true;
+    a.power = Math.round(a.power * ELITE_MUL);
+    a.stats = {
+      atk: Math.round(a.stats.atk * ELITE_MUL),
+      def: Math.round(a.stats.def * ELITE_MUL),
+      speed: a.stats.speed,
+    };
   }
   // v0.2.6 rev3：师蓝图历史化（如德国「装甲师（1936 编制）」）
   if (ARMY_BP_NAME[n.id] && Array.isArray(acc.blueprints) && acc.blueprints.length) {
@@ -431,6 +448,49 @@ export function tickDiploAI(acc, dtSec) {
     return { type: 'ally', nation: pick.nameCn };
   }
   return null;
+}
+
+/**
+ * 岗位分配（v0.2.6 rev5）：让**每座建筑都有人工作**
+ *   · 可用人力 = 总可用 − 生产线工人（产线工人已占用的不计入岗位）
+ *   · 优先顺序：农田 / 各层矿井 / 电解池 / 科研所 / 采集与加工，最后填其余建筑
+ *   · 每职业按「建筑数 × 岗位数」上限填充，力尽为止
+ */
+const STAFF_PRIORITY = [
+  'farm', 'mine_shallow', 'mine_deep', 'mine_core', 'gas_collector', 'electrolyzer',
+  'lab', 'refinery', 'chem_lab', 'blast_furnace', 'furnace', 'fabricator',
+  'thermal_plant', 'clean_plant', 'workshop', 'storage_plant', 'dock', 'repair_bay',
+];
+export function staffBuildings(pop, inst) {
+  if (!pop || !inst) return { jobs: 0, staffed: [] };
+  const counts = inst.buildings || {};
+  let avail = 0;
+  try { avail = getAvailable(pop); } catch (e) { avail = 0; }
+  const lineWorkers = _lineWorkers ? (Number(_lineWorkers(inst)) || 0) : 0;
+  avail = Math.max(0, avail - lineWorkers);
+  const order = STAFF_PRIORITY.concat(Object.keys(counts).filter((k) => STAFF_PRIORITY.indexOf(k) < 0));
+  const staffed = [];
+  let total = 0;
+  for (const bid of order) {
+    if (avail <= 0) break;
+    const cnt = Number(counts[bid]) || 0;
+    if (!cnt) continue;
+    for (const j of (JOBS_BY_BUILDING[bid] || [])) {
+      if (avail <= 0) break;
+      let cap = 0;
+      try { cap = jobCapacity(pop, j.id, counts); } catch (e) { cap = 0; }
+      if (cap <= 0) continue;
+      const already = pop.assignments[j.id] ? (pop.assignments[j.id].count || 0) : 0;
+      const room = Math.max(0, cap - already);
+      if (room <= 0) continue;
+      const take = Math.min(room, avail);
+      try { assignWorkers(pop, j.id, already + take, counts); } catch (e) { /* 忽略 */ }
+      avail -= take;
+      total += take;
+      staffed.push(j.id + ':' + take);
+    }
+  }
+  return { jobs: total, staffed: staffed };
 }
 
 export function blocNameOf(acc) {

@@ -10,8 +10,8 @@ function ok(cond, label) {
 }
 function section(t) { console.log('\n== ' + t + ' =='); }
 
-const PG = await import('../js/core/planetgen.js?v=26.4');
-const PLANETS = (await import('../js/data/planets.js?v=26.4')).PLANETS;
+const PG = await import('../js/core/planetgen.js?v=26.5');
+const PLANETS = (await import('../js/data/planets.js?v=26.5')).PLANETS;
 
 // ---------------------------------------------------------------------------
 section('一、商店星拦截（需求 1）');
