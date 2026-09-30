@@ -1,9 +1,9 @@
 // v0.2.6 深化探针：人口比例 / 500 人编制 / 史实舰队 / 侧重生产线 / 阵营 / 国策 / 海域
-import { STATE, createAccount, getPlanetInstance } from '../js/core/state.js?v=26.8';
-import { HOI_NATIONS, HOI_BY_ID, HOI_DEEP, popOf, GER_POP_BASE, ARMY_MEN, HOI_SEAS } from '../js/data/hoi1936.js?v=26.8';
-import { scenarioDateOf, ensureFocus, startFocus, tickFocus, focusOptionsOf, contestSea, ensureSeas, enemySeaPressure, blocNameOf, deepOf } from '../js/core/hoi1936.js?v=26.8';
-import { consumptionPerSec } from '../js/core/population.js?v=26.8';
-import { listFleets } from '../js/core/fleet.js?v=26.8';
+import { STATE, createAccount, getPlanetInstance } from '../js/core/state.js?v=26.9';
+import { HOI_NATIONS, HOI_BY_ID, HOI_DEEP, popOf, GER_POP_BASE, ARMY_MEN, HOI_SEAS } from '../js/data/hoi1936.js?v=26.9';
+import { scenarioDateOf, ensureFocus, startFocus, tickFocus, focusOptionsOf, contestSea, ensureSeas, enemySeaPressure, blocNameOf, deepOf } from '../js/core/hoi1936.js?v=26.9';
+import { consumptionPerSec } from '../js/core/population.js?v=26.9';
+import { listFleets } from '../js/core/fleet.js?v=26.9';
 
 let pass = 0, fail = 0;
 function ok(cond, msg) { if (cond) { pass++; console.log('  ✓ ' + msg); } else { fail++; console.log('  ✗ ' + msg); } }
@@ -25,7 +25,7 @@ const cps = consumptionPerSec(gInst.pop);
 ok(cps.organic > 0 && cps.organic < 10, '80000 人每秒有机质消耗合理（' + cps.organic.toFixed(2) + '/s）');
 ok(ger.armies.length > 0 && ger.armies.every((a) => a.men === ARMY_MEN), '每支军队 ' + ARMY_MEN + ' 人');
 const gerNormal = ger.armies.find((x) => !x.elite) || ger.armies[0];
-ok(gerNormal.nameCn.indexOf('装甲掷弹兵师') >= 0, '德国编制名 = 装甲掷弹兵师（实际 ' + gerNormal.nameCn + '）');
+ok(ger.armies.some((x) => x.nameCn.indexOf('装甲掷弹兵师') >= 0), '德国编制含装甲掷弹兵师（三类蓝图轮转）');
 ok(gerNormal.stats.atk > gerNormal.stats.def, '德国编制偏攻击（atk ' + gerNormal.stats.atk + ' > def ' + gerNormal.stats.def + '）');
 ok(ger.tech.includes('t_m3'), '德国军事科技已达 M3');
 
@@ -81,7 +81,7 @@ ok(enemySeaPressure(ger) === 0, '未交战 → 无敌方海上压力');
 const seaR = contestSea(ger, 'baltic', 900);
 ok(seaR.ok && seaR.control > 0.5, '无敌人时巡航提升制海权（' + Math.round(seaR.control * 100) + '%）');
 // 与海上强国交战后再测：敌方海上压力 > 0，弱小舰队会丢制海权
-const W = await import('../js/core/war.js?v=26.8');
+const W = await import('../js/core/war.js?v=26.9');
 W.declareWar(ger, { id: 'hoi_eng', nameCn: '伦敦', kind: 'npc' });
 ok(enemySeaPressure(ger) > 0, '与不列颠交战后敌方海上压力 > 0（' + Math.round(enemySeaPressure(ger)) + '）');
 const before = seas.find((x) => x.id === 'atlantic').control;
@@ -98,10 +98,10 @@ ok(missing.length === 0, '12 国均有编制/舰队/生产线/六策/阵营' + (
 
 
 // ---- H. rev3：生产线工人 / 建筑群 / 历史师数 / 史实蓝图 / 国策分支 / 外交 AI / 战时总动员 ----
-import { workforceOf, SHIP_NAMES, ARMY_BP_NAME } from '../js/data/hoi1936.js?v=26.8';
-import { tickDiploAI } from '../js/core/hoi1936.js?v=26.8';
-import { MANAGE_MODES, tickPopulation } from '../js/core/population.js?v=26.8';
-import { resolveBattle } from '../js/core/army.js?v=26.8';
+import { workforceOf, SHIP_NAMES, ARMY_BP_NAME } from '../js/data/hoi1936.js?v=26.9';
+import { tickDiploAI } from '../js/core/hoi1936.js?v=26.9';
+import { MANAGE_MODES, tickPopulation } from '../js/core/population.js?v=26.9';
+import { resolveBattle } from '../js/core/army.js?v=26.9';
 
 const ger2 = createAccount('柏林2', 'hoi1936', { countryId: 'ger' });
 const g2 = getPlanetInstance(ger2.homePlanetCode);
@@ -159,7 +159,7 @@ ok(typeof withRes.log === 'string' && withRes.log.indexOf('预备队') >= 0, '�
 
 
 // ---- I. rev5：全建筑有人工作 / 工业修正 / 王牌师 ----
-import { ELITE_DIVISIONS, ELITE_MUL } from '../js/data/hoi1936.js?v=26.8';
+import { ELITE_DIVISIONS, ELITE_MUL } from '../js/data/hoi1936.js?v=26.9';
 const ger5 = createAccount('柏林5', 'hoi1936', { countryId: 'ger' });
 const g5 = getPlanetInstance(ger5.homePlanetCode);
 ok((ger5.hoiStaffJobs || 0) > 20000, '岗位工人已分配（' + ger5.hoiStaffJobs + ' 人：农田/矿井/科研/加工等）');
@@ -180,8 +180,8 @@ ok(usa5.armies.some((a) => a.stats.atk > ger5.armies.find((x) => !x.elite).stats
 
 
 // ---- J. rev7：旧存档自愈（庇护补齐） ----
-import { repairScenarioEstates } from '../js/core/hoi1936.js?v=26.8';
-import { tickPopulation as tickPop2 } from '../js/core/population.js?v=26.8';
+import { repairScenarioEstates } from '../js/core/hoi1936.js?v=26.9';
+import { tickPopulation as tickPop2 } from '../js/core/population.js?v=26.9';
 const oldAcc = createAccount('旧档自愈', 'hoi1936', { countryId: 'sov' });
 const oldCol = getPlanetInstance(oldAcc.colonyCode);
 oldCol.buildings.house = 4;          // 模拟 rev6 前的老存档
@@ -193,6 +193,33 @@ ok(oldCol.pop.happiness >= 0.7, '幸福度已回到恢复起点（' + oldCol.pop
 const sup2 = { oxygen: 1e9, organic: 1e9, water: 1e9 };
 for (let i = 0; i < 300; i++) tickPop2(oldCol.pop, 1, sup2, { shelter: 1, shelterCounts: oldCol.buildings, manageMode: oldCol.manageMode });
 ok(oldCol.pop.happiness > 0.85, '300 秒后幸福度回到 0.85+（' + oldCol.pop.happiness.toFixed(3) + '）—— 不再不受控下降');
+
+
+// ---- K. rev9：真战舰 / 多军队蓝图 / 战争推进 / 补员 ----
+import { tickWarsHoi4, reinforceArmy } from '../js/core/hoi1936.js?v=26.9';
+import { ARMY_BP_LINE } from '../js/data/hoi1936.js?v=26.9';
+const g9 = createAccount('柏林9', 'hoi1936', { countryId: 'ger' });
+ok(g9.ships.every((sh) => sh.kind === 'warship'), '仓库船全是战舰（非探索船/运输船）');
+const cls9 = g9.ships.map((sh) => sh.shipClass);
+ok(cls9.some((c) => /战列舰|航空母舰/.test(c || '')), '含战列舰/航母等主力舰（' + cls9.slice(0, 3).join(' / ') + '）');
+ok(cls9.some((c) => /驱逐舰/.test(c || '')) && cls9.some((c) => /潜艇/.test(c || '')), '同时也编有驱逐舰与潜艇');
+ok((g9.hoiArmyBps || []).length >= 3, '每国 ≥3 种军队蓝图（' + (g9.hoiArmyBps || []).join(' / ') + '）');
+ok((ARMY_BP_LINE.ger || []).length === 3 && (ARMY_BP_LINE.chn || []).length === 3, '12 国均有三类兵种蓝图');
+// 战争推进（HOI4 式）
+const W9 = await import('../js/core/war.js?v=26.9');
+W9.declareWar(g9, { id: 'hoi_pol', nameCn: '华沙', kind: 'npc' });
+for (let i = 0; i < 30; i++) tickWarsHoi4(g9, 30);
+const w9 = W9.warWith(g9, 'hoi_pol');
+ok(w9 && Number(w9.progress) > 0, '战争推进条推进中（' + Math.round(w9 ? w9.progress : 0) + '/100）');
+// 补员：兵力缺口 + 补员消耗人力装备
+const g9inst = getPlanetInstance(g9.homePlanetCode);
+const a9 = g9.armies[5];
+a9.men = 100;
+const gearBefore = Object.values(g9inst.equipment || {}).reduce((s2, e) => s2 + (Number(e.count) || 0), 0);
+const r9 = reinforceArmy(g9, g9inst, a9.id, 1);
+ok(r9.ok && r9.men > 100, '补员生效（100 → ' + r9.men + '，需时间/人力/装备）');
+ok(r9.gearUsed > 0, '补员消耗装备（' + r9.gearUsed + ' 件）');
+ok(a9.power < 400, '兵力不足时战力按比例下降（' + a9.power + '）');
 
 console.log('');
 console.log('通过 ' + pass + ' 项，失败 ' + fail + ' 项');

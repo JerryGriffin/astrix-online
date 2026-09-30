@@ -1,7 +1,7 @@
 // v0.2.6 探针：联盟战争（持续/分值/迫降条约/上限）+ 1936 剧本开局
-import { declareWar, activeWarsOf, warWith, addWarScore, canForceSurrender, draftTreaty, endWar, surrenderWar, WAR_FORCE_SURRENDER_SCORE } from '../js/core/war.js?v=26.8';
-import { STATE, createAccount, getPlanetInstance } from '../js/core/state.js?v=26.8';
-import { HOI_NATIONS, HOI_BY_ID, popOf } from '../js/data/hoi1936.js?v=26.8';
+import { declareWar, activeWarsOf, warWith, addWarScore, canForceSurrender, draftTreaty, endWar, surrenderWar, WAR_FORCE_SURRENDER_SCORE } from '../js/core/war.js?v=26.9';
+import { STATE, createAccount, getPlanetInstance } from '../js/core/state.js?v=26.9';
+import { HOI_NATIONS, HOI_BY_ID, popOf } from '../js/data/hoi1936.js?v=26.9';
 
 let pass = 0, fail = 0;
 function ok(cond, msg) { if (cond) { pass++; console.log('  ✓ ' + msg); } else { fail++; console.log('  ✗ ' + msg); } }

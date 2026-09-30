@@ -10,19 +10,20 @@
 //   * 每支军队人数在 100 人上下（由框架数决定），列内展示。
 // 本页由 planet.js 的 showPanel 动态接入，异常只影响本 tab。
 
+import { reinforceArmy } from '../core/hoi1936.js?v=26.9';
 import {
   ARMY_BLUEPRINTS, ARMY_PART_BY_ID, ARMY_SLOT_BY_CAT, ARMY_PART_COST,
   armyCapOf, armyBpPartNeeds, armyBpMaterialNeeds,
-} from '../data/army_parts.js?v=26.8';
+} from '../data/army_parts.js?v=26.9';
 import {
   armyStatsOfBp, armyPowerOf, armyPowerOfInstance, armyBuildCheck, listArmies, disbandArmy,
   getArmyBp, armyEffStats, armyPartMaterialOptions, trainArmy, cancelTraining, ARMY_LABOR_PER_BARRACKS,
   attachShipToArmy, detachShipFromArmy, shipEligibleForArmy, shipArmyOf, ARMY_SHIP_TECH,
-} from '../core/army.js?v=26.8';
-import { addLine, removeLine } from '../core/production.js?v=26.8';
-import { fmtNum, fmtTime } from '../core/format.js?v=26.8';
-import { currentAccount, getBuildingCounts } from '../core/state.js?v=26.8';
-import { TECH_BY_ID } from '../data/techs.js?v=26.8';
+} from '../core/army.js?v=26.9';
+import { addLine, removeLine } from '../core/production.js?v=26.9';
+import { fmtNum, fmtTime } from '../core/format.js?v=26.9';
+import { currentAccount, getBuildingCounts } from '../core/state.js?v=26.9';
+import { TECH_BY_ID } from '../data/techs.js?v=26.9';
 
 const ARMY_TECH = 't_m1';
 const ARMY_CATS = ['frame', 'mobility', 'weapon', 'armor', 'support'];
@@ -426,6 +427,19 @@ function buildArmyRow(a, root, ctx, trainingCount) {
     row.appendChild(trainBtn);
   }
 
+  // v0.2.6 rev9：补员（需时间 / 人力 / 装备）
+  const menNow = Number(a.men) || 0;
+  if (menNow > 0 && menNow < 500) {
+    const reBtn = el('button', 'btn btn-sm', '补员 ' + Math.round(menNow) + '/500');
+    reBtn.addEventListener('click', () => {
+      const inst = getPlanetInstance(ctx.planetCode || acc.homePlanetCode);
+      const r = reinforceArmy(acc, inst, a.id, 1);
+      if (!r.ok) { alert(r.reason); return; }
+      alert('本日补充 ' + r.added + ' 人（消耗装备 ' + r.gearUsed + ' 件），当前兵力 ' + r.men + '/500');
+      renderArmyPage(root, ctx);
+    });
+    row.appendChild(reBtn);
+  }
   const disb = el('button', 'btn btn-sm btn-danger', '解散');
   disb.addEventListener('click', () => {
     disbandArmy(acc, a.id);

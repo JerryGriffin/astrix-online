@@ -2,9 +2,9 @@
 //
 // 环境坑：Node 里没有 localStorage，state.js 默认 adapter 的 get 恒 null、set 静默失败，
 //   会让「持久化 + 离线结算」整条链空转（看起来什么都不推进）。必须先注入内存 adapter。
-import * as S from '../js/core/state.js?v=26.8';
-import * as POP from '../js/core/population.js?v=26.8';
-import * as P from '../js/core/production.js?v=26.8';
+import * as S from '../js/core/state.js?v=26.9';
+import * as POP from '../js/core/population.js?v=26.9';
+import * as P from '../js/core/production.js?v=26.9';
 
 const mem = new Map();
 S.setAdapter({

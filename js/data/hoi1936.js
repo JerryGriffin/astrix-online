@@ -381,7 +381,7 @@ export const HOI_SEAS = [
 // v0.2.6 rev3：生产线规模 / 陆军师规模 / 海军传统
 // ============================================================================
 // 生产线工人总数 = 工业 × 415（德国 48 → 19920 ≈ 20k，设计者给定基准）
-export const WORKFORCE_PER_IC = 415;
+export const WORKFORCE_PER_IC = 520;   // v0.2.6 rev9：生产类人力提高（德国 60×520 = 31,200）
 // 每师基础战力：师数即历史师数（德国 30 个师就是 30 支）
 export const ARMY_POWER_PER_DIV = 52;
 // 海军传统加成（同吨位下战力差异：英/日/美 海军强国 > 德法意 > 苏/中/南美）
@@ -504,3 +504,34 @@ export const GER_PUPPETS = {
   slovakia: { nameCn: '斯洛伐克领地', popM: 2.6, ic: 3, desc: '1939 年独立的斯洛伐克附庸国（本土以南）。' },
   belgium: { nameCn: '比利时-北法兰西总督区', popM: 8.3, ic: 14, desc: '低地战役后可建立的傀儡政权。' },
 };
+
+// v0.2.6 rev9：各国多兵种蓝图（步兵 / 装甲 / 机械化 —— 军队蓝图更多）
+export const ARMY_BP_LINE = {
+  ger: ['装甲掷弹兵师', '装甲师', '国民掷弹兵师'],
+  ita: ['阿尔卑斯山地师', '装甲师', '利比亚步兵师'],
+  eng: ['远征军步兵师', '装甲师', '皇家工兵师'],
+  fra: ['要塞步兵师', '装甲师', '北非殖民师'],
+  sov: ['步兵军', '坦克军', '近卫步兵军'],
+  jap: ['海军陆战师', '战车师团', '治安师团'],
+  usa: ['机械化步兵师', '装甲师', '空降师'],
+  chn: ['国民革命军步兵师', '整编师', '保安师'],
+  pol: ['波兰步兵师', '骑兵旅', '高地步兵旅'],
+  spa: ['山地旅', '外籍军团', '纳瓦拉旅'],
+  tur: ['安纳托利亚军', '装甲旅', '海峡卫戍旅'],
+  bra: ['远征步兵师', '骑兵师', '海军陆战营'],
+};
+// 战舰吨位系数（战列舰/航母 ≫ 巡洋 ≫ 驱逐 ≫ 潜艇）—— 决定 strength 与战力
+export const WARSHIP_TONNAGE = {
+  battleship: 220, carrier: 190, battlecruiser: 170, heavy_cruiser: 95,
+  light_cruiser: 62, destroyer: 32, submarine: 24,
+};
+export function warshipTonnageOf(className) {
+  const n = String(className || '');
+  if (n.indexOf('航空母舰') >= 0) return WARSHIP_TONNAGE.carrier;
+  if (n.indexOf('战列舰') >= 0) return WARSHIP_TONNAGE.battleship;
+  if (n.indexOf('战列巡洋') >= 0) return WARSHIP_TONNAGE.battlecruiser;
+  if (n.indexOf('重巡') >= 0) return WARSHIP_TONNAGE.heavy_cruiser;
+  if (n.indexOf('巡洋') >= 0) return WARSHIP_TONNAGE.light_cruiser;
+  if (n.indexOf('潜艇') >= 0) return WARSHIP_TONNAGE.submarine;
+  return WARSHIP_TONNAGE.destroyer;
+}

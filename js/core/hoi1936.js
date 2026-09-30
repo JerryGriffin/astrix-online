@@ -10,10 +10,10 @@
 //   * HOI4 风格国策（三支六策，按天推进）               → focus 系列
 //   * 海域（制海权争夺 + 海战）                          → sea 系列
 import { HOI_NATIONS, HOI_BY_ID, HOI_DEEP, HOI_SEAS, ARMY_MEN, popOf, BLOC_NAME, HOI_SCENARIO_ID,
-  workforceOf, ARMY_POWER_PER_DIV, NAVY_MUL, GEAR_PARTS, SHIP_NAMES, ARMY_BP_NAME, HOI_BG, SHIP_CLASSES, POST_WAR_OPTIONS, GER_PUPPETS } from '../data/hoi1936.js?v=26.8';
-import { BUILDING_BY_ID } from '../data/buildings.js?v=26.8';
-import { JOBS_BY_BUILDING, assignWorkers, jobCapacity, getAvailable } from './population.js?v=26.8';
-import { ELITE_DIVISIONS, ELITE_MUL } from '../data/hoi1936.js?v=26.8';
+  workforceOf, ARMY_POWER_PER_DIV, NAVY_MUL, GEAR_PARTS, SHIP_NAMES, ARMY_BP_NAME, HOI_BG, SHIP_CLASSES, POST_WAR_OPTIONS, GER_PUPPETS, ARMY_BP_LINE, warshipTonnageOf } from '../data/hoi1936.js?v=26.9';
+import { BUILDING_BY_ID } from '../data/buildings.js?v=26.9';
+import { JOBS_BY_BUILDING, assignWorkers, jobCapacity, getAvailable } from './population.js?v=26.9';
+import { ELITE_DIVISIONS, ELITE_MUL } from '../data/hoi1936.js?v=26.9';
 
 // 依赖注入（避免与 state.js / production.js 形成循环导入）
 let _getInst = null;
@@ -200,11 +200,16 @@ export function setupArmies(acc, nation) {
   // v0.2.6 rev8：高工业国家师级战力增强（工业越高，师装备越精良）
   const perPower = Math.round(ARMY_POWER_PER_DIV * (1 + Math.min(1.2, n.ic / 120)));
   acc.armies = [];
+  // v0.2.6 rev9：军队蓝图更多 —— 步兵 / 装甲 / 机械化 三类轮转
+  const bpLine = ARMY_BP_LINE[n.id] || [deep.armyName || '步兵师'];
+  acc.hoiArmyBps = bpLine;
   for (let i = 0; i < count; i++) {
+    const bpName = bpLine[i % bpLine.length];
     acc.armies.push({
       id: 'army_' + n.id + '_' + i,
-      nameCn: n.nameCn + ' 第' + (i + 1) + (deep.armyName || '师'),
+      nameCn: n.nameCn + ' 第' + (i + 1) + ' ' + bpName,
       blueprintId: 'ab_ranger',
+      bpNameCn: bpName,
       men: ARMY_MEN,
       exp: 0, bonusAtk: 0, bonusDef: 0,
       stats: {
@@ -299,18 +304,35 @@ export function setupNavy(acc, nation, createShipFn, defaultBlueprintsFn) {
   acc.blueprints = bps;
   if (!acc.blueprint && bps.length) acc.blueprint = bps[0];
   const hulls = bps.length ? bps : [];
+  // v0.2.6 rev9：直接建**蓝图对应的战舰**（战列舰/航母/重巡/驱逐/潜艇），
+  //   不再用探索船、运输船充数 —— 舰只自带吨位 strength（fleetPowerOf 口径）
+  const classes = SHIP_CLASSES[n.id] || sn || [n.nameCn + ' 战舰'];
+  const capitalShare = Math.min(0.45, n.navy / 150);       // 海军越强，主力舰占比越高
   for (let i = 0; i < shipCount; i++) {
-    const bp = hulls[i % Math.max(1, hulls.length)];
-    if (!bp) break;
-    try {
-      const r = createShipFn(bp, { ships: acc.ships, account: acc, planetCode: acc.homePlanetCode, researched: acc.tech });
-      if (r && r.ok && r.ship) {
-        r.ship.nameCn = (bp.nameCn || (n.nameCn + ' 舰')) + ' ' + (i + 1);
-        r.ship.state = r.ship.state || {};
-        r.ship.state.fuelMol = Math.max(Number(r.ship.state.fuelMol) || 0, 2000);
-        acc.ships.push(r.ship);
-      }
-    } catch (e) { /* 忽略单舰失败 */ }
+    // 前若干艘放主力舰（战列舰/航母/战巡），随后是巡洋/驱逐/潜艇
+    let cls;
+    if (i < Math.max(1, Math.round(shipCount * capitalShare))) {
+      const capIdx = (n.navy >= 30 && classes.length > 1) ? (i % Math.min(2, classes.length)) : 0;
+      cls = classes[capIdx];
+    } else {
+      // 其余舰只覆盖全部次级舰级（巡洋 / 驱逐 / 潜艇），保证编成完整
+      const rest = classes.slice(2);
+      const pool = rest.length ? rest : classes;
+      cls = pool[(i - Math.round(shipCount * capitalShare)) % pool.length];
+    }
+    const ton = warshipTonnageOf(cls);
+    acc.ships.push({
+      id: 'warship_' + n.id + '_' + i,
+      nameCn: cls + ' ' + (i + 1),
+      shipClass: cls,
+      kind: 'warship',
+      mark: 1,
+      strength: Math.round(ton * 12 * (NAVY_MUL[n.id] || 1)),
+      hp: Math.round(ton * 8),
+      state: { fuelMol: 2000 },
+      planetCode: acc.homePlanetCode,
+      cargo: {},
+    });
   }
   // 编队：按 share 分配（真实舰队名）
   const fleetDefs = deep.fleets || [{ nameCn: n.nameCn + '海军', share: 1 }];
@@ -412,7 +434,8 @@ export function setupLines(inst, nation) {
   ];
   for (const L of MUST_LINES) {
     if (!plan.some((x) => x.buildingId === L.buildingId && x.recipeId === L.recipeId)) {
-      plan.push({ buildingId: L.buildingId, recipeId: L.recipeId, workers: 220 });
+      // 钢 / 碳 / 铝合金等基础资源线给足人力，避免跟不上消耗
+      plan.push({ buildingId: L.buildingId, recipeId: L.recipeId, workers: 460 });
     }
   }
   // ①b 高工业国家（ic ≥ 40）：高炉各类矿 + 全部化工复合资源铺线，避免缺料
@@ -667,6 +690,73 @@ export function setupGermanPuppets(acc) {
   }
   acc.warLog.unshift({ at: Date.now(), text: '【附庸】' + GER_PUPPETS.slovakia.desc + '（本土以南，提供原材料贡品）' });
   return 1;
+}
+
+/**
+ * 战争推进（v0.2.6 rev9，HOI4 式）：每场战争有 0~100 的推进条 ——
+ *   由双方陆军 + 舰队实力差决定推进方向与速度，战役胜利额外推进。
+ *   推进越深，敌方越可能接受迫降（与战争分数并用）。
+ */
+export function tickWarsHoi4(acc, dtSec) {
+  if (!acc || !Array.isArray(acc.wars)) return;
+  const days = (Number(dtSec) || 0) * GAME_DAYS_PER_SEC;
+  if (days <= 0) return;
+  const n = HOI_BY_ID[acc.nation];
+  if (!n) return;
+  const myStr = (n.divisions * 10 + n.ic * 2) * (1 + (acc.hoiFocus && acc.hoiFocus.buffs ? (acc.hoiFocus.buffs.atkMul || 1) - 1 : 0));
+  for (const w of acc.wars) {
+    if (!w || w.status !== 'active') continue;
+    const foe = HOI_BY_ID[String(w.targetId || '').replace(/^hoi_/, '')];
+    const foeStr = foe ? (foe.divisions * 10 + foe.ic * 2) : 200;
+    const ratio = myStr / Math.max(1, myStr + foeStr);          // 0~1
+    w.progress = Math.max(0, Math.min(100, (Number(w.progress) || 0) + (ratio - 0.5) * 4 * days));
+    if (w.progress >= 70 && (Number(w.myScore) || 0) < 40) w.myScore = 40;   // 推进到位 → 迫降可用
+  }
+}
+
+/**
+ * 军队补员（v0.2.6 rev9）：损失兵员的师可按要求补员 ——
+ *   需要 **时间**（每天恢复固定兵员）+ **人力**（从星球可用人力扣）+ **装备**（从装备库扣）。
+ *   army.men 低于 menMax 时战力按比例下降（HOI4 的 strength 概念）。
+ */
+export const ARMY_MEN_MAX = ARMY_MEN;
+export const REINFORCE_PER_DAY = 25;      // 每游戏天补充兵员
+export function reinforceArmy(acc, inst, armyId, days) {
+  const a = (acc && Array.isArray(acc.armies) ? acc.armies : []).find((x) => x && x.id === armyId);
+  if (!a) return { ok: false, reason: '找不到该军队' };
+  if (!(Number(a.men) > 0)) a.men = ARMY_MEN_MAX;
+  if (a.men >= ARMY_MEN_MAX) return { ok: false, reason: '该师兵力已满' };
+  const need = Math.min(ARMY_MEN_MAX - a.men, Math.round(REINFORCE_PER_DAY * (Number(days) || 1)));
+  let hired = 0;
+  try {
+    const avail = inst && inst.pop ? getAvailable(inst.pop) : 0;
+    hired = Math.min(need, Math.max(0, Math.round(avail)));
+  } catch (e) { hired = need; }
+  if (!(hired > 0)) return { ok: false, reason: '可用人力不足' };
+  // 装备消耗：每 10 人 1 件轻武器
+  const gearNeed = Math.max(1, Math.ceil(hired / 10));
+  let gearTaken = 0;
+  try {
+    if (inst && inst.equipment) {
+      for (const key in inst.equipment) {
+        if (gearTaken >= gearNeed) break;
+        const e = inst.equipment[key];
+        if (!e || !(e.count > 0)) continue;
+        const take = Math.min(e.count, gearNeed - gearTaken);
+        e.count -= take; gearTaken += take;
+      }
+    }
+  } catch (e) { /* 忽略 */ }
+  // 装备不足 → 按装备比例折算补员进度
+  const real = Math.max(1, Math.round(hired * Math.min(1, gearTaken / gearNeed)));
+  a.men = Math.min(ARMY_MEN_MAX, (Number(a.men) || 0) + real);
+  a.reinforcing = a.men < ARMY_MEN_MAX;
+  // 战力随兵力比例恢复
+  const ratio = a.men / ARMY_MEN_MAX;
+  if (a._basePower == null) a._basePower = Math.round((Number(a.power) || 0) / Math.max(0.01, (Number(a._lastRatio) || 1)));
+  a.power = Math.round((a._basePower || a.power) * ratio);
+  a._lastRatio = ratio;
+  return { ok: true, added: real, men: a.men, gearUsed: gearTaken };
 }
 
 export function backgroundOf(acc) {
