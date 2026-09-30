@@ -1,3 +1,4 @@
+// v0.2.10 账号名登录探针 v2：registerWithName/loginWithName → 真实云（player_accounts 表）
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -17,37 +18,33 @@ const require = createRequire('C:/Users/11603/.workbuddy/binaries/node/workspace
 const { chromium } = require('playwright-core');
 const browser = await chromium.launch({ executablePath: 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe', headless: true, args: ['--no-sandbox'] });
 const page = await (await browser.newContext()).newPage();
-page.on('console', (m) => console.log('[页] ' + m.text()));
 await page.goto('http://127.0.0.1:8778/index.html', { waitUntil: 'load' });
 await page.waitForTimeout(1000);
-const res = await page.evaluate(async () => {
-  const out = { steps: [] };
-  const log = (m) => out.steps.push(m);
-  // 手动建桥（复刻 cloud.js ensureBridge）
-  const ifr = document.createElement('iframe');
-  ifr.style.display = 'none';
-  ifr.src = 'https://astrix.app.workbuddy.host/cloud-bridge.html?origin=' + encodeURIComponent(location.origin) + '&v=20.17';
-  document.body.appendChild(ifr);
-  log('插入后 contentWindow=' + !!ifr.contentWindow);
-  const ready = await new Promise((resolve) => {
-    let done = false;
-    window.addEventListener('message', (ev) => {
-      if (ev.origin !== 'https://astrix.app.workbuddy.host') return;
-      const m = ev.data;
-      if (m && m.__astrixBridge && m.ready && !done) { done = true; resolve(true); }
-    });
-    setTimeout(() => { if (!done) resolve('12s超时'); }, 12000);
-  });
-  log('握手=' + ready);
-  if (ready === true) {
-    const C = await import('/js/core/cloud.js?v=20.17');
-    const reg = await C.registerWithName('探针A', 'test-1234');
-    log('register=' + JSON.stringify(reg));
-    const s = C.cloudStatus();
-    log('status=' + JSON.stringify(s));
-  }
-  return out;
-});
+const NAME = '探针玩家' + Math.floor(Math.random() * 1e6);
+const PW = 'probe-pass-123';
+const res = await page.evaluate(async ({ NAME, PW }) => {
+  const C = await import('/js/core/cloud.js?v=20.17');
+  await C.ensureReady();
+  const reg = await C.registerWithName(NAME, PW);
+  const uid = reg.user ? reg.user.id : null;
+  const log = await C.loginWithName(NAME, PW);
+  const logBad = await C.loginWithName(NAME, 'wrong-pass');
+  const dup = await C.registerWithName(NAME, PW);
+  const status = C.cloudStatus();
+  return {
+    regOk: reg.ok, uid,
+    logOk: log.ok, logUser: log.user ? log.user.id : null,
+    logBadOk: logBad.ok, logBadReason: logBad.reason,
+    dupOk: dup.ok, dupReason: dup.reason,
+    statusUser: status.user,
+  };
+}, { NAME, PW });
+console.log('账号名:', NAME);
 console.log(JSON.stringify(res, null, 1));
 await browser.close();
 server.close();
+const pass = res.regOk && res.uid && res.uid.startsWith('n_') && res.logOk && res.logUser === res.uid
+  && !res.logBadOk && /密码错误/.test(res.logBadReason) && !res.dupOk && /已存在/.test(res.dupReason)
+  && res.statusUser && res.statusUser.id === res.uid;
+console.log(pass ? '探针通过' : '探针失败');
+process.exit(pass ? 0 : 1);

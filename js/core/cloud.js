@@ -566,7 +566,9 @@ export async function registerWithName(name, password) {
   if (!password || String(password).length < 4) return { ok: false, reason: '密码至少 4 位' };
   if (isNative()) return nativeRegisterWithName(n, password);
   if (!(await bridgeEnsureReady())) return { ok: false, reason: state.error || '云服务不可用' };
-  return bridgeRpc('registerWithName', [n, password]);
+  const r = await bridgeRpc('registerWithName', [n, password]);
+  if (r && r.ok && r.user) state.user = r.user;   // 父页缓存（bridge 会话存在桥的 localStorage）
+  return r || { ok: false, reason: '云服务不可用' };
 }
 
 /** 登录：校验账号名 + 密码哈希 */
@@ -589,5 +591,7 @@ export async function loginWithName(name, password) {
   const n = String(name || '').trim();
   if (isNative()) return nativeLoginWithName(n, password);
   if (!(await bridgeEnsureReady())) return { ok: false, reason: state.error || '云服务不可用' };
-  return bridgeRpc('loginWithName', [n, password]);
+  const r = await bridgeRpc('loginWithName', [n, password]);
+  if (r && r.ok && r.user) state.user = r.user;
+  return r || { ok: false, reason: '云服务不可用' };
 }
