@@ -3,29 +3,29 @@
 // 更新：v0.1.1 五指令改为持续任务（startMission，任务行显示倒计时），
 //       新增船载仓库面板；编队 / 五指令区块挂船坞门禁；交易池区 2s 心跳局部刷新。
 
-import { fmtNum, fmtRate, fmtTime } from '../core/format.js?v=20.11';
+import { fmtNum, fmtRate, fmtTime } from '../core/format.js?v=20.12';
 import {
   listFleets, createFleet, disbandFleet, addShipToFleet, removeShipFromFleet,
   fleetSpeedOf, fleetPowerOf, executeCommand,
   startMission, cancelMission, fleetMissionLabel, defenseBonusOf,
   shipCargoOf, loadShipCargo, unloadShipCargo,
   shipCargoMassOf, shipCargoCellsOf, shipCargoCellsMax, effectiveSpeedOf,
-} from '../core/fleet.js?v=20.11';
-import { equipmentList } from '../core/shipyard.js?v=20.11';
+} from '../core/fleet.js?v=20.12';
+import { equipmentList } from '../core/shipyard.js?v=20.12';
 import {
   MANAGEMENT_MODES, MANAGEMENT_BY_ID, modeOf, setManagement,
   TERRITORY_ASSIMILATE_SEC, TERRITORY_HAPPY_THRESHOLD,
-} from '../core/planetgen.js?v=20.11';
+} from '../core/planetgen.js?v=20.12';
 import {
   SHOP_PLANET, shopPrices, sell, pendingOrders, deliverOrder, ascoinBalance,
-  suggestPriceOf, listForSale, marketListings, cancelListing, buyListing, priceOf, shopStateOf,
-  MARKET_FEE, marketBuy, marketSell, warehouseOf, ensureShopWarehouse,
-} from '../core/shop.js?v=20.11';
+  shopStateOf,
+  marketBuy, marketSell, warehouseOf, ensureShopWarehouse,
+} from '../core/shop.js?v=20.12';
 import {
   createAuction, placeBid, activeAuctions, auctionLog,
   myAuctionableResources, myAuctionableEquipment, myAuctionableShips, ensureAuctions,
-} from '../core/auction.js?v=20.11';
-import { getPlanetInstance, currentAccount, ownedOf } from '../core/state.js?v=20.11';
+} from '../core/auction.js?v=20.12';
+import { getPlanetInstance, currentAccount, ownedOf } from '../core/state.js?v=20.12';
 
 // HTML 转义（防 XSS，与其它面板一致）
 function esc(s) {
@@ -95,10 +95,9 @@ export function renderShop(container, ctx) {
   container.appendChild(auction.section);
   // 原「待运输订单」（旧存档的买/卖交割单，仍可标记送达；新股市为即时交割不再产生）
   container.appendChild(buildPendingOrders(account, inst, openModal, redraw));
-  // 原挂单/交易池（设计者要求：原有挂单在下方，与股市/拍卖共存）
-  container.appendChild(buildListingPool(account, inst, openModal, redraw, null));
+  // v0.2.10：原挂单/交易池已移除 —— 交易全部采用拍卖形式（股市即时买卖 + 拍卖行）
 
-  // 1s 心跳：实时刷新股价/仓库、拍卖倒计时与挂单池（不打断输入焦点，面板被替换则自停）
+  // 1s 心跳：实时刷新股价/仓库与拍卖倒计时（不打断输入焦点，面板被替换则自停）
   container._shopTimer = setInterval(() => {
     if (typeof document !== 'undefined' && document.hidden) return;
     if (!container.querySelector('.shop-market-grid')) {
@@ -340,57 +339,8 @@ function buildPendingOrders(account, inst, openModal, redraw) {
   return box;
 }
 
-// 交易池区块：自己的挂单（可撤单）+ 别人的挂单（可买入），定价旁显示建议售价
-// hb = { updaters: [] } 时，把「重建挂单列表」注册进心跳（只重建本区块，不碰输入焦点）
-function buildListingPool(account, inst, openModal, redraw, hb) {
-  const box = el('section', 'fac-group shop-pool');
-  box.appendChild(el('div', 'res-section-title', '我的挂单 / 交易池'));
-  const body = el('div', 'shop-pool-body');
-  box.appendChild(body);
-
-  function fill() {
-    body.innerHTML = '';
-    const pool = marketListings(account);
-    const mine = pool.filter((l) => l.sellerAccountId === account.id);
-    const others = pool.filter((l) => l.sellerAccountId !== account.id);
-
-    body.appendChild(el('div', 'res-sub muted', '我的挂单（可撤单）'));
-    if (!mine.length) body.appendChild(el('p', 'muted', '还没有挂单。'));
-    for (const L of mine) {
-      const line = el('div', 'fleet-ship');
-      // v0.1.1（需求 21）：卖方挂单显式展示佣金后的到手单价与整单到手（netPrice 由 shop.js 提供）
-      const mineUnit = (L.netPrice != null)
-        ? Number(L.netPrice)
-        : Math.round((Number(L.price) || 0) * (1 - MARKET_FEE));
-      line.appendChild(el('span', null, L.mat + ' ×' + L.qty + ' @ ' + fmtNum(L.price)
-        + '　到手 ' + fmtNum(mineUnit) + ' / 件 ＝ ' + fmtNum(mineUnit * (Number(L.qty) || 0)) + ' Ascoin'));
-      const cb = btn('撤单', 'btn-sm'); cb.style.minHeight = '44px';
-      cb.addEventListener('click', () => { const r = cancelListing(account, L.id); if (!r.ok) { alert(r.reason); return; } redraw(); });
-      line.appendChild(cb);
-      body.appendChild(line);
-    }
-
-    body.appendChild(el('div', 'res-sub muted', '交易池（其它玩家 / 电脑，可买入）'));
-    if (!others.length) body.appendChild(el('p', 'muted', '暂无其它挂单。'));
-    for (const L of others) {
-      const line = el('div', 'fleet-ship');
-      line.appendChild(el('span', null, L.mat + ' ×' + L.qty + ' @ ' + fmtNum(L.price) + ' Ascoin'));
-      const bb = btn('买入', 'btn-sm'); bb.style.minHeight = '44px';
-      bb.addEventListener('click', () => {
-        const r = buyListing(account, L.id, inst);
-        if (!r.ok) { alert(r.reason); return; }
-        if (openModal) openModal({ title: '买入成功', body: '<p>买入 ' + esc(L.mat) + ' ×' + L.qty
-          + '，花费 ' + Math.round(L.price * L.qty) + ' Ascoin。</p>' });
-        redraw();
-      });
-      line.appendChild(bb);
-      body.appendChild(line);
-    }
-  }
-  fill();
-  if (hb && Array.isArray(hb.updaters)) hb.updaters.push(fill);
-  return box;
-}
+// 交易池已移除（v0.2.10）：原固定价挂单全部改由拍卖行（15 秒竞价）承接；
+// shop.js 的 listForSale/marketListings 等 API 保留（NPC 侧旧逻辑兼容），仅不再有 UI 入口。
 
 // ============================================================================
 // 船载仓库面板（v0.1.1 需求 B）：选船 → 材料下拉 + 数量 → 装载 / 卸下
@@ -502,7 +452,7 @@ function buildCargoPanel(account, inst) {
 
 // ============================================================================
 // 嵌入舰队页的商店星区块（v0.2.6）：renderFleet 第 4 区调用。
-// 与独立商店页 renderShop（colony.js 的商店星入口用）同内容——股市 + 拍卖 + 待运输订单 + 挂单池，
+// 与独立商店页 renderShop（colony.js 的商店星入口用）同内容——股市 + 拍卖 + 待运输订单，
 // 但**不接管容器、不挂自己的定时器**：股价/拍卖的局部刷新注册进 hb.updaters，
 // 由舰队页心跳（startFleetHeartbeat）统一驱动，避免双定时器互相覆盖。
 // ============================================================================
@@ -514,8 +464,7 @@ function buildShopSection(account, inst, openModal, redraw, hb) {
   wrap.appendChild(auction.section);
   // 原「待运输订单」（旧存档的买/卖交割单，仍可标记送达；新股市为即时交割不再产生）
   wrap.appendChild(buildPendingOrders(account, inst, openModal, redraw));
-  // 原挂单/交易池（设计者要求：原有挂单在下方，与股市/拍卖共存）
-  wrap.appendChild(buildListingPool(account, inst, openModal, redraw, hb));
+  // v0.2.10：原挂单/交易池已移除 —— 交易全部采用拍卖形式
   if (hb && Array.isArray(hb.updaters)) {
     hb.updaters.push(() => {
       try { market.refresh(); } catch (e) { /* 忽略 */ }

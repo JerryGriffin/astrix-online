@@ -15,41 +15,40 @@
 //    开局自带 1 座建筑工厂（设计者：「开局有一个建筑工厂」）。
 // 5. 施工队列由 tick 推进：速度 = 建筑工有效人力（受建筑工厂工位限制），无人则为 0。
 
-import { PLANETS } from '../data/planets.js?v=20.11';
-import { BUILDING_BY_ID, buildingCost } from '../data/buildings.js?v=20.11';
-import { TECH_BY_ID, canResearch, missingPrereqs, missingBuilding } from '../data/techs.js?v=20.11';
-import { UPGRADES, upgradeCost } from '../data/upgrades.js?v=20.11';
+import { PLANETS } from '../data/planets.js?v=20.12';
+import { BUILDING_BY_ID, buildingCost } from '../data/buildings.js?v=20.12';
+import { TECH_BY_ID, canResearch, missingPrereqs, missingBuilding } from '../data/techs.js?v=20.12';
+import { UPGRADES, upgradeCost } from '../data/upgrades.js?v=20.12';
 import {
   createPopulation, tickPopulation, getAvailable, gatherLaborByLayer, jobsOfBuilding, getIntensity,
   consumptionPerSec, jobOutput,
   JOBS, freeSlots,
-} from './population.js?v=20.11';
-import { buildRateOf, buildBlockReason } from './construction.js?v=20.11';
-import { tickShip, defaultBlueprints, createShip, shipBuildTick } from './shipyard.js?v=20.11';
+} from './population.js?v=20.12';
+import { buildRateOf, buildBlockReason } from './construction.js?v=20.12';
+import { tickShip, defaultBlueprints, createShip, shipBuildTick } from './shipyard.js?v=20.12';
 // v0.0.6：电力系统与配方生产。
 // 注意这两个模块**不反向 import 本文件**（否则形成循环依赖），
 // 它们只从传入的 inst 上读 buildings / pop / inventory / recipes。
-import { energyOf, computePower, tickPower } from './power.js?v=20.11';
+import { energyOf, computePower, tickPower } from './power.js?v=20.12';
 // v0.0.91：efficiencyBonus 由 production.js 导出（建筑总座数效率乘数），
 //   这里沿用既有的 state→production 单向边引入，不反向让 production import state，避免循环依赖。
-import { tickProduction, productionRates, ensureLines, lineWorkersTotal, efficiencyBonus, ensureEntry, addLine as addProductionLine, lineSlotInfo } from './production.js?v=20.11';
+import { tickProduction, productionRates, ensureLines, lineWorkersTotal, efficiencyBonus, ensureEntry, addLine as addProductionLine, lineSlotInfo } from './production.js?v=20.12';
 // v0.0.92：星际航行与殖民（管理模式 / 独立倾向 / 随机星球）
-import { tickIndependence, outputMulOf, happinessDeltaOf, ensureDiscoveredDefaults, discoverPlanet, purgeShopColonies, tickManagedColonies, SHOP_PLANET_CODE } from './planetgen.js?v=20.11';
+import { tickIndependence, outputMulOf, happinessDeltaOf, ensureDiscoveredDefaults, discoverPlanet, purgeShopColonies, tickManagedColonies, SHOP_PLANET_CODE } from './planetgen.js?v=20.12';
 // v0.1.2（需求 18/19）：永久升级的「效果」改乘方，唯一实现在 data/upgrades.js#upgradeMul
 // （UI 的 research.js 也用它，别在别处再写一套公式）。
 // 此前 upg_collect/refine/power/labor/research/build 六项付了钱却没有任何效果。
-import { upgradeMul } from '../data/upgrades.js?v=20.11';
-import { tickFleetMissions, ensureFleets } from './fleet.js?v=20.11';
-import { ensureArmies, armyBuildTick, advanceTraining, ARMY_LABOR_PER_BARRACKS } from './army.js?v=20.11';   // v0.2.0 军队
+import { upgradeMul } from '../data/upgrades.js?v=20.12';
+import { tickFleetMissions, ensureFleets } from './fleet.js?v=20.12';
+import { ensureArmies, armyBuildTick, advanceTraining, ARMY_LABOR_PER_BARRACKS } from './army.js?v=20.12';   // v0.2.0 军队
 // v0.1.0：电脑账号（离线存档里的 NPC 势力）与其交易池联动。
 //   注意 npc.js 是叶子模块（只 import 数据表），shop.js 与 state.js 互为函数级引用、无顶层副作用。
-import { ensureNpcs, tickNpcs } from './npc.js?v=20.11';
+import { ensureNpcs, tickNpcs } from './npc.js?v=20.12';
 import {
   priceOf as shopPriceOf, suggestPriceOf as shopSuggestPriceOf,
-  npcListOnMarket, npcTakeFromMarket, tickShop as shopTick,
-  tickListings as shopTickListings,
-} from './shop.js?v=20.11';
-import { tickAuctions } from './auction.js?v=20.11';   // v0.2.6 拍卖行
+  tickShop as shopTick,
+} from './shop.js?v=20.12';
+import { tickAuctions } from './auction.js?v=20.12';   // v0.2.6 拍卖行
 
 const SAVE_PREFIX = 'astrix.save.';
 const INDEX_KEY = SAVE_PREFIX + 'index';
@@ -1124,20 +1123,20 @@ export function tick(dt = 1) {
     // v0.1.0：把「极限工作强化」升级等级写到人口对象上，population.js 的 getIntensity 会读它
     if (inst.pop) inst.pop.extremeWorkLevel = upgradeLevelOf(acc, 'extreme_work');
   }
-  // v0.1.0：电脑账号（NPC 势力）随时间发展、挂单、买入 —— 他们会推高 Ast1 的价格
+  // v0.1.0：电脑账号（NPC 势力）随时间发展。v0.2.10：交易池已移除——
+  // listOnMarket / takeFromMarket 改为空实现（NPC 不再挂单/抢单，改由拍卖行的 NPC 兜底出价承接）
   if (acc) {
     ensureNpcs(acc);
     try {
       tickNpcs(acc, dt, {
         priceOf: (mat) => shopPriceOf(acc, mat),
         suggestPriceOf: (mat) => shopSuggestPriceOf(acc, mat, null),
-        listOnMarket: (npc, mat, qty, price) => npcListOnMarket(acc, npc, mat, qty, price),
-        takeFromMarket: (npc) => npcTakeFromMarket(acc, npc, null),
+        listOnMarket: () => null,
+        takeFromMarket: () => null,
       });
     } catch (e) { /* 单个 NPC 的异常不拖垮心跳 */ }
     try { shopTick(acc, dt); } catch (e) { /* 忽略 */ }
-    // v0.1.1 需求16：挂单实时刷新与卖空清除（tickListings 此前是死代码，需每 tick 调用）
-    try { shopTickListings(acc, dt); } catch (e) { /* 忽略 */ }
+    // v0.2.10：交易池（挂单）已移除 —— shopTickListings 不再跑，交易全部走拍卖行
     // v0.2.6 拍卖行：每秒推进 15s 竞价窗口、NPC 兜底出价、到期结算
     try { tickAuctions(acc, dt, { getInst: () => getPlanetInstance(acc.homePlanetCode) }); } catch (e) { /* 忽略 */ }
     // v0.1.1 舰队持续任务（需求 3/19）：explore/transport/patrol 计时到期结算，defense 驻留。

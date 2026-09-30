@@ -1,8 +1,8 @@
 // 开始界面：标题、离线/在线模式、账号选择、各次要入口模态层（Astrix）
-import {  STATE, createAccount, switchAccount, deleteAccount, currentAccount, START_MODES, switchPool  } from '../core/state.js?v=20.11';
-import { fmtNum, fmtTime } from '../core/format.js?v=20.11';
+import {  STATE, createAccount, switchAccount, deleteAccount, currentAccount, START_MODES, switchPool  } from '../core/state.js?v=20.12';
+import { fmtNum, fmtTime } from '../core/format.js?v=20.12';
 // 版本号与更新日志的唯一来源：任何地方要显示版本都从这里取，改版本只改 js/version.js 一处
-import { VERSION, VERSIONS } from '../version.js?v=20.11';
+import { VERSION, VERSIONS } from '../version.js?v=20.12';
 
 // 创建元素的小工具
 function el(tag, cls, text) {
@@ -253,7 +253,7 @@ function openTips(ctx) {
     '<b>飞船编入</b>　研究**超级军用装备 M3** 后，可把现役飞船编入军队作旗舰：火力 +60% / 防护 +40% / 战力 +25%；一艘船只能编入军队**或**舰队（互斥），每军限 1 艘。',
     '<b>舰队</b>　造出船坞才能编队：探索 / 低空防卫 / 巡航 / 运输都是持续任务，完成后自动结算；防卫巡航能给母星加防御。',
     '<b>星际股市</b>　商店星每种资源随时买卖，价格随成交**买涨卖跌**并自然回归；原矿类极度贬值，精加工品才值钱——低级货建议先加工再卖。',
-    '<b>拍卖行</b>　15 秒竞价，价高者得；可拍卖资源、装备与飞船，流拍原样退还。离线由「星际买家」NPC 兜底出价。',
+    '<b>拍卖行</b>　出售资产（资源 / 装备 / 飞船）的唯一途径：15 秒竞价，价高者得，流拍原样退还。离线由「星际买家」NPC 兜底出价。',
     '<b>在线模式</b>　邮箱验证码登录，存档按邮箱分开、登录一次永久免登；星系里能浏览其他玩家星球、贸易与交战。GitHub 版与正式版同属一个星系。',
     '<b>离线结算</b>　关屏也在推进，回来一次性结算；收益上限 12 小时，长挂不如定时收一次。',
   ];
