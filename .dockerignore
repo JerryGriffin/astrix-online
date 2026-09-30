@@ -3,6 +3,8 @@ node_modules
 Thumbs.db
 *.log
 .git
+.github
+.workbuddy
 *.exe
 *.bat
 当前联机网址.txt

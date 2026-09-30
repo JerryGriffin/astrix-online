@@ -6,7 +6,12 @@ Thumbs.db
 当前联机网址.txt
 launch.mjs
 
-.github/
+# .github 下仅 workflows 需入库（HuggingFace 自动同步依赖 sync_to_hf.yml）；
+# 其余本地杂项忽略。注意：切勿写成 `.github/`——那会连同 workflows 一起忽略，
+# 导致该文件一旦被删除重加就再也提交不上，HF 同步静默失效。
+.github/*
+!.github/workflows/
+
 .workbuddy/
 
 # 一次性调试脚本（不进仓库，见项目约定）
