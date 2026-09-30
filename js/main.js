@@ -1,9 +1,9 @@
 // 应用入口：路由、全局模态层与启动（Astrix）
-import { STATE, loadState, createAccount, currentAccount, saveState, tick, settleOffline, OFFLINE_RATIO } from './core/state.js?v=20.16';
-import { renderStart, openAccountPicker } from './ui/start.js?v=20.16';
-import { renderPlanet } from './ui/planet.js?v=20.16';
+import { STATE, loadState, createAccount, currentAccount, saveState, tick, settleOffline, OFFLINE_RATIO } from './core/state.js?v=20.17';
+import { renderStart, openAccountPicker } from './ui/start.js?v=20.17';
+import { renderPlanet } from './ui/planet.js?v=20.17';
 // v0.2.1：在线模式前置 —— 进入游戏前必须先绑定邮箱（验证码登录 / 注册）
-import { cloudUser, signInWithPassword, signUpWithPassword, astrixEmailOf, ensureReady } from './core/cloud.js?v=20.16';
+import { cloudUser, loginWithName, registerWithName, ensureReady } from './core/cloud.js?v=20.17';
 
 const root = document.getElementById('app');
 const modalRoot = document.getElementById('modal-root');
@@ -203,15 +203,15 @@ function openOnlineBindModal(onBound) {
     if (!n) { msg.textContent = '请输入账号名。'; return; }
     if (!pw.value || pw.value.length < 4) { msg.textContent = '密码至少 4 位。'; return; }
     msg.textContent = '登录中…';
-    const email = astrixEmailOf(n);
-    let r = await signInWithPassword(email, pw.value);
-    if (!r.ok) {
-      msg.textContent = '账号不存在或密码错误，尝试注册…';
-      const su = await signUpWithPassword(email, pw.value);
-      if (!su.ok) { msg.textContent = '注册失败：' + (su.reason || '未知错误'); return; }
-      r = await signInWithPassword(email, pw.value);
-      if (!r.ok) { msg.textContent = '注册成功但登录失败：' + (r.reason || '未知错误'); return; }
+    let r = await loginWithName(n, pw.value);
+    if (!r.ok && r.reason === '账号不存在') {
+      msg.textContent = '新账号，注册中…';
+      r = await registerWithName(n, pw.value);
+      if (!r.ok) { msg.textContent = '注册失败：' + (r.reason || '未知错误'); return; }
       msg.textContent = '注册成功，欢迎，' + n + '！';
+    } else if (!r.ok) {
+      msg.textContent = r.reason || '登录失败';
+      return;
     }
     closeModal();
     onBound && onBound();

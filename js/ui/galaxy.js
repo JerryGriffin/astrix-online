@@ -14,17 +14,17 @@
 
 import {
   ensureReady, cloudStatus, cloudUser,
-  signInWithPassword, signUpWithPassword, astrixEmailOf, signOutCloud,
+  loginWithName, registerWithName, signOutCloud,
   listPublicPlanets, publishMyPlanet, postIncident, fetchInbox, markIncidentResolved,
-} from '../core/cloud.js?v=20.16';
-import { currentAccount, getPlanetInstance, ownedOf, spendOwned } from '../core/state.js?v=20.16';
-import { ensureEntry } from '../core/production.js?v=20.16';
-import { listFleets, fleetPowerOf, defenseBonusOf } from '../core/fleet.js?v=20.16';
-import { totalArmyPowerOf, listArmies, disbandArmy, resolveBattle } from '../core/army.js?v=20.16';
+} from '../core/cloud.js?v=20.17';
+import { currentAccount, getPlanetInstance, ownedOf, spendOwned } from '../core/state.js?v=20.17';
+import { ensureEntry } from '../core/production.js?v=20.17';
+import { listFleets, fleetPowerOf, defenseBonusOf } from '../core/fleet.js?v=20.17';
+import { totalArmyPowerOf, listArmies, disbandArmy, resolveBattle } from '../core/army.js?v=20.17';
 // v0.2.1：内嵌殖民地管理（含内联报告），取代在线模式独立的「星球选择」tab
-import { renderColony } from './colony.js?v=20.16';
-import { PLANETS } from '../data/planets.js?v=20.16';
-import { fmtNum } from '../core/format.js?v=20.16';
+import { renderColony } from './colony.js?v=20.17';
+import { PLANETS } from '../data/planets.js?v=20.17';
+import { fmtNum } from '../core/format.js?v=20.17';
 
 function el(tag, cls, text) {
   const e = document.createElement(tag);
@@ -120,7 +120,7 @@ function renderShell(body, ctx, rerender) {
   const acc = ctx.account || currentAccount();
   ensureAllianceFields(acc);   // v0.2.10 结盟字段兜底
   const u = cloudUser();
-  const myName = u ? (((u.email || '').split('@')[0]) || u.id) : '';   // v0.2.10：显示账号名而非邮箱
+  const myName = u ? (u.name || ((u.email || '').split('@')[0]) || u.id) : '';   // v0.2.10：显示账号名（n_* 身份带 name）
   body.innerHTML = '';
 
   // ---- 1. 顶部状态栏 ----
@@ -269,16 +269,16 @@ function openLoginModal(ctx, rerender) {
     if (!n) { msg1.textContent = '请输入账号名。'; return; }
     if (!pw1.value || pw1.value.length < 4) { msg1.textContent = '密码至少 4 位。'; return; }
     msg1.textContent = '登录中…';
-    const email = astrixEmailOf(n);
-    let r = await signInWithPassword(email, pw1.value);
-    if (!r.ok) {
-      msg1.textContent = '账号不存在或密码错误，尝试注册…';
-      const su = await signUpWithPassword(email, pw1.value);
-      if (!su.ok) { msg1.textContent = '注册失败：' + (su.reason || '未知错误'); return; }
-      r = await signInWithPassword(email, pw1.value);
-      if (!r.ok) { msg1.textContent = '注册成功但登录失败：' + (r.reason || ''); return; }
+    let r = await loginWithName(n, pw1.value);
+    if (!r.ok && r.reason === '账号不存在') {
+      msg1.textContent = '新账号，注册中…';
+      r = await registerWithName(n, pw1.value);
+      if (!r.ok) { msg1.textContent = '注册失败：' + (r.reason || '未知错误'); return; }
+      msg1.textContent = '注册成功，欢迎，' + n + '！';
+    } else if (!r.ok) {
+      msg1.textContent = r.reason || '登录失败';
+      return;
     }
-    msg1.textContent = '欢迎，' + n + '！';
     ctx.closeModal && ctx.closeModal();
     rerender();
   });

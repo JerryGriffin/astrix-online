@@ -19,7 +19,7 @@
 //   → 「打别人 / 贸易别人」= 插入一条 target_uid 指向对方的事件；
 //     对方上线后在收件箱本地结算，并把回执（战报/贸易结算）作为新事件发回。
 
-import { CACHE_TAG } from '../version.js?v=20.16';
+import { CACHE_TAG } from '../version.js?v=20.17';
 
 const CLOUD_ENDPOINT = 'https://astrix.app.workbuddy.host';
 const CLOUD_PUBLISHABLE_KEY = 'wbpk_a83qn1S1YtnqmhL6Wb2oF3_dIuTVZ1qLa1Ph94JTqQhmspVf2q27z14';
@@ -48,19 +48,36 @@ const state = {
 
 let _loadPromise = null;
 
+// v0.2.10 rev17：SDK 多源加载 —— CDN 闪断（尤其国内网络）不再拖死在线模式。
+// 依次尝试：主 CDN → fastly 镜像 → 仓库内本地兜底副本（assets/vendor/，随发布更新）。
+const SDK_URLS = [
+  SDK_URL,
+  'https://fastly.jsdelivr.net/npm/@tencent-ai/workbuddy-cloud-sdk@0.1.3/lib/index.global.js',
+  'assets/vendor/workbuddy-cloud-sdk.js?v=' + CACHE_TAG,
+];
+
 function loadSdkOnce() {
   if (window.WorkBuddyCloud) return Promise.resolve(true);
   if (_loadPromise) return _loadPromise;
-  _loadPromise = new Promise((resolve) => {
-    const s = document.createElement('script');
-    s.src = SDK_URL;
-    s.async = true;
-    s.onload = () => resolve(!!window.WorkBuddyCloud);
-    s.onerror = () => resolve(false);
-    document.head.appendChild(s);
-    // 15s 超时兜底（CDN 挂起时不无限等待）
-    setTimeout(() => resolve(!!window.WorkBuddyCloud), 15000);
-  });
+  _loadPromise = (async () => {
+    for (const url of SDK_URLS) {
+      const ok = await new Promise((resolve) => {
+        const s = document.createElement('script');
+        s.src = url;
+        s.async = true;
+        s.onload = () => resolve(!!window.WorkBuddyCloud);
+        s.onerror = () => resolve(false);
+        document.head.appendChild(s);
+        // 8s 单源超时兜底（挂起时不无限等待）
+        setTimeout(() => resolve(!!window.WorkBuddyCloud), 8000);
+      });
+      if (ok) return true;
+      // 清掉失败标签（避免 DOM 堆积）
+      const bad = document.querySelector('script[src="' + url + '"]');
+      if (bad && bad.parentNode) bad.parentNode.removeChild(bad);
+    }
+    return false;
+  })();
   return _loadPromise;
 }
 
@@ -188,6 +205,11 @@ async function nativeEnsureReady() {
       if (!error && data && data.user) state.user = { id: data.user.id, email: data.user.email || '' };
       else state.user = null;
     } catch (e) { state.user = null; }
+    // v0.2.10：账号名身份（player_accounts，无云 session）恢复
+    if (!state.user) {
+      const nu = lsGet('astrix_nuid'), nn = lsGet('astrix_nname');
+      if (nu && nn) state.user = { id: nu, name: nn };
+    }
     state.status = 'ready';
     return true;
   } catch (e) {
@@ -492,4 +514,70 @@ export async function signUpWithPassword(email, password) {
   }
   if (!(await bridgeEnsureReady())) return { ok: false, reason: state.error || '云服务不可用' };
   return bridgeRpc('signUpWithPassword', [email, password]);
+}
+
+// ============================================================================
+// 账号名登录 v2（v0.2.10 最终方案）：云服务商强制邮箱验证码注册，密码直注走不通 ——
+//   改用 player_accounts 表自管账号：账号名 + 加盐 SHA-256，uid = 'n_' + hash(name) 前 16 位
+//   * RLS 已放宽：n_* 身份可读写自己的快照 / 收发事件（见云端策略）
+//   * 会话存 localStorage（astrix_nuid / astrix_nname），ensureReady 时恢复
+// ============================================================================
+function nameHashHex(s) {
+  if (typeof crypto !== 'undefined' && crypto.subtle) {
+    return crypto.subtle.digest('SHA-256', new TextEncoder().encode(s)).then((buf) =>
+      Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, '0')).join(''));
+  }
+  // 兜底（无 crypto 环境）：双 djb2/FNV 拼接（仅探针用）
+  let a = 5381, b = 52711;
+  for (let i = 0; i < s.length; i++) {
+    a = ((a << 5) + a + s.charCodeAt(i)) >>> 0;
+    b = (((b << 7) + b) ^ s.charCodeAt(i)) >>> 0;
+  }
+  return Promise.resolve(a.toString(16) + b.toString(16));
+}
+
+export function nameUidOf(name) {
+  return nameHashHex('astrix:uid:' + String(name || '').trim().toLowerCase()).then((h) => 'n_' + h.slice(0, 16));
+}
+
+function lsGet(k) { try { return window.localStorage.getItem(k); } catch (e) { return null; } }
+function lsSet(k, v) { try { window.localStorage.setItem(k, String(v)); } catch (e) { /* 忽略 */ } }
+
+/** 注册：账号名不存在 → 写入 player_accounts 并登录 */
+export async function registerWithName(name, password) {
+  const n = String(name || '').trim();
+  if (n.length < 2) return { ok: false, reason: '账号名至少 2 个字符' };
+  if (!password || String(password).length < 4) return { ok: false, reason: '密码至少 4 位' };
+  if (!(await ensureReady())) return { ok: false, reason: state.error || '云服务不可用' };
+  if (!db()) return { ok: false, reason: state.error || '云服务不可用' };
+  try {
+    const uid = await nameUidOf(n);
+    const passhash = await nameHashHex('astrix:v1:' + n + ':' + password);
+    const dup = await db().from('player_accounts').select('name').eq('name', n).limit(1);
+    if (dup.error) return { ok: false, reason: dup.error.message || '读取账号失败' };
+    if (Array.isArray(dup.data) && dup.data.length > 0) return { ok: false, reason: '账号名已存在，请直接登录' };
+    const ins = await db().from('player_accounts').insert({ name: n, passhash, uid }).select();
+    if (ins.error) return { ok: false, reason: ins.error.message || '注册失败' };
+    lsSet('astrix_nuid', uid); lsSet('astrix_nname', n);
+    state.user = { id: uid, name: n };
+    return { ok: true, user: state.user };
+  } catch (e) { return { ok: false, reason: (e && e.message) || String(e) }; }
+}
+
+/** 登录：校验账号名 + 密码哈希 */
+export async function loginWithName(name, password) {
+  const n = String(name || '').trim();
+  if (!(await ensureReady())) return { ok: false, reason: state.error || '云服务不可用' };
+  if (!db()) return { ok: false, reason: state.error || '云服务不可用' };
+  try {
+    const q = await db().from('player_accounts').select('*').eq('name', n).limit(1);
+    if (q.error) return { ok: false, reason: q.error.message || '读取账号失败' };
+    if (!Array.isArray(q.data) || q.data.length === 0) return { ok: false, reason: '账号不存在' };
+    const row = q.data[0];
+    const passhash = await nameHashHex('astrix:v1:' + n + ':' + password);
+    if (row.passhash !== passhash) return { ok: false, reason: '密码错误' };
+    lsSet('astrix_nuid', row.uid); lsSet('astrix_nname', n);
+    state.user = { id: row.uid, name: n };
+    return { ok: true, user: state.user };
+  } catch (e) { return { ok: false, reason: (e && e.message) || String(e) }; }
 }
