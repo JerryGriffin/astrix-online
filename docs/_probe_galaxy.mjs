@@ -30,8 +30,8 @@ const res = await page.evaluate(async () => {
       database: chain,
     }),
   };
-  const G = await import('/js/ui/galaxy.js?v=26.3');
-  const S = await import('/js/core/state.js?v=26.3');
+  const G = await import('/js/ui/galaxy.js?v=26.4');
+  const S = await import('/js/core/state.js?v=26.4');
   const acc = S.currentAccount() || { id: 't', name: '测试', homePlanetCode: 'syl', tech: [], ascoin: 999999 };
   S.STATE.mode = 'online';
   const root = document.createElement('div');

@@ -10,8 +10,8 @@
 //   * HOI4 风格国策（三支六策，按天推进）               → focus 系列
 //   * 海域（制海权争夺 + 海战）                          → sea 系列
 import { HOI_NATIONS, HOI_BY_ID, HOI_DEEP, HOI_SEAS, ARMY_MEN, popOf, BLOC_NAME, HOI_SCENARIO_ID,
-  workforceOf, ARMY_POWER_PER_DIV, NAVY_MUL, GEAR_PARTS, SHIP_NAMES, ARMY_BP_NAME } from '../data/hoi1936.js?v=26.3';
-import { BUILDING_BY_ID } from '../data/buildings.js?v=26.3';
+  workforceOf, ARMY_POWER_PER_DIV, NAVY_MUL, GEAR_PARTS, SHIP_NAMES, ARMY_BP_NAME } from '../data/hoi1936.js?v=26.4';
+import { BUILDING_BY_ID } from '../data/buildings.js?v=26.4';
 
 // 依赖注入（避免与 state.js / production.js 形成循环导入）
 let _getInst = null;

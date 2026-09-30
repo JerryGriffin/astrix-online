@@ -2,15 +2,15 @@
 //   · 顶部：剧本日历（到天）、国家、阵营、人口、军队 / 舰队概览
 //   · 国策树：工业 / 军事 / 外交三支，各两支；按游戏天数推进，完成即生效
 //   · 海域：六个 HOI4 风格海域，制海权争夺 + 海战结算
-import { fmtNum } from '../core/format.js?v=26.3';
-import { currentAccount, getPlanetInstance } from '../core/state.js?v=26.3';
-import { listArmies, totalArmyPowerOf } from '../core/army.js?v=26.3';
-import { listFleets, fleetPowerOf } from '../core/fleet.js?v=26.3';
+import { fmtNum } from '../core/format.js?v=26.4';
+import { currentAccount, getPlanetInstance } from '../core/state.js?v=26.4';
+import { listArmies, totalArmyPowerOf } from '../core/army.js?v=26.4';
+import { listFleets, fleetPowerOf } from '../core/fleet.js?v=26.4';
 import {
   scenarioDateOf, gameDaysOf, ensureFocus, focusOptionsOf, startFocus,
   ensureSeas, contestSea, blocNameOf, nationOf, deepOf, enemySeaPressure, HOI_SCENARIO_ID,
-} from '../core/hoi1936.js?v=26.3';
-import { HOI_SEAS } from '../data/hoi1936.js?v=26.3';
+} from '../core/hoi1936.js?v=26.4';
+import { HOI_SEAS } from '../data/hoi1936.js?v=26.4';
 
 function el(tag, attrs = {}, children = []) {
   const e = document.createElement(tag);

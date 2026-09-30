@@ -15,45 +15,45 @@
 //    开局自带 1 座建筑工厂（设计者：「开局有一个建筑工厂」）。
 // 5. 施工队列由 tick 推进：速度 = 建筑工有效人力（受建筑工厂工位限制），无人则为 0。
 
-import { PLANETS } from '../data/planets.js?v=26.3';
-import { HOI_NATIONS, HOI_BY_ID, HOI_SCENARIO_ID } from '../data/hoi1936.js?v=26.3';   // v0.2.6 官方 mod 1936 剧本
+import { PLANETS } from '../data/planets.js?v=26.4';
+import { HOI_NATIONS, HOI_BY_ID, HOI_SCENARIO_ID } from '../data/hoi1936.js?v=26.4';   // v0.2.6 官方 mod 1936 剧本
 import {
   setHoiDeps, popOf, setupArmies, setupNavy, setupLines, setupBloc, setupFactories, tickDiploAI,
   ensureFocus, tickFocus, ensureSeas, scenarioDateOf, gameDaysOf,
-} from './hoi1936.js?v=26.3';
-import { BUILDING_BY_ID, buildingCost } from '../data/buildings.js?v=26.3';
-import { TECH_BY_ID, canResearch, missingPrereqs, missingBuilding } from '../data/techs.js?v=26.3';
-import { UPGRADES, upgradeCost } from '../data/upgrades.js?v=26.3';
+} from './hoi1936.js?v=26.4';
+import { BUILDING_BY_ID, buildingCost } from '../data/buildings.js?v=26.4';
+import { TECH_BY_ID, canResearch, missingPrereqs, missingBuilding } from '../data/techs.js?v=26.4';
+import { UPGRADES, upgradeCost } from '../data/upgrades.js?v=26.4';
 import {
   createPopulation, tickPopulation, getAvailable, gatherLaborByLayer, jobsOfBuilding, getIntensity,
   consumptionPerSec, jobOutput,
   JOBS, freeSlots,
-} from './population.js?v=26.3';
-import { buildRateOf, buildBlockReason } from './construction.js?v=26.3';
-import { tickShip, defaultBlueprints, createShip, shipBuildTick } from './shipyard.js?v=26.3';
+} from './population.js?v=26.4';
+import { buildRateOf, buildBlockReason } from './construction.js?v=26.4';
+import { tickShip, defaultBlueprints, createShip, shipBuildTick } from './shipyard.js?v=26.4';
 // v0.0.6：电力系统与配方生产。
 // 注意这两个模块**不反向 import 本文件**（否则形成循环依赖），
 // 它们只从传入的 inst 上读 buildings / pop / inventory / recipes。
-import { energyOf, computePower, tickPower } from './power.js?v=26.3';
+import { energyOf, computePower, tickPower } from './power.js?v=26.4';
 // v0.0.91：efficiencyBonus 由 production.js 导出（建筑总座数效率乘数），
 //   这里沿用既有的 state→production 单向边引入，不反向让 production import state，避免循环依赖。
-import { tickProduction, productionRates, ensureLines, lineWorkersTotal, efficiencyBonus, ensureEntry, addLine as addProductionLine, lineSlotInfo } from './production.js?v=26.3';
+import { tickProduction, productionRates, ensureLines, lineWorkersTotal, efficiencyBonus, ensureEntry, addLine as addProductionLine, lineSlotInfo } from './production.js?v=26.4';
 // v0.0.92：星际航行与殖民（管理模式 / 独立倾向 / 随机星球）
-import { tickIndependence, outputMulOf, happinessDeltaOf, ensureDiscoveredDefaults, discoverPlanet, capturePlanet, purgeShopColonies, tickManagedColonies, SHOP_PLANET_CODE } from './planetgen.js?v=26.3';
+import { tickIndependence, outputMulOf, happinessDeltaOf, ensureDiscoveredDefaults, discoverPlanet, capturePlanet, purgeShopColonies, tickManagedColonies, SHOP_PLANET_CODE } from './planetgen.js?v=26.4';
 // v0.1.2（需求 18/19）：永久升级的「效果」改乘方，唯一实现在 data/upgrades.js#upgradeMul
 // （UI 的 research.js 也用它，别在别处再写一套公式）。
 // 此前 upg_collect/refine/power/labor/research/build 六项付了钱却没有任何效果。
-import { upgradeMul } from '../data/upgrades.js?v=26.3';
-import { tickFleetMissions, ensureFleets } from './fleet.js?v=26.3';
-import { ensureArmies, armyBuildTick, advanceTraining, ARMY_LABOR_PER_BARRACKS } from './army.js?v=26.3';   // v0.2.0 军队
+import { upgradeMul } from '../data/upgrades.js?v=26.4';
+import { tickFleetMissions, ensureFleets } from './fleet.js?v=26.4';
+import { ensureArmies, armyBuildTick, advanceTraining, ARMY_LABOR_PER_BARRACKS } from './army.js?v=26.4';   // v0.2.0 军队
 // v0.1.0：电脑账号（离线存档里的 NPC 势力）与其交易池联动。
 //   注意 npc.js 是叶子模块（只 import 数据表），shop.js 与 state.js 互为函数级引用、无顶层副作用。
-import { ensureNpcs, tickNpcs } from './npc.js?v=26.3';
+import { ensureNpcs, tickNpcs } from './npc.js?v=26.4';
 import {
   priceOf as shopPriceOf, suggestPriceOf as shopSuggestPriceOf,
   tickShop as shopTick,
-} from './shop.js?v=26.3';
-import { tickAuctions, tickNpcAuctionSpawner } from './auction.js?v=26.3';   // v0.2.6 拍卖行；v0.2.10 NPC 挂单
+} from './shop.js?v=26.4';
+import { tickAuctions, tickNpcAuctionSpawner } from './auction.js?v=26.4';   // v0.2.6 拍卖行；v0.2.10 NPC 挂单
 
 const SAVE_PREFIX = 'astrix.save.';
 const INDEX_KEY = SAVE_PREFIX + 'index';
@@ -194,7 +194,18 @@ export function saveState() {
 
 // 新建账号并切换为当前账号
 // mode（v0.1.0）：'fresh'（初登星球，默认）/ 'deep'（漫溯深空，中期开局）
+// v0.2.6 rev4：开发者模式标记（与 ui/start.js 的 astrix_dev 同源）
+function devModeEnabled() {
+  try { return String(globalThis.localStorage && globalThis.localStorage.getItem('astrix_dev')) === '1'; }
+  catch (e) { return false; }
+}
+
 export function createAccount(name, mode, opts) {
+  // 在线池门禁（防御性）：非开发者只能「初登星球」——
+  //   「1936 剧本」与「漫溯深空」在线需开发者模式（离线不受限）
+  try {
+    if (STATE.mode === 'online' && mode !== 'fresh' && !devModeEnabled()) mode = 'fresh';
+  } catch (e) { /* 忽略 */ }
   const acc = defaultAccount(name);
   STATE.accounts.push(acc);
   STATE.currentAccountId = acc.id;

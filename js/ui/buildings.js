@@ -16,14 +16,14 @@
 // 与人力系统的关系：
 //   建筑提供工位 → 人力面板按建筑分组分配人 → 分配了「建筑工」才有人施工（硬门槛）。
 
-import { BUILDINGS, BUILDING_BY_ID, CATEGORIES, buildingCost } from '../data/buildings.js?v=26.3';
-import { fmtNum, fmtTime, fmtRateBody } from '../core/format.js?v=26.3';
+import { BUILDINGS, BUILDING_BY_ID, CATEGORIES, buildingCost } from '../data/buildings.js?v=26.4';
+import { fmtNum, fmtTime, fmtRateBody } from '../core/format.js?v=26.4';
 import {
   getBuildingCounts, buildingCount, costOfNext, isBuildingUnlocked,
   startBuild, cancelBuild, buildQueueOf, BUILD_QUEUE_MAX, currentAccount,
-} from '../core/state.js?v=26.3';
-import { buildingSlots, assignedToBuilding, freeSlots } from '../core/population.js?v=26.3';
-import { buildRateOf, buildBlockReason } from '../core/construction.js?v=26.3';
+} from '../core/state.js?v=26.4';
+import { buildingSlots, assignedToBuilding, freeSlots } from '../core/population.js?v=26.4';
+import { buildRateOf, buildBlockReason } from '../core/construction.js?v=26.4';
 
 const CSS = `
   .bld-panel { font-family: system-ui, sans-serif; color: #e8eef2; padding: 12px; box-sizing: border-box; }

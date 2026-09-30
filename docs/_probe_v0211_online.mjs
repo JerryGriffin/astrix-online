@@ -1,7 +1,7 @@
 // v0.2.10 在线专项探针：NPC 拍卖挂单 —— 生成 / 冷却 / 玩家中标付款 / 到期移除
-import { ensureAuctions, tickNpcAuctionSpawner, tickAuctions, placeBid, activeAuctions } from '../js/core/auction.js?v=26.3';
-import { getPlanetInstance } from '../js/core/state.js?v=26.3';
-import { ownedOf } from '../js/core/state.js?v=26.3';
+import { ensureAuctions, tickNpcAuctionSpawner, tickAuctions, placeBid, activeAuctions } from '../js/core/auction.js?v=26.4';
+import { getPlanetInstance } from '../js/core/state.js?v=26.4';
+import { ownedOf } from '../js/core/state.js?v=26.4';
 
 let pass = 0, fail = 0;
 function ok(cond, msg) {
