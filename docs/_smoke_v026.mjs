@@ -32,7 +32,7 @@ await page.waitForTimeout(600);
 // 先看当前界面是否已有开局模式按钮；没有则点「新建存档」打开表单
 const stepAClick = await page.evaluate(() => {
   const scope = document.body;
-  const has1936 = Array.from(scope.querySelectorAll('button')).some((x) => x.textContent.trim() === '1936 剧本');
+  const has1936 = Array.from(scope.querySelectorAll('button')).some((x) => x.textContent.trim() === '风暴前夜');
   if (has1936) return { opened: false };
   const add = Array.from(scope.querySelectorAll('button')).find((x) => x.textContent.includes('新建存档'));
   if (!add) return { err: '没找到新建存档按钮' };
@@ -42,7 +42,7 @@ const stepAClick = await page.evaluate(() => {
 await page.waitForTimeout(400);
 const stepA = await page.evaluate(() => {
   const scope = document.body;
-  const mode = Array.from(scope.querySelectorAll('button')).find((x) => x.textContent.trim() === '1936 剧本');
+  const mode = Array.from(scope.querySelectorAll('button')).find((x) => x.textContent.trim() === '风暴前夜');
   if (!mode) {
     return { err: '没有 1936 剧本模式按钮', buttons: Array.from(scope.querySelectorAll('button')).map((x) => x.textContent.trim()).slice(0, 16) };
   }
