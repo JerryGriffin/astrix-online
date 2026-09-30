@@ -544,12 +544,8 @@ function lsGet(k) { try { return window.localStorage.getItem(k); } catch (e) { r
 function lsSet(k, v) { try { window.localStorage.setItem(k, String(v)); } catch (e) { /* 忽略 */ } }
 
 /** 注册：账号名不存在 → 写入 player_accounts 并登录 */
-export async function registerWithName(name, password) {
-  const n = String(name || '').trim();
-  if (n.length < 2) return { ok: false, reason: '账号名至少 2 个字符' };
-  if (!password || String(password).length < 4) return { ok: false, reason: '密码至少 4 位' };
-  if (!(await ensureReady())) return { ok: false, reason: state.error || '云服务不可用' };
-  if (!db()) return { ok: false, reason: state.error || '云服务不可用' };
+async function nativeRegisterWithName(n, password) {
+  if (!(await nativeEnsureReady()) || !db()) return { ok: false, reason: state.error || '云服务不可用' };
   try {
     const uid = await nameUidOf(n);
     const passhash = await nameHashHex('astrix:v1:' + n + ':' + password);
@@ -564,11 +560,18 @@ export async function registerWithName(name, password) {
   } catch (e) { return { ok: false, reason: (e && e.message) || String(e) }; }
 }
 
-/** 登录：校验账号名 + 密码哈希 */
-export async function loginWithName(name, password) {
+export async function registerWithName(name, password) {
   const n = String(name || '').trim();
-  if (!(await ensureReady())) return { ok: false, reason: state.error || '云服务不可用' };
-  if (!db()) return { ok: false, reason: state.error || '云服务不可用' };
+  if (n.length < 2) return { ok: false, reason: '账号名至少 2 个字符' };
+  if (!password || String(password).length < 4) return { ok: false, reason: '密码至少 4 位' };
+  if (isNative()) return nativeRegisterWithName(n, password);
+  if (!(await bridgeEnsureReady())) return { ok: false, reason: state.error || '云服务不可用' };
+  return bridgeRpc('registerWithName', [n, password]);
+}
+
+/** 登录：校验账号名 + 密码哈希 */
+async function nativeLoginWithName(n, password) {
+  if (!(await nativeEnsureReady()) || !db()) return { ok: false, reason: state.error || '云服务不可用' };
   try {
     const q = await db().from('player_accounts').select('*').eq('name', n).limit(1);
     if (q.error) return { ok: false, reason: q.error.message || '读取账号失败' };
@@ -580,4 +583,11 @@ export async function loginWithName(name, password) {
     state.user = { id: row.uid, name: n };
     return { ok: true, user: state.user };
   } catch (e) { return { ok: false, reason: (e && e.message) || String(e) }; }
+}
+
+export async function loginWithName(name, password) {
+  const n = String(name || '').trim();
+  if (isNative()) return nativeLoginWithName(n, password);
+  if (!(await bridgeEnsureReady())) return { ok: false, reason: state.error || '云服务不可用' };
+  return bridgeRpc('loginWithName', [n, password]);
 }
