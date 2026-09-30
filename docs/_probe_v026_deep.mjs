@@ -1,9 +1,9 @@
 // v0.2.6 深化探针：人口比例 / 500 人编制 / 史实舰队 / 侧重生产线 / 阵营 / 国策 / 海域
-import { STATE, createAccount, getPlanetInstance } from '../js/core/state.js?v=28.1';
-import { HOI_NATIONS, HOI_BY_ID, HOI_DEEP, popOf, GER_POP_BASE, ARMY_MEN, HOI_SEAS } from '../js/data/hoi1936.js?v=28.1';
-import { scenarioDateOf, ensureFocus, startFocus, tickFocus, focusOptionsOf, contestSea, ensureSeas, enemySeaPressure, blocNameOf, deepOf } from '../js/core/hoi1936.js?v=28.1';
-import { consumptionPerSec } from '../js/core/population.js?v=28.1';
-import { listFleets } from '../js/core/fleet.js?v=28.1';
+import { STATE, createAccount, getPlanetInstance } from '../js/core/state.js?v=29.1';
+import { HOI_NATIONS, HOI_BY_ID, HOI_DEEP, popOf, GER_POP_BASE, ARMY_MEN, HOI_SEAS } from '../js/data/hoi1936.js?v=29.1';
+import { scenarioDateOf, ensureFocus, startFocus, tickFocus, focusOptionsOf, contestSea, ensureSeas, enemySeaPressure, blocNameOf, deepOf } from '../js/core/hoi1936.js?v=29.1';
+import { consumptionPerSec } from '../js/core/population.js?v=29.1';
+import { listFleets } from '../js/core/fleet.js?v=29.1';
 
 let pass = 0, fail = 0;
 function ok(cond, msg) { if (cond) { pass++; console.log('  ✓ ' + msg); } else { fail++; console.log('  ✗ ' + msg); } }
@@ -81,7 +81,7 @@ ok(enemySeaPressure(ger) === 0, '未交战 → 无敌方海上压力');
 const seaR = contestSea(ger, 'baltic', 900);
 ok(seaR.ok && seaR.control > 0.5, '无敌人时巡航提升制海权（' + Math.round(seaR.control * 100) + '%）');
 // 与海上强国交战后再测：敌方海上压力 > 0，弱小舰队会丢制海权
-const W = await import('../js/core/war.js?v=28.1');
+const W = await import('../js/core/war.js?v=29.1');
 W.declareWar(ger, { id: 'hoi_eng', nameCn: '伦敦', kind: 'npc' });
 ok(enemySeaPressure(ger) > 0, '与不列颠交战后敌方海上压力 > 0（' + Math.round(enemySeaPressure(ger)) + '）');
 const before = seas.find((x) => x.id === 'atlantic').control;
@@ -98,10 +98,10 @@ ok(missing.length === 0, '12 国均有编制/舰队/生产线/六策/阵营' + (
 
 
 // ---- H. rev3：生产线工人 / 建筑群 / 历史师数 / 史实蓝图 / 国策分支 / 外交 AI / 战时总动员 ----
-import { workforceOf, SHIP_NAMES, ARMY_BP_NAME } from '../js/data/hoi1936.js?v=28.1';
-import { tickDiploAI } from '../js/core/hoi1936.js?v=28.1';
-import { MANAGE_MODES, tickPopulation } from '../js/core/population.js?v=28.1';
-import { resolveBattle } from '../js/core/army.js?v=28.1';
+import { workforceOf, SHIP_NAMES, ARMY_BP_NAME } from '../js/data/hoi1936.js?v=29.1';
+import { tickDiploAI } from '../js/core/hoi1936.js?v=29.1';
+import { MANAGE_MODES, tickPopulation } from '../js/core/population.js?v=29.1';
+import { resolveBattle } from '../js/core/army.js?v=29.1';
 
 const ger2 = createAccount('柏林2', 'hoi1936', { countryId: 'ger' });
 const g2 = getPlanetInstance(ger2.homePlanetCode);
@@ -159,7 +159,7 @@ ok(typeof withRes.log === 'string' && withRes.log.indexOf('预备队') >= 0, '�
 
 
 // ---- I. rev5：全建筑有人工作 / 工业修正 / 王牌师 ----
-import { ELITE_DIVISIONS, ELITE_MUL } from '../js/data/hoi1936.js?v=28.1';
+import { ELITE_DIVISIONS, ELITE_MUL } from '../js/data/hoi1936.js?v=29.1';
 const ger5 = createAccount('柏林5', 'hoi1936', { countryId: 'ger' });
 const g5 = getPlanetInstance(ger5.homePlanetCode);
 ok((ger5.hoiStaffJobs || 0) > 20000, '岗位工人已分配（' + ger5.hoiStaffJobs + ' 人：农田/矿井/科研/加工等）');
@@ -173,15 +173,16 @@ ok(HOI_BY_ID.usa.ic > HOI_BY_ID.ger.ic * 2, '美国工业最强（' + HOI_BY_ID.
 ok(HOI_BY_ID.eng.ic > HOI_BY_ID.fra.ic && HOI_BY_ID.fra.ic > HOI_BY_ID.ita.ic, '西方工业梯队合理（英 > 法 > 意）');
 const elite = ger5.armies.filter((a) => a.elite);
 ok(elite.length >= 2 && elite[0].nameCn.indexOf(ELITE_DIVISIONS.ger[0]) >= 0, '德国王牌师存在（' + elite.map((a) => a.nameCn).join(' / ') + '）');
-ok(elite[0].power > ger5.armies[ger5.armies.length - 1].power * 1.4, '王牌师战力显著更高（' + elite[0].power + ' vs ' + ger5.armies[ger5.armies.length - 1].power + '）');
+const normalSlot0 = ger5.armies.filter((a) => !a.elite)[0];
+ok(elite[0].power > normalSlot0.power * 1.4, '王牌师战力显著高于同编制普通师（' + elite[0].power + ' vs ' + normalSlot0.power + '）');
 const usa5 = createAccount('华盛顿5', 'hoi1936', { countryId: 'usa' });
 ok(usa5.armies[0].elite && usa5.armies[0].nameCn.indexOf('大红一师') >= 0, '美国王牌师（' + usa5.armies[0].nameCn + '）');
 ok(usa5.armies.some((a) => a.stats.atk > ger5.armies.find((x) => !x.elite).stats.atk), '美国师数值强于德国普通师');
 
 
 // ---- J. rev7：旧存档自愈（庇护补齐） ----
-import { repairScenarioEstates } from '../js/core/hoi1936.js?v=28.1';
-import { tickPopulation as tickPop2 } from '../js/core/population.js?v=28.1';
+import { repairScenarioEstates } from '../js/core/hoi1936.js?v=29.1';
+import { tickPopulation as tickPop2 } from '../js/core/population.js?v=29.1';
 const oldAcc = createAccount('旧档自愈', 'hoi1936', { countryId: 'sov' });
 const oldCol = getPlanetInstance(oldAcc.colonyCode);
 oldCol.buildings.house = 4;          // 模拟 rev6 前的老存档
@@ -196,8 +197,8 @@ ok(oldCol.pop.happiness > 0.85, '300 秒后幸福度回到 0.85+（' + oldCol.po
 
 
 // ---- K. rev9：真战舰 / 多军队蓝图 / 战争推进 / 补员 ----
-import { tickWarsHoi4, reinforceArmy } from '../js/core/hoi1936.js?v=28.1';
-import { ARMY_BP_LINE } from '../js/data/hoi1936.js?v=28.1';
+import { tickWarsHoi4, reinforceArmy } from '../js/core/hoi1936.js?v=29.1';
+import { ARMY_BP_LINE } from '../js/data/hoi1936.js?v=29.1';
 const g9 = createAccount('柏林9', 'hoi1936', { countryId: 'ger' });
 ok(g9.ships.every((sh) => sh.kind === 'warship'), '仓库船全是战舰（非探索船/运输船）');
 const cls9 = g9.ships.map((sh) => sh.shipClass);
@@ -206,7 +207,7 @@ ok(cls9.some((c) => /驱逐舰/.test(c || '')) && cls9.some((c) => /潜艇/.test
 ok((g9.hoiArmyBps || []).length >= 3, '每国 ≥3 种军队蓝图（' + (g9.hoiArmyBps || []).join(' / ') + '）');
 ok((ARMY_BP_LINE.ger || []).length === 3 && (ARMY_BP_LINE.chn || []).length === 3, '12 国均有三类兵种蓝图');
 // 战争推进（HOI4 式）
-const W9 = await import('../js/core/war.js?v=28.1');
+const W9 = await import('../js/core/war.js?v=29.1');
 W9.declareWar(g9, { id: 'hoi_pol', nameCn: '华沙', kind: 'npc' });
 for (let i = 0; i < 30; i++) tickWarsHoi4(g9, 30);
 const w9 = W9.warWith(g9, 'hoi_pol');
@@ -223,8 +224,8 @@ ok(a9.power < 400, '兵力不足时战力按比例下降（' + a9.power + '）')
 
 
 // ---- L. v0.2.8：储量无限（持有有限）+ 历史禀赋 + 改名 ----
-import { INFINITE_STOCK } from '../js/core/hoi1936.js?v=28.1';
-import { HOI_SCENARIO_NAME } from '../js/data/hoi1936.js?v=28.1';
+import { INFINITE_STOCK } from '../js/core/hoi1936.js?v=29.1';
+import { HOI_SCENARIO_NAME } from '../js/data/hoi1936.js?v=29.1';
 const gInf = createAccount('储量检查', 'hoi1936', { countryId: 'ger' });
 const iInf = getPlanetInstance(gInf.homePlanetCode);
 const steelInf = (iInf.inventory || []).find((x) => x && x.mat === '钢');
@@ -237,6 +238,21 @@ const cnFood = (chnI.inventory || []).find((x) => x && x.mat === '有机质').ow
 ok(cnSteel < steelInf.owned / 10, '中国钢远少于德国（' + cnSteel + ' vs ' + steelInf.owned + '）');
 ok(cnFood > steelInf.owned * 10, '中国粮（有机质）远多于德国（历史禀赋）');
 ok(HOI_SCENARIO_NAME === '风暴前夜', '剧本名 = 风暴前夜（' + HOI_SCENARIO_NAME + '）');
+
+
+// ---- M. v0.2.9：战舰字段完整 / 蓝图历史化 / 装甲师增强 / 动员调整 ----
+import { ARMY_BP_BY_ID as BP9, ARMY_BLUEPRINTS as BPL9 } from '../js/data/army_parts.js?v=29.1';
+import { MANAGE_MODES as MM9 } from '../js/core/population.js?v=29.1';
+const gFix = createAccount('修复9', 'hoi1936', { countryId: 'ger' });
+ok(gFix.ships.every((sh) => !!sh.blueprintId), '战舰均有 blueprintId（飞船页可打开）');
+ok(gFix.ships.every((sh) => sh.mark != null && sh.parts && sh.capacity != null), '战舰字段完整（mark/parts/capacity）');
+ok((BPL9 || []).slice(0, 3).every((b) => /掷弹兵师|装甲师|游击/.test(b.nameCn)), '军队蓝图已历史化（' + (BPL9 || []).slice(0, 3).map((b) => b.nameCn).join(' / ') + '）');
+ok((BPL9 || [])[0].men === 500, '蓝图兵员 = 500');
+const p9 = gFix.armies.map((a) => a.power);
+const ne = gFix.armies.filter((a) => !a.elite);
+ok(ne.length >= 3 && ne[2].power > ne[0].power * 1.4, '装甲/突击编制战力大幅增强（非王牌：' + ne.slice(0, 3).map((a) => a.power).join(' / ') + '）');
+const mob9 = MM9.find((m) => m.id === 'mobilize');
+ok(mob9.organicMul === 8 && Math.abs(mob9.happinessDelta + 0.0015) < 1e-9, '战时总动员：有机 ×8、幸福度 -0.0015');
 
 console.log('');
 console.log('通过 ' + pass + ' 项，失败 ' + fail + ' 项');

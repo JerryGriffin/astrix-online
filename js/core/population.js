@@ -33,7 +33,7 @@
 // 人口变化：H > 0.5 增长、H < 0.3 下降，否则持平。
 // 各项系数都在下方常量区，改一个数就能调平衡。
 
-import { BUILDING_BY_ID } from '../data/buildings.js?v=28.1';
+import { BUILDING_BY_ID } from '../data/buildings.js?v=29.1';
 
 // ============================================================================
 // 可调常量（集中放这里，方便策划调参）
@@ -125,9 +125,9 @@ export const MANAGE_MODES = [
   { id: 'birth_boost', nameCn: '鼓励生育', icon: '👶', growthMul: 3, organicMul: 2.5, waterMul: 2.5, outputMul: 0.95,
     desc: '人口快速增长（×3），但有机质消耗极多（×2.5，水同），产出 −5%（抚育挤占工时）。' },
   // v0.2.6：全存档可用的「战时总动员」——星球管理层的最高强度体制
-  { id: 'mobilize', nameCn: '战时总动员', icon: '🎖', growthMul: 0.55, organicMul: 1.25, waterMul: 1.2, outputMul: 1.3,
-    happinessDelta: -0.004,
-    desc: '全民进入战时体制：产出 +30%、劳动力倾巢而出，但人口增长放缓（×0.55）、粮水消耗上升、幸福度持续下滑。' },
+  { id: 'mobilize', nameCn: '战时总动员', icon: '🎖', growthMul: 0.55, organicMul: 8, waterMul: 2, outputMul: 1.3,
+    happinessDelta: -0.0015,
+    desc: '全民进入战时体制：产出 +30%、劳动力倾巢而出；代价是**有机物消耗 ×8**（水 ×2）、人口增长放缓（×0.55）、幸福度缓慢下滑。' },
 ];
 
 /** 取星球实例（或 pop 对象）的管理模式；未设置 = 常规 */

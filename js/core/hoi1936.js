@@ -10,10 +10,11 @@
 //   * HOI4 风格国策（三支六策，按天推进）               → focus 系列
 //   * 海域（制海权争夺 + 海战）                          → sea 系列
 import { HOI_NATIONS, HOI_BY_ID, HOI_DEEP, HOI_SEAS, ARMY_MEN, popOf, BLOC_NAME, HOI_SCENARIO_ID,
-  workforceOf, ARMY_POWER_PER_DIV, NAVY_MUL, GEAR_PARTS, SHIP_NAMES, ARMY_BP_NAME, HOI_BG, SHIP_CLASSES, POST_WAR_OPTIONS, GER_PUPPETS, ARMY_BP_LINE, warshipTonnageOf } from '../data/hoi1936.js?v=28.1';
-import { BUILDING_BY_ID } from '../data/buildings.js?v=28.1';
-import { JOBS_BY_BUILDING, assignWorkers, jobCapacity, getAvailable } from './population.js?v=28.1';
-import { ELITE_DIVISIONS, ELITE_MUL } from '../data/hoi1936.js?v=28.1';
+  workforceOf, ARMY_POWER_PER_DIV, NAVY_MUL, GEAR_PARTS, SHIP_NAMES, ARMY_BP_NAME, HOI_BG, SHIP_CLASSES, POST_WAR_OPTIONS, GER_PUPPETS, ARMY_BP_LINE, warshipTonnageOf } from '../data/hoi1936.js?v=29.1';
+import { BUILDING_BY_ID } from '../data/buildings.js?v=29.1';
+import { ARMY_BP_BY_ID, ARMY_BLUEPRINTS } from '../data/army_parts.js?v=29.1';
+import { JOBS_BY_BUILDING, assignWorkers, jobCapacity, getAvailable } from './population.js?v=29.1';
+import { ELITE_DIVISIONS, ELITE_MUL } from '../data/hoi1936.js?v=29.1';
 
 // 依赖注入（避免与 state.js / production.js 形成循环导入）
 let _getInst = null;
@@ -205,6 +206,8 @@ export function setupArmies(acc, nation) {
   acc.hoiArmyBps = bpLine;
   for (let i = 0; i < count; i++) {
     const bpName = bpLine[i % bpLine.length];
+    // v0.2.9：按兵种给战力 —— 第 3 类（装甲/突击编制）大幅增强
+    const slotMul = [1.0, 1.15, 1.5][i % 3] || 1;
     acc.armies.push({
       id: 'army_' + n.id + '_' + i,
       nameCn: n.nameCn + ' 第' + (i + 1) + ' ' + bpName,
@@ -213,13 +216,31 @@ export function setupArmies(acc, nation) {
       men: ARMY_MEN,
       exp: 0, bonusAtk: 0, bonusDef: 0,
       stats: {
-        atk: Math.round(perPower * (deep.atkMul || 1)),
-        def: Math.round(perPower * (deep.defMul || 1)),
+        atk: Math.round(perPower * (deep.atkMul || 1) * slotMul),
+        def: Math.round(perPower * (deep.defMul || 1) * slotMul),
         speed: 8,
       },
-      power: Math.round(perPower * ((deep.atkMul || 1) + (deep.defMul || 1)) / 2),
+      power: Math.round(perPower * ((deep.atkMul || 1) + (deep.defMul || 1)) / 2 * slotMul),
     });
   }
+  // v0.2.9：军队蓝图历史化 —— 该国的三张兵种蓝图改名为本国史实名，
+  //   并给「装甲师」等突击编制更高的基础战力（大幅增强）
+  try {
+    const bpLine0 = ARMY_BP_LINE[n.id] || [];
+    // 用蓝图表的实际顺序（避免硬编码 id 与实际数据不符）
+    const BP_IDS = (ARMY_BLUEPRINTS || []).map((b) => b && b.id).filter(Boolean);
+    if (!BP_IDS.length) BP_IDS.push('ab_ranger', 'ab_bulwark', 'ab_thunder');
+    const POWER_MUL_BY_SLOT = [1.0, 1.15, 1.5];   // 第二/第三张（装甲/机械化和突击编制）更强
+    for (let i = 0; i < Math.min(3, BP_IDS.length); i++) {
+      const bp = ARMY_BP_BY_ID[BP_IDS[i]];
+      if (!bp) continue;
+      if (bpLine0[i]) bp.nameCn = bpLine0[i];
+      bp.men = ARMY_MEN;
+      bp.hoiPowerMul = POWER_MUL_BY_SLOT[i] || 1;
+    }
+    acc.hoiArmyBps = bpLine0;
+  } catch (e) { /* 忽略 */ }
+
   // v0.2.6 rev5：王牌师（史实名，战力与属性显著更强）
   const elites = ELITE_DIVISIONS[n.id] || [];
   for (let i = 0; i < elites.length && i < acc.armies.length; i++) {
@@ -329,6 +350,12 @@ export function setupNavy(acc, nation, createShipFn, defaultBlueprintsFn) {
       mark: 1,
       strength: Math.round(ton * 12 * (NAVY_MUL[n.id] || 1)),
       hp: Math.round(ton * 8),
+      // v0.2.9 修复：补齐舰队/飞船详情页所需字段（缺 blueprintId 会导致页面打不开）
+      blueprintId: (acc.blueprints && acc.blueprints[0] && acc.blueprints[0].id) || 'bp_scout',
+      mark: 1,
+      parts: {},
+      capacity: 0,
+      commissionedAt: Date.now(),
       state: { fuelMol: 2000 },
       planetCode: acc.homePlanetCode,
       cargo: {},

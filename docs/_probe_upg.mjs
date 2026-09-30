@@ -3,7 +3,7 @@
 // 用途：核验科研升级「效果」由等差改为乘方（底数 1.6）。
 // 运行：node docs/_probe_upg.mjs
 
-import { UPGRADES, UPGRADE_BY_ID, upgradeMul, upgradeFactorAt } from '../js/data/upgrades.js?v=28.1';
+import { UPGRADES, UPGRADE_BY_ID, upgradeMul, upgradeFactorAt } from '../js/data/upgrades.js?v=29.1';
 
 let passed = 0;
 let failed = 0;

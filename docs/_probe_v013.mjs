@@ -1,7 +1,7 @@
 // v0.1.3 需求专项探针（全部相对导入带 ?v=13.0，避免双模块实例）
-import * as R from '../js/data/recipes.js?v=28.1';
-import * as SP from '../js/data/ship_parts.js?v=28.1';
-import * as S from '../js/core/state.js?v=28.1';
+import * as R from '../js/data/recipes.js?v=29.1';
+import * as SP from '../js/data/ship_parts.js?v=29.1';
+import * as S from '../js/core/state.js?v=29.1';
 
 let pass = 0, fail = 0;
 function ok(cond, msg) {
