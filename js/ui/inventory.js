@@ -24,18 +24,18 @@
 // 所有数字显示一律走 format.js 的 fmtNum / fmtRate / fmtRateBody / fmtSci。
 // 样式集中在 css/planet.css。
 
-import { MATERIALS } from '../data/materials.js?v=21.13';
-import { fmtNum, fmtRate, fmtSci } from '../core/format.js?v=21.13';
-import { getPlanetInstance, tick, currentAccount, atmosphereOf, ownedOf, rateOf } from '../core/state.js?v=21.13';
-import { computePower } from '../core/power.js?v=21.13';
-import { equipmentList } from '../core/shipyard.js?v=21.13';
-import { materialLabel, productionRates } from '../core/production.js?v=21.13';
-import { BUILDING_BY_ID } from '../data/buildings.js?v=21.13';
-import { NUTRIENT_NAMES, METABOLITE_NAMES, consumptionPerSec, metabolitePerSec } from '../core/population.js?v=21.13';
-import { playPing } from '../core/sound.js?v=21.13';
+import { MATERIALS } from '../data/materials.js?v=21.14';
+import { fmtNum, fmtRate, fmtSci } from '../core/format.js?v=21.14';
+import { getPlanetInstance, tick, currentAccount, atmosphereOf, ownedOf, rateOf } from '../core/state.js?v=21.14';
+import { computePower } from '../core/power.js?v=21.14';
+import { equipmentList } from '../core/shipyard.js?v=21.14';
+import { materialLabel, productionRates } from '../core/production.js?v=21.14';
+import { BUILDING_BY_ID } from '../data/buildings.js?v=21.14';
+import { NUTRIENT_NAMES, METABOLITE_NAMES, consumptionPerSec, metabolitePerSec } from '../core/population.js?v=21.14';
+import { playPing } from '../core/sound.js?v=21.14';
 // v0.2.3：军工与地面部队概览（真实数据，替换原装饰性假 HUD）
-import { ARMY_PART_BY_ID } from '../data/army_parts.js?v=21.13';
-import { stationedArmyPower } from '../core/army.js?v=21.13';
+import { ARMY_PART_BY_ID } from '../data/army_parts.js?v=21.14';
+import { stationedArmyPower } from '../core/army.js?v=21.14';
 
 // 地层扫描雷达配置
 const STRATA_CONFIG = [

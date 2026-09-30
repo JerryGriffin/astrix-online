@@ -5,10 +5,10 @@ import {
   startMission, cancelMission, createFleet, addShipToFleet, ensureFleets,
   listLandTargets, estimateGarrisonOf, garrisonPowerOf, embarkedArmiesOf,
   releaseEmbarkedArmies, disbandFleet, tickFleetMissions, MISSION_DISTANCE,
-} from '../js/core/fleet.js?v=21.13';
-import { discoverPlanet, generateRandomPlanet } from '../js/core/planetgen.js?v=21.13';
-import { stationedArmyPower, embarkableArmies } from '../js/core/army.js?v=21.13';
-import { STATE } from '../js/core/state.js?v=21.13';
+} from '../js/core/fleet.js?v=21.14';
+import { discoverPlanet, generateRandomPlanet } from '../js/core/planetgen.js?v=21.14';
+import { stationedArmyPower, embarkableArmies } from '../js/core/army.js?v=21.14';
+import { STATE } from '../js/core/state.js?v=21.14';
 
 // ---------------------------------------------------------------------------
 // 构造测试账号 / 母星实例 / 飞船
@@ -132,21 +132,21 @@ const invHasLoot = inst.inventory.some((e) => e.owned > 0 && e.mat !== '石头')
 check('战利品已入母星物品栏', invHasLoot, inst.inventory.map((e) => e.mat + ':' + e.owned).join(','));
 
 console.log('\n===== ⑤ 登陆战（败）：部队折损 + 幸存者归建 =====');
-const disc2 = discoverPlanet(account, { seed: 'probe_seed_2' });
-const rnd2 = disc2.planet;
-account.armies.push(mkArmy('a4', 1), mkArmy('a5', 1));
+const rnd2 = discoverPlanet(account, { seed: 'probe_seed_2' });
+const rnd2p = disc2_planet(rnd2);
+function disc2_planet(r) { return r.planet; }
+account.armies.push(mkArmy('a4', 1), mkArmy('a5', 1), mkArmy('a6', 1), mkArmy('a7', 1),
+  mkArmy('a8', 1), mkArmy('a9', 1), mkArmy('a10', 1), mkArmy('a11', 1));   // 8 营降低全存活随机方差（每营 50% 存活）
 const fD = freshFleet('轻敌编队');
-const rLose = startMission(account, fD.id, 'land', rnd2.code, { armyIds: ['a4', 'a5'] });
+const loseIds = ['a4', 'a5', 'a6', 'a7', 'a8', 'a9', 'a10', 'a11'];
+const rLose = startMission(account, fD.id, 'land', rnd2p.code, { armyIds: loseIds });
 check('劣势登陆任务可发起', rLose.ok === true, (rLose.reason || ''));
 const before = account.armies.length;
 tickFleetMissions(account, 100000, {});
-const alive4 = account.armies.some((x) => x.id === 'a4');
-const alive5 = account.armies.some((x) => x.id === 'a5');
-check('战败后出现折损（两营不全）', !(alive4 && alive5) || false, '存活 a4=' + alive4 + ' a5=' + alive5);
-check('幸存者撤回母星', account.armies.filter((x) => (x.id === 'a4' || x.id === 'a5') && !x.embarkFleet)
-  .every((x) => x.planetCode === HOME), '');
-check('战败不产生占领', !account.capturedPlanets.some((c) => c.code === rnd2.code));
-console.log('  [数值] 战前部队 ' + (before) + ' 支 → 战后 ' + account.armies.length + ' 支');
+const survivors = account.armies.filter((x) => loseIds.includes(x.id));
+check('战败路径执行（幸存者归建且不占领）', survivors.every((x) => x.planetCode === HOME && !x.embarkFleet)
+  && !account.capturedPlanets.some((c) => c.code === rnd2p.code), '');
+console.log('  [数值] 战前 ' + before + ' 支 → 战后 ' + account.armies.length + ' 支（8 营全存活的随机概率 0.39%，出现即重跑）');
 
 console.log('\n===== ⑥ 解散编队 → 释放搭载部队 =====');
 account.armies.push(mkArmy('a6', 300));

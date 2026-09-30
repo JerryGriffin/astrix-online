@@ -4,8 +4,8 @@
 //   ③ 单船整 360 放行扣为 0；④ 顺序扣减、溢出顺延、扣完各船 ≥ 0。
 //
 // Node 无 localStorage，先注入内存 adapter（state.js 默认 get 恒 null 会让链空转）。
-import * as S from '../js/core/state.js?v=21.13';
-import * as F from '../js/core/fleet.js?v=21.13';
+import * as S from '../js/core/state.js?v=21.14';
+import * as F from '../js/core/fleet.js?v=21.14';
 
 const mem = new Map();
 S.setAdapter({

@@ -2,10 +2,10 @@
 // 提供军队蓝图战力评估、建制组装生产线、驻防防卫结算与部队管理。
 // 遵循零构建原生 ES 模块规范，纯算法与业务逻辑。
 
-import { ARMY_BLUEPRINTS, ARMY_BP_BY_ID, ARMY_PART_BY_ID, armyBpPartNeeds } from '../data/army_parts.js?v=21.13';
-import { getPlanetInstance, ownedOf, spendOwned } from './state.js?v=21.13';
-import { fmtNum } from './format.js?v=21.13';
-import { addEquipment } from './shipyard.js?v=21.13';
+import { ARMY_BLUEPRINTS, ARMY_BP_BY_ID, ARMY_PART_BY_ID, armyBpPartNeeds } from '../data/army_parts.js?v=21.14';
+import { getPlanetInstance, ownedOf, spendOwned } from './state.js?v=21.14';
+import { fmtNum } from './format.js?v=21.14';
+import { addEquipment } from './shipyard.js?v=21.14';
 
 let _armySeq = 0;
 function genArmyId() {

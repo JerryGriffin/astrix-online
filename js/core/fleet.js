@@ -12,15 +12,16 @@
 //
 // 约定：不修改 state.js（账号对象由调用方传入）；互 import 仅限函数体内使用（无 TDZ 风险）。
 
-import { PLANETS } from '../data/planets.js?v=21.13';
+import { PLANETS } from '../data/planets.js?v=21.14';
 import {
   generateRandomPlanet, capturePlanet, captureDefaultPlanet, uncapturedDefaults,
-} from './planetgen.js?v=21.13';
-import { ownedOf, spendOwned, getPlanetInstance } from './state.js?v=21.13';
-import { CELL_VOLUME, cellsForEquipmentKey } from './footprint.js?v=21.13';   // 纯聚合工具，state.js 不 import 本文件，无环
-import { resolveBlueprint, totalMass } from './shipyard.js?v=21.13';          // 只读导出：蓝图部件 / 蓝图质量
-import { ensureEntry } from './production.js?v=21.13';                        // 装卸货 / 奖励入包（生产模块不 import 本文件，无环）
-import { fmtNum } from './format.js?v=21.13';
+} from './planetgen.js?v=21.14';
+import { ownedOf, spendOwned, getPlanetInstance } from './state.js?v=21.14';
+import { CELL_VOLUME, cellsForEquipmentKey } from './footprint.js?v=21.14';   // 纯聚合工具，state.js 不 import 本文件，无环
+import { resolveBlueprint, totalMass, addEquipment } from './shipyard.js?v=21.14';          // 只读导出：蓝图部件 / 蓝图质量；addEquipment 用于登陆战缴获
+import { ARMY_PARTS, ARMY_PART_BY_ID } from '../data/army_parts.js?v=21.14';                 // v0.2.3：登陆战缴获军事部件用
+import { ensureEntry } from './production.js?v=21.14';                        // 装卸货 / 奖励入包（生产模块不 import 本文件，无环）
+import { fmtNum } from './format.js?v=21.14';
 
 // ============================================================================
 // 编队
@@ -481,6 +482,42 @@ export const ANOMALY_POOL = [
       { id: 'absorb', text: '偏转护盾相位过载储能', effect: '吸收 30 太空元素并充能' },
       { id: 'shield_down', text: '收拢翼展全舰冷机潜航', effect: '规避强磁辐射冲击' }
     ]
+  },
+  // ============================================================================
+  // v0.2.3：新增 3 类深空异象（丰富任务过程：武装抉择 / 战力检定 / 航程博弈）
+  // ============================================================================
+  {
+    type: 'colony_ship',
+    icon: '🚀',
+    title: '发现漂流的废弃殖民方舟',
+    desc: '一艘史前殖民方舟悬浮在拉格朗日点，休眠舱指示灯仍有一格在明灭闪烁，货仓感应到高密度金属反应。',
+    choices: [
+      { id: 'search', text: '派遣登舰队进入方舟搜寻', effect: '获得 60 太空元素、40 铱铂矿与 800 Ascoin' },
+      { id: 'dismantle', text: '全套牵引束拆解方舟', effect: '回收 120 特种精炼钢与 60 铝合金' },
+      { id: 'buoy', text: '布设导航信标后继续航行', effect: '航道数据入档，剩余航程缩短 25%' }
+    ]
+  },
+  {
+    type: 'pirate_ambush',
+    icon: '🏴‍☠️',
+    title: '星盗掠夺舰队跃迁拦截！',
+    desc: '三艘挂走私掠旗的劫掠舰从小行星阴影中跃出，锁定了编队货舱。通讯频道传来勒索讯号。',
+    choices: [
+      { id: 'fight', text: '全员战斗站位，正面迎击', effect: '战力检定：胜利掠夺其赃物，战败损失一艘战舰' },
+      { id: 'pay', text: '支付 800 Ascoin 买路钱', effect: '损失金币换取安全通过' },
+      { id: 'escape', text: '抛射货柜诱饵全速突围', effect: '剩余航程缩短 30%，丢弃部分货物' }
+    ]
+  },
+  {
+    type: 'wormhole',
+    icon: '🌀',
+    title: '探测到不稳定天然虫洞',
+    desc: '空间曲率出现直径三公里的透镜状裂隙，另一侧的恒星光谱与已知星表完全不匹配。',
+    choices: [
+      { id: 'cross', text: '穿越虫洞抄近路跃迁', effect: '剩余航程骤降 60%，回收 50 太空元素' },
+      { id: 'probe', text: '投放无人探测器采样', effect: '回收 80 高纯硅晶与 30 粗金' },
+      { id: 'avoid', text: '标记坐标后远离裂隙', effect: '未知风险不应由舰队承担' }
+    ]
   }
 ];
 
@@ -549,6 +586,61 @@ export function resolveFleetAnomaly(acc, fleetId, choiceId) {
       resultMsg = '护盾过载成功吸聚风暴离子，母星收获 30 太空元素！';
     } else {
       resultMsg = '冷机潜航成功，全舰各系统指标保持稳定。';
+    }
+  } else if (ano.type === 'colony_ship') {
+    if (choiceId === 'search') {
+      grantRewards(acc, null, { '太空元素': 60, '铱铂矿': 40 });
+      acc.ascoin = (Number(acc.ascoin) || 0) + 800;
+      resultMsg = '登舰队带回 60 太空元素、40 铱铂矿，并从方舟金库起获 800 Ascoin！';
+    } else if (choiceId === 'dismantle') {
+      grantRewards(acc, null, { '钢': 120, '铝': 60 });
+      resultMsg = '方舟骨架拆解完毕，回收 120 特种精炼钢与 60 铝合金！';
+    } else {
+      const rem = Math.max(0, (fleet.mission.duration || 0) - (fleet.mission.elapsed || 0));
+      fleet.mission.elapsed = (fleet.mission.elapsed || 0) + Math.round(rem * 0.25);
+      resultMsg = '导航信标布设完成，航道数据入档，剩余航程缩短 25%。';
+    }
+  } else if (ano.type === 'pirate_ambush') {
+    if (choiceId === 'fight') {
+      // 战力检定：我方编队战力 × 技术余量 vs 星盗舰队战力
+      const our = Math.round(fleetPowerOf(acc, fleet) * (0.9 + Math.random() * 0.2));
+      const theirs = Math.round(400 + Math.random() * 500);
+      if (our >= theirs) {
+        const loot = { '太空元素': 60, '粗金': 25, '硅': 40 };
+        grantRewards(acc, null, loot);
+        acc.ascoin = (Number(acc.ascoin) || 0) + 500;
+        resultMsg = '激战获胜！击溃星盗拦截舰队（战力 ' + theirs + '，我方 ' + our + '），'
+          + '缴获赃物与 500 Ascoin 赏金！';
+      } else if (fleet.shipIds.length > 0) {
+        const lostId = fleet.shipIds[Math.floor(Math.random() * fleet.shipIds.length)];
+        const lost = shipById(acc, lostId);
+        removeShipFromFleet(acc, fleet.id, lostId);
+        if (Array.isArray(acc.ships)) acc.ships = acc.ships.filter((s) => s && s.id !== lostId);
+        resultMsg = '战力 ' + our + ' 不敌星盗舰队（战力 ' + theirs + '），'
+          + '「' + (lost ? (lost.className || lost.name || lostId) : lostId) + '」被击毁。残舰已脱离接触。';
+      } else {
+        resultMsg = '编队无舰可战，紧急跃迁脱离，侥幸未被追上。';
+      }
+    } else if (choiceId === 'pay') {
+      acc.ascoin = Math.max(0, (Number(acc.ascoin) || 0) - 800);
+      resultMsg = '支付 800 Ascoin 买路钱，星盗舰队收钱放行。破财免灾。';
+    } else {
+      const rem = Math.max(0, (fleet.mission.duration || 0) - (fleet.mission.elapsed || 0));
+      fleet.mission.elapsed = (fleet.mission.elapsed || 0) + Math.round(rem * 0.3);
+      grantRewards(acc, null, { '石头': 30 });
+      resultMsg = '抛射货柜诱饵成功引开火力，编队全速突围，剩余航程缩短 30%（诱饵货柜折损约 30 石头等值物资）。';
+    }
+  } else if (ano.type === 'wormhole') {
+    if (choiceId === 'cross') {
+      const rem = Math.max(0, (fleet.mission.duration || 0) - (fleet.mission.elapsed || 0));
+      fleet.mission.elapsed = (fleet.mission.elapsed || 0) + Math.round(rem * 0.6);
+      grantRewards(acc, null, { '太空元素': 50 });
+      resultMsg = '穿越虫洞成功！跃迁抄近路剩余航程骤降 60%，并在裂隙另一侧回收 50 太空元素。';
+    } else if (choiceId === 'probe') {
+      grantRewards(acc, null, { '硅': 80, '粗金': 30 });
+      resultMsg = '探测器传回裂隙对面的富集采样，回收 80 高纯硅晶与 30 粗金。';
+    } else {
+      resultMsg = '舰队远离曲率裂隙，标记坐标供科考船后续研究。';
     }
   }
 
@@ -678,8 +770,17 @@ function settleExplore(acc, fleet, env) {
     removeShipFromFleet(acc, fleet.id, lost);
     if (Array.isArray(acc.ships)) acc.ships = acc.ships.filter((s) => s && s.id !== lost);
   } else if (win) {
-    out.rewards = { '太空元素': 30 };
-    grantRewards(acc, env, out.rewards);
+    // v0.2.3：遇袭胜利改为随机战利品（材料 + 奖金），战斗收益不再固定单一
+    const loot = { '太空元素': 30 };
+    const mats = ['钢', '铁', '铝', '硅', '粗金'];
+    const m1 = mats[Math.floor(Math.random() * mats.length)];
+    loot[m1] = (loot[m1] || 0) + 40 + Math.floor(Math.random() * 60);
+    grantRewards(acc, env, loot);
+    const bounty = 200 + Math.floor(Math.random() * 400);
+    acc.ascoin = (Number(acc.ascoin) || 0) + bounty;
+    out.rewards = loot;
+    out.message += ' 战利品已入包：' + Object.keys(loot).map((k) => k + ' ×' + fmtNum(loot[k])).join('、')
+      + '，另缴获 ' + bounty + ' Ascoin 赏金。';
   }
   return out;
 }
@@ -795,6 +896,17 @@ function cmdPatrol(acc, fleet, ctx) {
     out.losses.push((win ? '对方 ' : '我方 ') + (ship ? ship.className : lost));
     removeShipFromFleet(acc, loser.id, lost);
     if (Array.isArray(acc.ships)) acc.ships = acc.ships.filter((s) => s && s.id !== lost);
+  }
+  // v0.2.3：巡航交战胜利增加战利品与赏金（此前胜利只有一句话，没有实际收益）
+  if (win) {
+    const mats = ['钢', '铁', '钛', '硅'];
+    const m1 = mats[Math.floor(Math.random() * mats.length)];
+    const qty = 30 + Math.floor(Math.random() * 70);
+    grantRewards(acc, null, { [m1]: qty });
+    const bounty = 150 + Math.floor(Math.random() * 350);
+    acc.ascoin = (Number(acc.ascoin) || 0) + bounty;
+    out.rewards = { [m1]: qty };
+    out.message += ' 清扫战场缴获 ' + m1 + ' ×' + qty + ' 与 ' + bounty + ' Ascoin。';
   }
   return out;
 }
@@ -973,13 +1085,31 @@ function settleLand(acc, fleet, m, env) {
       loot[r.name] = qty;
     }
     grantRewards(acc, env, loot);
+    // v0.2.3：登陆战胜利 60% 概率缴获 1~2 件敌方军事部件（入母星装备库，可用于整编新部队）
+    let captureText = '';
+    if (Math.random() < 0.6 && Array.isArray(ARMY_PARTS) && ARMY_PARTS.length) {
+      const home = getPlanetInstance(acc.homePlanetCode || 'syl');
+      if (home) {
+        const n = 1 + (Math.random() < 0.4 ? 1 : 0);
+        const got = [];
+        for (let i = 0; i < n; i++) {
+          const p = ARMY_PARTS[Math.floor(Math.random() * ARMY_PARTS.length)];
+          if (!p) continue;
+          const mat = (p.inputs && Object.keys(p.inputs)[0]) || '钢';
+          addEquipment(home, p.id, mat, 1);
+          const ref = ARMY_PART_BY_ID[p.id];
+          got.push((ref ? ref.nameCn : p.id) + '（' + mat + '）');
+        }
+        if (got.length) captureText = '，另从守军军械库缴获 ' + got.join('、') + ' 各 1 件';
+      }
+    }
     const lootText = Object.keys(loot).map((k) => k + ' ×' + fmtNum(loot[k])).join('、');
     return {
       ok: true, kind: 'combat', win: true, owned: true, planet: def, rewards: loot,
       combat: { enemyNameCn: '「' + (def.nameCn || targetCode) + '」地面守军', enemyPower: garrison, ourPower: attack, win: true },
       message: '登陆战胜利！我方 ' + armies.length + ' 个营（战力 ' + fmtNum(attack) + '）'
         + '击溃「' + (def.nameCn || targetCode) + '」地面守军（战力 ' + fmtNum(garrison) + '），'
-        + '星球已纳入版图，缴获 ' + lootText + '，全军就地驻防。',
+        + '星球已纳入版图，缴获 ' + lootText + captureText + '，全军就地驻防。',
       losses: [],
       captureFailed: cap.ok === false ? cap.reason : null,
     };
