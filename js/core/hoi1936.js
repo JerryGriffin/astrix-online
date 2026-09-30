@@ -10,10 +10,10 @@
 //   * HOI4 风格国策（三支六策，按天推进）               → focus 系列
 //   * 海域（制海权争夺 + 海战）                          → sea 系列
 import { HOI_NATIONS, HOI_BY_ID, HOI_DEEP, HOI_SEAS, ARMY_MEN, popOf, BLOC_NAME, HOI_SCENARIO_ID,
-  workforceOf, ARMY_POWER_PER_DIV, NAVY_MUL, GEAR_PARTS, SHIP_NAMES, ARMY_BP_NAME } from '../data/hoi1936.js?v=26.5';
-import { BUILDING_BY_ID } from '../data/buildings.js?v=26.5';
-import { JOBS_BY_BUILDING, assignWorkers, jobCapacity, getAvailable } from './population.js?v=26.5';
-import { ELITE_DIVISIONS, ELITE_MUL } from '../data/hoi1936.js?v=26.5';
+  workforceOf, ARMY_POWER_PER_DIV, NAVY_MUL, GEAR_PARTS, SHIP_NAMES, ARMY_BP_NAME, HOI_BG } from '../data/hoi1936.js?v=26.6';
+import { BUILDING_BY_ID } from '../data/buildings.js?v=26.6';
+import { JOBS_BY_BUILDING, assignWorkers, jobCapacity, getAvailable } from './population.js?v=26.6';
+import { ELITE_DIVISIONS, ELITE_MUL } from '../data/hoi1936.js?v=26.6';
 
 // 依赖注入（避免与 state.js / production.js 形成循环导入）
 let _getInst = null;
@@ -242,9 +242,13 @@ export function setupFactories(inst, nation) {
   const n = typeof nation === 'string' ? HOI_BY_ID[nation] : nation;
   if (!inst) return 0;
   const ic = n.ic;
+  // 住房：按「庇护需求」配足（每栋 house 提供 40 庇护）——
+  //   v0.2.6 rev6 修复：此前按人口×12 估算，8 万人口只有 832 栋（庇护覆盖 42%）→ 幸福度被持续拉低
+  const SHELTER_PER_HOUSE = (BUILDING_BY_ID.house && BUILDING_BY_ID.house.shelter) || 40;
+  const needHouse = Math.ceil((popOf(n) * 1.15) / SHELTER_PER_HOUSE);
   inst.buildings = {
     workshop: Math.max(20, Math.round(ic * 5)),
-    house: Math.max(40, Math.round(n.popM * 12)),
+    house: needHouse,
     manual_power: 10,
     farm: Math.max(20, Math.round(ic * 6)),
     gas_collector: Math.max(6, Math.round(ic / 4)),
@@ -343,6 +347,34 @@ export function addNavyShips(acc, count) {
 }
 
 /**
+ * 属地星球配置（v0.2.6 rev6）：按属地人口配足住房/农田/矿井/加工 ——
+ *   修复「殖民地幸福度不受控下降」：此前属地住房只有 4 栋、人口上万 → 庇护塌陷
+ */
+export function setupColony(inst2, n, colonyPop) {
+  if (!inst2) return 0;
+  const SHELTER_PER_HOUSE = (BUILDING_BY_ID.house && BUILDING_BY_ID.house.shelter) || 40;
+  const pop = Math.max(200, Math.round(colonyPop));
+  const house = Math.ceil((pop * 1.2) / SHELTER_PER_HOUSE);
+  inst2.buildings = {
+    house: house,
+    farm: Math.max(6, Math.round(pop / 900)),
+    mine_shallow: Math.max(6, Math.round(pop / 1200)),
+    mine_deep: Math.max(3, Math.round(pop / 2400)),
+    mine_core: Math.max(1, Math.round(pop / 6000)),
+    workshop: Math.max(3, Math.round(pop / 2000)),
+    storage_plant: Math.max(2, Math.round(pop / 3000)),
+    gas_collector: Math.max(2, Math.round(pop / 3000)),
+    thermal_plant: Math.max(2, Math.round(pop / 3000)),
+    electrolyzer: Math.max(1, Math.round(pop / 4000)),
+    refinery: Math.max(1, Math.round(pop / 6000)),
+    lab: Math.max(1, Math.round(pop / 8000)),
+    manual_power: 2,
+  };
+  if (inst2.pop) inst2.pop.consumeScale = 1 / 650;
+  return house;
+}
+
+/**
  * 侧重生产线 + 装备流水线（v0.2.6 rev3）：
  *   · 工人总数 = 工业 × 415（德国 ≈ 20000 人）
  *   · 按各国侧重权重分配到不同配方（钢 / 铁 / 铝 / 塑料 / 橡胶 / 陶瓷…）
@@ -366,6 +398,19 @@ export function setupLines(inst, nation) {
   const gearTotal = Math.round(total * 0.55);
   const perGear = Math.max(20, Math.round(gearTotal / GEAR_PARTS.length));
   for (const pid of GEAR_PARTS) plan.push({ buildingId: 'fabricator', recipeId: 'part_' + pid, workers: perGear, material: mat });
+  // ①b 高工业国家（ic ≥ 40）：高炉各类矿 + 全部化工复合资源铺线，避免缺料
+  if (n.ic >= 40) {
+    for (const rid of ['r_bf_iron', 'r_bf_copper', 'r_bf_zinc', 'r_bf_aluminum', 'r_bf_manganese', 'r_bf_tungsten']) {
+      plan.push({ buildingId: 'blast_furnace', recipeId: rid, workers: 160 });
+    }
+    for (const rid of ['r_chem_plastic', 'r_chem_rubber', 'r_chem_aluminum_alloy', 'r_chem_explosive',
+      'r_chem_tungsten_carbide', 'r_chem_graphene', 'r_chem_titanium_alloy']) {
+      plan.push({ buildingId: 'chem_lab', recipeId: rid, workers: 140 });
+    }
+    for (const rid of ['r_refine_steel', 'r_refine_iron', 'r_refine_copper', 'r_refine_titanium']) {
+      plan.push({ buildingId: 'refinery', recipeId: rid, workers: 160 });
+    }
+  }
   // ② 按建筑汇总工位需求，一次性加建到位（工位 = 建筑数 × jobs）
   const needBuild = {};
   for (const pl of plan) needBuild[pl.buildingId] = (needBuild[pl.buildingId] || 0) + pl.workers;
@@ -491,6 +536,34 @@ export function staffBuildings(pop, inst) {
     }
   }
   return { jobs: total, staffed: staffed };
+}
+
+/**
+ * 舰名历史化（v0.2.6 rev6）：账号里**所有**舰只（含未编入舰队的「仓库舰」）
+ *   一律按本国史实舰级命名，形如「Z 级驱逐舰 3」「U 型潜艇 1」
+ */
+export function ensureShipNames(acc, nation) {
+  if (!acc || !Array.isArray(acc.ships)) return 0;
+  const n = typeof nation === 'string' ? HOI_BY_ID[nation] : nation;
+  const names = SHIP_NAMES[n && n.id] || (n ? [n.nameCn + ' 舰'] : ['战舰']);
+  const counters = {};
+  let fixed = 0;
+  let i = 0;
+  for (const sh of acc.ships) {
+    if (!sh) continue;
+    // 按舰级循环命名（驱逐 / 巡洋 / 潜艇 …），保证仓库里的舰队也是史实编制感
+    const idx = i % names.length;
+    i++;
+    const cls = names[idx] || names[0];
+    counters[cls] = (counters[cls] || 0) + 1;
+    const expect = cls + ' ' + counters[cls];
+    if (sh.nameCn !== expect) { sh.nameCn = expect; fixed++; }
+  }
+  return fixed;
+}
+
+export function backgroundOf(acc) {
+  return (acc && HOI_BG[acc.nation]) || '';
 }
 
 export function blocNameOf(acc) {

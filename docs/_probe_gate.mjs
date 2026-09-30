@@ -1,5 +1,5 @@
 // v0.2.6 rev4 探针：在线池开局模式门禁（非开发者只能初登星球）
-import { STATE, createAccount, getPlanetInstance } from '../js/core/state.js?v=26.5';
+import { STATE, createAccount, getPlanetInstance } from '../js/core/state.js?v=26.6';
 
 let pass = 0, fail = 0;
 function ok(cond, msg) { if (cond) { pass++; console.log('  ✓ ' + msg); } else { fail++; console.log('  ✗ ' + msg); } }

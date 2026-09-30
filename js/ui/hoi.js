@@ -2,15 +2,15 @@
 //   · 顶部：剧本日历（到天）、国家、阵营、人口、军队 / 舰队概览
 //   · 国策树：工业 / 军事 / 外交三支，各两支；按游戏天数推进，完成即生效
 //   · 海域：六个 HOI4 风格海域，制海权争夺 + 海战结算
-import { fmtNum } from '../core/format.js?v=26.5';
-import { currentAccount, getPlanetInstance } from '../core/state.js?v=26.5';
-import { listArmies, totalArmyPowerOf } from '../core/army.js?v=26.5';
-import { listFleets, fleetPowerOf } from '../core/fleet.js?v=26.5';
+import { fmtNum } from '../core/format.js?v=26.6';
+import { currentAccount, getPlanetInstance } from '../core/state.js?v=26.6';
+import { listArmies, totalArmyPowerOf } from '../core/army.js?v=26.6';
+import { listFleets, fleetPowerOf } from '../core/fleet.js?v=26.6';
 import {
   scenarioDateOf, gameDaysOf, ensureFocus, focusOptionsOf, startFocus,
-  ensureSeas, contestSea, blocNameOf, nationOf, deepOf, enemySeaPressure, HOI_SCENARIO_ID,
-} from '../core/hoi1936.js?v=26.5';
-import { HOI_SEAS } from '../data/hoi1936.js?v=26.5';
+  ensureSeas, contestSea, blocNameOf, nationOf, deepOf, enemySeaPressure, backgroundOf, HOI_SCENARIO_ID,
+} from '../core/hoi1936.js?v=26.6';
+import { HOI_SEAS } from '../data/hoi1936.js?v=26.6';
 
 function el(tag, attrs = {}, children = []) {
   const e = document.createElement(tag);
@@ -110,6 +110,13 @@ export function renderHoi(root, ctx) {
   addStat('产线工人', fmtNum(acc.hoiWorkforce || 0));
   addStat('海军传统', '×' + (Number(acc.hoiNavyMul) || 1).toFixed(2));
   head.appendChild(stats);
+  const bg = backgroundOf(acc);
+  if (bg) {
+    const bgBox = el('div', 'hoi-sub');
+    bgBox.style.cssText = 'margin-top:8px;padding:8px 10px;background:#101820;border-radius:8px;font-size:12px;line-height:1.8;';
+    bgBox.textContent = '📜 ' + bg;
+    head.appendChild(bgBox);
+  }
   panel.appendChild(head);
 
   // ---- 国策树 ----

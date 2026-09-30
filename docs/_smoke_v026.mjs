@@ -63,11 +63,11 @@ const aOk = stepA.hasSelect && stepA.optionCount === 12 && stepA.infoHasData;
 const resB = await page.evaluate(async () => {
   const chain = new Proxy({}, { get: (t, p) => (p === 'then' ? undefined : (..._a) => chain) });
   window.WorkBuddyCloud = { createWorkBuddyCloud: () => ({ auth: { getSession: async () => ({ data: null, error: null }) }, database: chain }) };
-  const S = await import('/js/core/state.js?v=26.5');
+  const S = await import('/js/core/state.js?v=26.6');
   S.STATE.adapter = { get: () => null, set: () => {}, del: () => {} };
   const acc = S.createAccount('冒烟德国', 'hoi1936', { countryId: 'ger' });
   S.STATE.mode = 'online';
-  const G = await import('/js/ui/galaxy.js?v=26.5');
+  const G = await import('/js/ui/galaxy.js?v=26.6');
   const root = document.createElement('div');
   document.body.appendChild(root);
   G.renderGalaxy(root, { account: acc, planetCode: acc.homePlanetCode, openModal: () => () => {}, closeModal: () => {}, onEnterPlanet: () => {} });
@@ -84,9 +84,9 @@ console.log('B. 场景国家星球:', JSON.stringify(resB));
 
 // ---- C. 国策面板（国策树 + 海域 + 剧本日历到天） ----
 const resC = await page.evaluate(async () => {
-  const S = await import('/js/core/state.js?v=26.5');
+  const S = await import('/js/core/state.js?v=26.6');
   const acc = S.currentAccount();
-  const H = await import('/js/ui/hoi.js?v=26.5');
+  const H = await import('/js/ui/hoi.js?v=26.6');
   const root = document.createElement('div');
   document.body.appendChild(root);
   H.renderHoi(root, { account: acc, planetCode: acc.homePlanetCode, openModal: () => () => {}, closeModal: () => {} });
