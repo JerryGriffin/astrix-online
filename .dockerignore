@@ -9,3 +9,5 @@ Thumbs.db
 *.bat
 当前联机网址.txt
 launch.mjs
+data
+online-state.json

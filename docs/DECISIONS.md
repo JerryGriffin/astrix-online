@@ -157,9 +157,10 @@
 | 项 | 决策 |
 |---|---|
 | 公网发布链路 | GitHub `JerryGriffin/astrix-online` push → `.github/workflows/sync_to_hf.yml` → HuggingFace Space `Recapiut/astrix-online` |
-| Space SDK | **`sdk: static`**（写在 `README.md` 前置元数据里；rev14 后由 `docker` 改为 `static`，理由是「秒级部署 + 零配额」） |
-| 已知后果（记录在案） | Space 上**不执行 Dockerfile、不运行 `server.mjs`** → 公网 `/api/online/*`（心跳 / 指挥官 / 聊天 / 集市）全部 **404**；客户端 `js/core/cloud.js` 静默降级为「本地 + NPC 星系」，因此**公开站点目前实为单机可玩**，在线集市与聊天不生效 |
-| 恢复真联机的开关 | 把 `README.md` 改回 `sdk: docker` + `app_port: 7860`；`Dockerfile`（`CMD node server.mjs`、`EXPOSE 7860`）仍在，可直接切回 |
+| Space SDK | **`sdk: docker` + `app_port: 7860`**（写在 `README.md` 前置元数据里）。rev14 后曾一度改为 `static` 以求「秒级部署 + 零配额」，但那会让公网真联机彻底失效（见下两行），现已切回 `docker` |
+| 已知后果（rev15 记录 / 现已解决） | `sdk: static` 时 Space 上**不执行 Dockerfile、不运行 `server.mjs`** → 公网 `/api/online/*`（心跳 / 指挥官 / 聊天 / 集市）全部 **404**；客户端 `js/core/cloud.js` 静默降级为「本地 + NPC 星系」，公开站点实为单机可玩。切回 `sdk: docker` 后公网真联机恢复 |
+| 免费层休眠（切回 docker 的代价，已知并接受） | 免费 CPU 层 **48 小时无访问自动休眠**，唤醒时容器冷启动 30–90 秒（`static` 站点由 CDN 分发、无休眠，属体验回退）。单机玩法不受影响 |
+| 全服状态持久化 | `server.mjs` 内置三层后端：`hf`（提交快照到私有 Dataset 仓库，**跨容器重建可恢复**）/ `file`（本地 `data/online-state.json`）/ `memory`。免费层容器磁盘**重启即丢**（HF 官方文档），故跨重建恢复必须走 Dataset 快照。配置与验证见 `docs/HF_STATE_PERSISTENCE.md` |
 | 同步链路保护 | `.gitignore` **不得**写成 `.github/`——那会把 `sync_to_hf.yml` 一并忽略，同步会**静默失效**；正确写法是 `.github/*` + `!.github/workflows/`（rev15 已修正） |
 
 ---
@@ -197,10 +198,12 @@
 10. **自定义化工厂的自定义配方**：~~目前只有 3 个示例配方~~（v0.2.2 已落地：人力面板生产线区块提供「新建自定义材料配方」卡片，makeCustomMaterial 核心自 v0.0.61 就绪，UI 于 v0.2.2 接通）。
 11. **精细加工厂的「2→1 提升精细度」通用规则**：`js/core/production.js` 已导出 `refinePair(matName)`
     的语义函数，但还没接成「对任意材料生效」的 UI。
-12. **公网是否恢复真联机（v0.2.2-rev15 记录，rev16 已实测复核）**：HuggingFace Space 当前为 `sdk: static`，
-    公网 `/api/online/*` 一律 404（详见「二、线上部署与同步链路」）。改回 `sdk: docker` 即可恢复真联机，
-    **无需改动任何业务代码**（`Dockerfile` 的 `PORT=7860`/`EXPOSE 7860` 与 HF 端口契约已吻合，
-    `server.mjs` 同源托管静态资源与 API，`cloud.js` 的相对路径请求无需调整）。
-    实测代价：免费 CPU 层 **48 小时无访问自动休眠**（冷启动 30–90 秒），且 `ONLINE_STORE` 为**纯内存**
-    （全文无落盘），休眠唤醒后全服注册表 / 公频 / 集市挂单 / 攻防记录**全部清零**。
-    **待设计者决定**，在决定前不视为 bug。完整实测数据与方案对比见 `docs/HF_ONLINE_FEASIBILITY.md`。
+12. ~~**公网是否恢复真联机**~~ —— **已落地（rev17）**。
+    原先 `HuggingFace Space` 为 `sdk: static`，Space 上不执行 `server.mjs`，公网 `/api/online/*` 一律 404。
+    现已：① `README.md` 切为 `sdk: docker` + `app_port: 7860`，恢复公网真联机；
+    ② `server.mjs` 内置全服状态持久化（三层后端，`hf` 数据集快照 / `file` 本地文件 / `memory`），
+    解决"免费层容器磁盘重启即丢、全服数据每次重建清零"的问题。
+    过程与实测见 `docs/HF_ONLINE_FEASIBILITY.md`；配置与验证见 `docs/HF_STATE_PERSISTENCE.md`；
+    往返自检见 `docs/selfcheck_online_state.mjs`（36 项断言，走真实重启路径）。
+    **遗留（已接受）**：免费 CPU 层 48 小时无访问自动休眠，唤醒冷启动 30–90 秒；
+    `hf` 后端仍有 60 秒落盘窗口（容器被强杀时最多丢约 60 秒变更）。
