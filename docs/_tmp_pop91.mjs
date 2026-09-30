@@ -10,7 +10,7 @@ function ok(cond, label) {
   if (!cond) fail++;
 }
 
-const POP = await import('../js/core/population.js?v=20.10');
+const POP = await import('../js/core/population.js?v=20.11');
 
 // ---------------------------------------------------------------------------
 console.log('\n== 1) 农田工岗位恢复 ==');

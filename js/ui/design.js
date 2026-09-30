@@ -19,21 +19,21 @@
 import {
   HULLS, ENGINES, WEAPONS, FACILITIES,
   MATERIAL_SLOTS, DEFAULT_MATERIAL,
-} from '../data/ship_parts.js?v=20.10';
+} from '../data/ship_parts.js?v=20.11';
 import {
   evaluateBlueprint, materialMul,
   ensureBlueprints, genBlueprintId, kindOfHull, HULL_RP_COST,
   equipmentList, emptyBlueprint, shipBuildCheck,
-} from '../core/shipyard.js?v=20.10';
-import { getPlanetInstance, ownedOf, getBuildingCounts, spendOwned } from '../core/state.js?v=20.10';
-import { lineSlotInfo, freeLaborOf } from '../core/production.js?v=20.10';
-import { fmtNum } from '../core/format.js?v=20.10';
+} from '../core/shipyard.js?v=20.11';
+import { getPlanetInstance, ownedOf, getBuildingCounts, spendOwned } from '../core/state.js?v=20.11';
+import { lineSlotInfo, freeLaborOf } from '../core/production.js?v=20.11';
+import { fmtNum } from '../core/format.js?v=20.11';
 // R4：蓝图编辑器（含「建造」开 dock 线）从 shipyard.js 的舰船分支迁到「设计」分支。
 //   这里只复用函数，编辑器本体仍定义在 shipyard.js（其天然的归属），按其渲染。
 import {
   buildBlueprintEditor, shipBuildBlockReason,
   materialBuildBlockReason, createDockLine, blueprintMaterialNeeds,
-} from './shipyard.js?v=20.10';
+} from './shipyard.js?v=20.11';
 
 function esc(s) {
   return String(s).replace(/[&<>"']/g, (c) => (
