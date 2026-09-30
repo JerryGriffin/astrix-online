@@ -146,6 +146,9 @@
 }
 .inv-row:hover { border-color: var(--border-strong); background: rgba(124, 215, 255, 0.1); }
 .inv-row-store { border-style: dashed; opacity: 0.92; }
+/* rev16：未解锁的层（未建矿井 / 未研究「A1 深度采集」）灰显，与「能采但没人」区分开 */
+.inv-row-locked { opacity: 0.55; }
+.inv-row-locked:hover { opacity: 0.8; }
 .inv-row::after { content: '›'; color: var(--muted); margin-left: 6px; font-size: 1.2rem; line-height: 1; flex-shrink: 0; }
 
 .inv-name {
@@ -170,6 +173,7 @@
 }
 .inv-chip-surface { color: #8fe3b0; border-color: rgba(143, 227, 176, 0.4); }
 .inv-chip-underground { color: #e3c98f; border-color: rgba(227, 201, 143, 0.4); }
+.inv-chip-deep { color: #e39fd0; border-color: rgba(227, 159, 208, 0.4); }
 .inv-chip-core { color: #ff9f8f; border-color: rgba(255, 159, 143, 0.4); }
 .inv-chip-gas { color: var(--cyan); border-color: rgba(124, 215, 255, 0.4); }
 
@@ -185,7 +189,8 @@
 .inv-rate { color: var(--ok); font-style: normal; }
 .inv-rate-zero { color: var(--muted); }
 .inv-remain { font-weight: 700; color: #ffd479; }
-.inv-ab { font-size: 0.72rem; }
+/* rev16：层解锁条件可能较长，窄屏下截断而不撑破行 */
+.inv-ab { font-size: 0.72rem; max-width: 58vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* ===== 详情表 ===== */
 .detail-table { width: 100%; border-collapse: collapse; }

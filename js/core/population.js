@@ -33,7 +33,7 @@
 // 人口变化：H > 0.5 增长、H < 0.3 下降，否则持平。
 // 各项系数都在下方常量区，改一个数就能调平衡。
 
-import { BUILDING_BY_ID } from '../data/buildings.js?v=21.15';
+import { BUILDING_BY_ID } from '../data/buildings.js?v=21.16';
 
 // ============================================================================
 // 可调常量（集中放这里，方便策划调参）
@@ -235,10 +235,10 @@ export function getIntensityFor(pop, id) {
 //   统一改走生产面板的生产线（inst.lines），由 core/production.js 结算。
 export const JOBS = [
   // 地表采集（无需建筑：露天就能挖）
-  { id: 'surface_gatherer',     nameCn: '露天采集工',   group: 'surface',     buildingId: null,                  gatherLayer: 'surface',     desc: '露天采集地表资源：有机质、泥土、石头、水、粘土、石英等。' },
+  { id: 'surface_gatherer',     nameCn: '露天采集工',   group: 'surface',     buildingId: null,                  gatherLayer: 'surface',     desc: '露天采集地表资源：有机质、泥土、石头、水；粘土、石英、石墨等地表稀有资源需先研究「A1 深度采集」才会开放。' },
   // 地下采集（三个矿井，按层分工）
-  { id: 'mine_shallow_worker',  nameCn: '浅层矿井工',   group: 'underground', buildingId: 'mine_shallow',        gatherLayer: 'underground', desc: '在浅层矿井开采地下层矿藏。' },
-  { id: 'mine_deep_worker',     nameCn: '深层矿井工',   group: 'underground', buildingId: 'mine_deep',           gatherLayer: 'underground', desc: '在深层矿井开采地下层矿藏（效率更高）。' },
+  { id: 'mine_shallow_worker',  nameCn: '浅层矿井工',   group: 'underground', buildingId: 'mine_shallow',        gatherLayer: 'underground', desc: '在浅层矿井开采浅层矿藏。' },
+  { id: 'mine_deep_worker',     nameCn: '深层矿井工',   group: 'underground', buildingId: 'mine_deep',           gatherLayer: 'underground', desc: '在深层矿井开采深层矿藏。' },
   { id: 'mine_core_worker',     nameCn: '地心矿井工',   group: 'underground', buildingId: 'mine_core',           gatherLayer: 'core',        desc: '在地心矿井开采地核层稀有矿藏。' },
   // 气体
   { id: 'gas_collector_worker', nameCn: '大气收集器工', group: 'surface',     buildingId: 'gas_collector',       gatherLayer: 'gas',         desc: '从星球气体储量中提取氮气、氧气、氨气、甲烷、二氧化碳等。' },

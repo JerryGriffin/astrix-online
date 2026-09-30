@@ -12,16 +12,16 @@
 //
 // 用法：node docs/_probe_text.mjs
 
-const FMT = await import('../js/core/format.js?v=21.15');
-const BD = await import('../js/data/buildings.js?v=21.15');
-const RC = await import('../js/data/recipes.js?v=21.15');
-const TH = await import('../js/data/techs.js?v=21.15');
-const PF = await import('../js/data/facilities.js?v=21.15');
-const MT = await import('../js/data/materials.js?v=21.15');
-const AP = await import('../js/data/army_parts.js?v=21.15');
-const FL = await import('../js/data/fuels.js?v=21.15');
-const UG = await import('../js/data/upgrades.js?v=21.15');
-const PL = await import('../js/data/planets.js?v=21.15');
+const FMT = await import('../js/core/format.js?v=21.16');
+const BD = await import('../js/data/buildings.js?v=21.16');
+const RC = await import('../js/data/recipes.js?v=21.16');
+const TH = await import('../js/data/techs.js?v=21.16');
+const PF = await import('../js/data/facilities.js?v=21.16');
+const MT = await import('../js/data/materials.js?v=21.16');
+const AP = await import('../js/data/army_parts.js?v=21.16');
+const FL = await import('../js/data/fuels.js?v=21.16');
+const UG = await import('../js/data/upgrades.js?v=21.16');
+const PL = await import('../js/data/planets.js?v=21.16');
 
 let pass = 0, fail = 0;
 const check = (name, ok, extra) => {

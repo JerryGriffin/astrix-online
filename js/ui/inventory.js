@@ -24,18 +24,18 @@
 // 所有数字显示一律走 format.js 的 fmtNum / fmtRate / fmtRateBody / fmtSci。
 // 样式集中在 css/planet.css。
 
-import { MATERIALS } from '../data/materials.js?v=21.15';
-import { fmtNum, fmtRate, fmtSci, richText } from '../core/format.js?v=21.15';
-import { getPlanetInstance, tick, currentAccount, atmosphereOf, ownedOf, rateOf } from '../core/state.js?v=21.15';
-import { computePower } from '../core/power.js?v=21.15';
-import { equipmentList } from '../core/shipyard.js?v=21.15';
-import { materialLabel, productionRates } from '../core/production.js?v=21.15';
-import { BUILDING_BY_ID } from '../data/buildings.js?v=21.15';
-import { NUTRIENT_NAMES, METABOLITE_NAMES, consumptionPerSec, metabolitePerSec } from '../core/population.js?v=21.15';
-import { playPing } from '../core/sound.js?v=21.15';
+import { MATERIALS } from '../data/materials.js?v=21.16';
+import { fmtNum, fmtRate, fmtSci, richText } from '../core/format.js?v=21.16';
+import { getPlanetInstance, tick, currentAccount, atmosphereOf, ownedOf, rateOf } from '../core/state.js?v=21.16';
+import { computePower } from '../core/power.js?v=21.16';
+import { equipmentList } from '../core/shipyard.js?v=21.16';
+import { materialLabel, productionRates } from '../core/production.js?v=21.16';
+import { BUILDING_BY_ID } from '../data/buildings.js?v=21.16';
+import { NUTRIENT_NAMES, METABOLITE_NAMES, consumptionPerSec, metabolitePerSec } from '../core/population.js?v=21.16';
+import { playPing } from '../core/sound.js?v=21.16';
 // v0.2.3：军工与地面部队概览（真实数据，替换原装饰性假 HUD）
-import { ARMY_PART_BY_ID } from '../data/army_parts.js?v=21.15';
-import { stationedArmyPower } from '../core/army.js?v=21.15';
+import { ARMY_PART_BY_ID } from '../data/army_parts.js?v=21.16';
+import { stationedArmyPower } from '../core/army.js?v=21.16';
 
 // 地层扫描雷达配置
 const STRATA_CONFIG = [
@@ -54,6 +54,50 @@ const LAYER_LABEL = { surface: '地表', underground: '浅层', deep: '深层', 
 
 // 星球储藏的层显示顺序（surface → underground → deep → core → gas）
 const LAYER_ORDER = { surface: 0, underground: 1, deep: 2, core: 3, gas: 4 };
+
+// ============================================================================
+// 采集「为什么不动」的原因文案（rev16 修复「采集时显示不增不减」）
+// ============================================================================
+// 背景：地表在「A1 深度采集」研究出来之前，粘土 / 石英 / 石墨 / 孔雀石 / 二氧化硅 /
+//   红土 / 硫磺等**只有 rate = 0 且 locked = true**（见 state.js#recalcRates）；
+//   地下 / 深层 / 地核 / 气体层则要先建成对应建筑。
+//   此前这些状态在物品栏里**没有任何呈现**：净增长列是空白，点开的详情写「0（不增不减）」，
+//   而「来源 / 消耗」还会谎称「未分配人力」——玩家明明派了露天采集工去采粘土，界面却
+//   显示既不增也不减，于是报「物品栏 bug，采集时显示不增不减」。
+//   现在把 state.js 已经算好的 `locked` 标记真正用起来，把原因如实说出来。
+const MINABLE_LAYERS = { surface: 1, underground: 1, deep: 1, core: 1, gas: 1 };
+
+// 该层未解锁时需要什么（地表是科技门槛，其余是建筑门槛）
+const LAYER_UNLOCK_BUILDING = {
+  underground: '浅层矿井', deep: '深层矿井', core: '地心矿井', gas: '大气收集器',
+};
+const SURFACE_UNLOCK_HINT = '需研究「A1 深度采集」';
+
+// 某一层「采不到」的解锁条件（仅用于已 locked 的条目）
+function layerLockHint(layer) {
+  if (layer === 'surface') return SURFACE_UNLOCK_HINT;
+  const need = LAYER_UNLOCK_BUILDING[layer];
+  return need ? '需建造「' + need + '」' : '该层尚未开放';
+}
+
+// 某材料「净增长为 0」的真实原因。返回简短中文；正常在产或无采集层时返回 ''。
+//   '' 以外的取值只有四种：需研究…/需建造…（未解锁）、已采尽、未分配人力。
+function noGainReasonOf(planet, mat) {
+  const list = ((planet && planet.inventory) || [])
+    .filter((e) => e && e.mat === mat && MINABLE_LAYERS[e.layer]);
+  if (!list.length) return '';                                  // 加工产物（refined）不参与采集说明
+  if (list.some((e) => Number(e.rate) > 0)) return '';          // 有一层正在产 → 正常
+  // ① 还有「已解锁且尚有储量」的层 → 纯粹是没人干，与解锁无关（最关键：别把
+  //    「石头地上就能挖、只是没派人」误报成「需建造浅层矿井」）。
+  if (list.some((e) => !e.locked && stockOf(e, planet) > 0)) return '未分配人力';
+  // ② 全都被锁住 → 给出解锁条件；地表是科技门槛、最容易解锁，优先提示它
+  const lockedSurface = list.find((e) => e.locked && e.layer === 'surface');
+  if (lockedSurface) return SURFACE_UNLOCK_HINT;
+  const lockedOther = list.find((e) => e.locked);
+  if (lockedOther) return layerLockHint(lockedOther.layer);
+  // ③ 都已解锁但没有可采储量
+  return '已采尽';
+}
 
 // 净增长配色（需求 2：+ 绿、− 红）
 const NET_POS = '#9FE1CB';
@@ -164,7 +208,7 @@ export function renderInventory(container, planetOrCtx) {
   ownedWrap.className = 'inv-block';
   const ownedTitle = document.createElement('div');
   ownedTitle.className = 'inv-block-title';
-  ownedTitle.innerHTML = '物品栏<span class="inv-block-sub muted"> · 按资源汇总，含净增长（绿涨红跌）</span>';
+  ownedTitle.innerHTML = '物品栏<span class="inv-block-sub muted"> · 按资源汇总，含净增长（绿涨红跌）；🔒 表示尚未开放采集</span>';
   const ownedGrid = document.createElement('div');
   ownedGrid.className = 'inv-grid';
   ownedWrap.append(ownedTitle, ownedGrid);
@@ -240,7 +284,7 @@ export function renderInventory(container, planetOrCtx) {
   storeWrap.className = 'inv-block inv-block-store';
   const storeTitle = document.createElement('div');
   storeTitle.className = 'inv-block-title';
-  storeTitle.innerHTML = '星球储藏<span class="inv-block-sub muted"> · 按「资源 × 层」分开标注剩余储量，采集会扣减</span>';
+  storeTitle.innerHTML = '星球储藏<span class="inv-block-sub muted"> · 按「资源 × 层」分开标注剩余储量，采集会扣减；🔒 表示该层尚未开放</span>';
 
   // v0.2.3：地层筛选条（保留真实功能：点按层卡片即可筛选下方储藏表；
   //   删除原「地质断层雷达」里纯装饰的假声纳按钮、地震波动画与随机伪造回波文案）
@@ -323,11 +367,15 @@ export function renderInventory(container, planetOrCtx) {
     });
   }
 
-  // 可见行集合的指纹：物品栏按材料、储藏按「材料×层」，只看成员资格
+  // 可见行集合的指纹：物品栏按材料、储藏按「材料×层」，只看成员资格。
+  // ⚠ rev16：必须**与数值无关**。此前直接取 aggregateOwned 的输出顺序，
+  //   而它是按「持有量降序」排的 —— 采集时各资源持有量此消彼长、排名一变，
+  //   指纹就变，于是每个刷新周期都整表重建；重建那一帧新行的数字还是空的，
+  //   看起来正好像「采集时显示不增不减」。这里统一按名称排序，彻底消除该抖动。
   function rowsKey() {
-    const owned = aggregateOwned(inv, planet).map((i) => i.mat).join('|');
+    const owned = aggregateOwned(inv, planet).map((i) => i.mat).sort().join('|');
     const store = inv.filter((e) => stockOf(e, planet) > 0)
-      .map((e) => e.mat + ':' + e.layer).join('|');
+      .map((e) => e.mat + ':' + e.layer).sort().join('|');
     return owned + '//' + store;
   }
 
@@ -342,12 +390,12 @@ export function renderInventory(container, planetOrCtx) {
     for (const item of ownedItems) {
       const row = buildRow(item, 'owned', planet);
       ownedGrid.appendChild(row);
-      refs.push({ kind: 'owned', item, ownedEl: row._owned, rateEl: row._rate });
+      refs.push({ kind: 'owned', item, rowEl: row, ownedEl: row._owned, rateEl: row._rate });
     }
     for (const entry of storeItems) {
       const row = buildRow(entry, 'store', planet);
       storeGrid.appendChild(row);
-      refs.push({ kind: 'store', entry, remainEl: row._remain, abEl: row._ab });
+      refs.push({ kind: 'store', entry, rowEl: row, remainEl: row._remain, abEl: row._ab });
     }
     if (ownedItems.length === 0) ownedGrid.appendChild(emptyHint('暂无持有物品'));
     if (storeItems.length === 0) storeGrid.appendChild(emptyHint('该星球资源已采尽'));
@@ -395,7 +443,10 @@ export function renderInventory(container, planetOrCtx) {
 
   // 刷新数字部分（被每秒 tick 调用；集合变化时整表重建，罕见）
   function refresh() {
-    if (container._invRowsKey !== rowsKey()) { buildRows(); return; }
+    // 集合指纹变了才整表重建；**重建后继续往下填数字**——此前这里 return 掉，
+    //   于是新行要等下一个刷新周期（250ms）才有数字，中间那一帧整表空白，
+    //   看起来正像「采集时数字不动」。rev16 起不再有这一帧。
+    if (container._invRowsKey !== rowsKey()) buildRows();
     let totalOwned = 0;
     for (const r of refs) {
       if (r.kind === 'owned') {
@@ -405,13 +456,25 @@ export function renderInventory(container, planetOrCtx) {
         const owned = ownedOf(planet, r.item.mat);
         totalOwned += owned;
         r.ownedEl.textContent = fmtNum(owned);
-        // 需求 2：显示净增长，+ 绿、− 红；为 0 时不显示（不占位）
+        // 需求 2：显示净增长，+ 绿、− 红；为 0 时不显示数字，
+        //   但必须说明「为什么是 0」（未解锁 / 已采尽 / 未分配人力）——rev16 修复。
         const net = netOf(planet, r.item.mat);
-        r.rateEl.textContent = net !== 0 ? ' ' + fmtRate(net) : '';
-        r.rateEl.setAttribute('style', 'color:' + (net > 0 ? NET_POS : net < 0 ? NET_NEG : NET_ZERO));
+        if (net !== 0) {
+          r.rateEl.textContent = ' ' + fmtRate(net);
+          r.rateEl.setAttribute('style', 'color:' + (net > 0 ? NET_POS : NET_NEG));
+        } else {
+          const why = noGainReasonOf(planet, r.item.mat);
+          r.rateEl.textContent = why ? ' ' + (why.startsWith('需') ? '🔒 ' : '') + why : '';
+          r.rateEl.setAttribute('style', 'color:' + NET_ZERO);
+        }
       } else {
         r.remainEl.textContent = fmtNum(stockOf(r.entry, planet));
-        r.abEl.textContent = '丰度 ' + fmtAbundance(r.entry.abundance);
+        // rev16：被锁的层（未建矿井 / 未研究深度采集）在丰度后标出解锁条件，
+        //   否则玩家看到「剩余储量 500k」却怎么都采不动，无从判断卡在哪。
+        //   解锁状态是实时变的（建成矿井 / 研究完科技），所以这里每帧同步一次灰显样式。
+        r.rowEl.classList.toggle('inv-row-locked', !!r.entry.locked);
+        r.abEl.textContent = '丰度 ' + fmtAbundance(r.entry.abundance)
+          + (r.entry.locked ? ' · 🔒 ' + layerLockHint(r.entry.layer) : '');
       }
     }
     const avail = planet.population?.available ?? 0;
@@ -455,7 +518,8 @@ export function renderInventory(container, planetOrCtx) {
 function buildRow(item, kind, planetRef) {
   const row = document.createElement('button');
   row.type = 'button';
-  row.className = 'inv-row' + (kind === 'store' ? ' inv-row-store' : '');
+  row.className = 'inv-row' + (kind === 'store' ? ' inv-row-store' : '')
+    + (kind === 'store' && item.locked ? ' inv-row-locked' : '');   // rev16：未解锁的层灰显
   row.dataset.mat = item.mat;
   if (kind === 'store') row.dataset.layer = item.layer;
 
@@ -616,7 +680,12 @@ function openDetail(mat, layer, planet, openModal, inv) {
   // 本星球数据
   const entries = inv.filter((e) => e.mat === mat);
   const net = netOf(planet, mat);
-  const netText = net === 0 ? '0（不增不减）' : fmtRate(net) + (net > 0 ? '（增长）' : '（消耗）');
+  // rev16：净增长为 0 时必须说清原因（未解锁 / 已采尽 / 未分配人力），
+  //   此前一律写「0（不增不减）」——玩家明明派了人去采，看到的却是「不增不减」。
+  const noGain = net === 0 ? noGainReasonOf(planet, mat) : '';
+  const netText = net !== 0
+    ? fmtRate(net) + (net > 0 ? '（增长）' : '（消耗）')
+    : '0（' + (noGain || '不增不减') + '）';
   const rows = [
     ['玩家持有', fmtNum(entries.reduce((s, e) => s + (Number(e.owned) || 0), 0))],
     ['净增长', netText],
@@ -661,7 +730,11 @@ function openDetail(mat, layer, planet, openModal, inv) {
   try {
     const flow = buildMaterialFlow(planet, mat);
     if (!flow.sources.length && !flow.consumes.length) {
-      html += '<tr><td class="dt-val muted">当前没有来源，也没有消耗（未分配人力、未开生产线）。</td></tr>';
+      // rev16：此前这里写死「未分配人力」——但资源被科技 / 建筑锁住时人力早就派过了，
+      //   这句谎言正是玩家以为「采集坏了」的直接原因。改成如实说明。
+      const why = noGainReasonOf(planet, mat);
+      html += '<tr><td class="dt-val muted">当前没有产出，也没有消耗。'
+        + (why ? '原因：' + escapeHtml(why) + '。' : '') + '</td></tr>';
     } else {
       for (const r of flow.sources) html += flowRowHtml('来源 · ' + r.label, r.rate);
       for (const r of flow.consumes) html += flowRowHtml('消耗 · ' + r.label, -r.rate);
