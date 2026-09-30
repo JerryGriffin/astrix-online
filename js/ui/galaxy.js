@@ -16,15 +16,15 @@ import {
   ensureReady, cloudStatus, cloudUser,
   signInWithPassword, sendEmailOtp, verifyEmailOtp, signOutCloud,
   listPublicPlanets, publishMyPlanet, postIncident, fetchInbox, markIncidentResolved,
-} from '../core/cloud.js?v=20.14';
-import { currentAccount, getPlanetInstance, ownedOf, spendOwned } from '../core/state.js?v=20.14';
-import { ensureEntry } from '../core/production.js?v=20.14';
-import { listFleets, fleetPowerOf, defenseBonusOf } from '../core/fleet.js?v=20.14';
-import { totalArmyPowerOf, listArmies, disbandArmy, resolveBattle } from '../core/army.js?v=20.14';
+} from '../core/cloud.js?v=20.15';
+import { currentAccount, getPlanetInstance, ownedOf, spendOwned } from '../core/state.js?v=20.15';
+import { ensureEntry } from '../core/production.js?v=20.15';
+import { listFleets, fleetPowerOf, defenseBonusOf } from '../core/fleet.js?v=20.15';
+import { totalArmyPowerOf, listArmies, disbandArmy, resolveBattle } from '../core/army.js?v=20.15';
 // v0.2.1：内嵌殖民地管理（含内联报告），取代在线模式独立的「星球选择」tab
-import { renderColony } from './colony.js?v=20.14';
-import { PLANETS } from '../data/planets.js?v=20.14';
-import { fmtNum } from '../core/format.js?v=20.14';
+import { renderColony } from './colony.js?v=20.15';
+import { PLANETS } from '../data/planets.js?v=20.15';
+import { fmtNum } from '../core/format.js?v=20.15';
 
 function el(tag, cls, text) {
   const e = document.createElement(tag);
@@ -76,6 +76,8 @@ function buildSnapshot(acc, ctx) {
       buildings: Object.values((inst && inst.buildings) || {}).reduce((s, n) => s + (Number(n) || 0), 0),
       defense: myDefensePower(acc),
       armies: (acc && Array.isArray(acc.armies) ? acc.armies.length : 0),
+      ships: (acc && Array.isArray(acc.ships) ? acc.ships.length : 0),
+      happiness: Math.round(((inst && inst.pop && inst.pop.happiness) || 0) * 100),
     },
   };
 }
@@ -129,10 +131,10 @@ function renderShell(body, ctx, rerender) {
   header.appendChild(idBox);
 
   const actions = el('div', 'gx-actions');
-  actions.appendChild(el('div', 'gx-stat', [
-    el('span', 'gx-stat-k', '我的防御战力'),
-    el('span', 'gx-stat-v', fmtNum(myDefensePower(acc))),
-  ]));
+  // v0.2.10 修复：el() 的第三参是文本，传数组会渲染成 [object HTMLSpanElement]
+  const defStat = el('div', 'gx-stat');
+  defStat.append(el('span', 'gx-stat-k', '我的防御战力'), el('span', 'gx-stat-v', fmtNum(myDefensePower(acc))));
+  actions.appendChild(defStat);
 
   const inboxBtn = el('button', 'btn btn-sm', '收件箱');
   inboxBtn.addEventListener('click', () => openInboxModal(ctx, rerender));
@@ -326,6 +328,11 @@ function isPlayerAlly(acc, uid) {
 
 function isNpcAlly(acc, owner) {
   return !!(acc && Array.isArray(acc.npcAllies) && owner && acc.npcAllies.includes(owner));
+}
+
+/** v0.2.10：NPC 结盟诚意金 = 驻军战力 ×5（越强的势力越贵；解除免费） */
+function npcAllyCost(f) {
+  return Math.max(1000, Math.round((Number(f && f.defense) || 0) * 5));
 }
 
 function renderInbox(sec, ctx, rerender, items, acc) {
@@ -642,9 +649,12 @@ function buildPlanetCard(p, ctx, rerender, acc) {
 
   const info = el('div', 'gx-card-info');
   info.innerHTML =
-    '<div>指挥官：<b>' + esc(p.owner_name || '未知') + '</b></div>'
+    '<div>指挥官：<b>' + esc(p.owner_name || '未知') + '</b>'
+    + (isPlayerAlly(acc, p.owner_id) ? ' <span style="color:#9FE1CB">🤝 盟友</span>' : '') + '</div>'
     + '<div>人口 <b>' + fmtNum(s.pop || 0) + '</b> · 建筑 <b>' + fmtNum(s.buildings || 0)
-    + '</b> · 在线 ' + new Date(p.last_seen).toLocaleDateString() + '</div>'
+    + '</b> · 幸福度 <b>' + fmtNum(s.happiness || 0) + '%</b></div>'
+    + '<div>军队 <b>' + fmtNum(s.armies || 0) + '</b> 支 · 舰队 <b>' + fmtNum(s.ships || 0)
+    + '</b> 艘 · 在线 ' + new Date(p.last_seen).toLocaleDateString() + '</div>'
     + '<div>要塞战力：<b class="' + defCls + '">' + fmtNum(defense) + '</b></div>';
   top.appendChild(info);
 
@@ -657,7 +667,6 @@ function buildPlanetCard(p, ctx, rerender, acc) {
   card.appendChild(top);
 
   const isAlly = isPlayerAlly(acc, p.owner_id);
-  if (isAlly) top.appendChild(el('div', 'gx-intel', '🤝 盟友：互不侵犯')); // v0.2.10
 
   const act = el('div', 'gx-card-actions');
   const tradeBtn = el('button', 'btn btn-sm btn-primary', '贸易');
@@ -720,14 +729,35 @@ function buildNpcCard(f, ctx, rerender, acc) {
   const intel = el('div', 'gx-intel');
   intel.textContent = f.desc;
   top.appendChild(intel);
+  // v0.2.10：详细交易清单（出售含库存/售价，收购含收价）
+  const trade = el('div', 'gx-intel muted');
+  trade.style.fontSize = '12px';
+  const sellTxt = Object.keys(f.sell || {})
+    .map((m) => m + ' 剩' + fmtNum(st.stock[m] || 0) + '@/价' + fmtNum(f.sell[m][1])).join('；');
+  const buyTxt = Object.keys(f.buys || {})
+    .map((m) => m + ' @' + fmtNum(f.buys[m])).join('；');
+  trade.textContent = '出售：' + (sellTxt || '无') + '\n收购：' + (buyTxt || '无');
+  trade.style.whiteSpace = 'pre-line';
+  top.appendChild(trade);
   card.appendChild(top);
 
   const act = el('div', 'gx-card-actions');
-  const allyBtn = el('button', 'btn btn-sm' + (allied ? '' : ' btn-ok'), allied ? '解除盟约' : '结盟');
+  const allyBtn = el('button', 'btn btn-sm' + (allied ? '' : ' btn-ok'),
+    allied ? '解除盟约' : '结盟（' + fmtNum(npcAllyCost(f)) + ' Ascoin）');
   allyBtn.addEventListener('click', () => {
     ensureAllianceFields(acc);
-    if (allied) acc.npcAllies = acc.npcAllies.filter((x) => x !== f.owner);
-    else acc.npcAllies.push(f.owner);
+    if (allied) {
+      acc.npcAllies = acc.npcAllies.filter((x) => x !== f.owner);
+      refresh();
+      return;
+    }
+    const cost = npcAllyCost(f);
+    if ((Number(acc.ascoin) || 0) < cost) {
+      alert('结盟需支付诚意金 ' + fmtNum(cost) + ' Ascoin（当前余额不足）。');
+      return;
+    }
+    acc.ascoin = (Number(acc.ascoin) || 0) - cost;
+    acc.npcAllies.push(f.owner);
     refresh();
   });
   const tradeBtn = el('button', 'btn btn-sm btn-primary', '贸易');
@@ -747,6 +777,7 @@ function openNpcTradeModal(ctx, f, refresh) {
   const openModal = ctx.openModal;
   if (!openModal) return;
   const st = npcStateOf(f);
+  const wrap = el('div');   // v0.2.10 修复：rev13 重构时误删，导致贸易弹窗 ReferenceError
   const acc = currentAccount();
   const allied = isNpcAlly(acc, f.owner);   // v0.2.10：盟友购买价 9 折
   const inst = getPlanetInstance((acc && acc.homePlanetCode) || 'syl');

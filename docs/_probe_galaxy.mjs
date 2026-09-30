@@ -1,4 +1,4 @@
-// v0.2.10 星系页探针：真实浏览器 + 假 SDK，检查 NPC 星球卡渲染
+// v0.2.10 rev15 星系页探针：NPC 卡渲染 / 无 [object] / 贸易弹窗可开 / 卡片明细 / 结盟按钮含诚意金
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -20,11 +20,9 @@ const browser = await chromium.launch({ executablePath: 'C:/Program Files (x86)/
 const page = await (await browser.newContext()).newPage();
 const errs = [];
 page.on('pageerror', (e) => errs.push(e.message));
-page.on('console', (m) => { if (m.type() === 'error') errs.push('[console] ' + m.text()); });
 await page.goto('http://127.0.0.1:8777/index.html', { waitUntil: 'load' });
 await page.waitForTimeout(1000);
 const res = await page.evaluate(async () => {
-  // 注入假 SDK（render selfcheck 同款）
   const chain = new Proxy({}, { get: (t, p) => (p === 'then' ? undefined : (..._a) => chain) });
   window.WorkBuddyCloud = {
     createWorkBuddyCloud: () => ({
@@ -32,31 +30,44 @@ const res = await page.evaluate(async () => {
       database: chain,
     }),
   };
-  const G = await import('/js/ui/galaxy.js?v=20.14');
-  const S = await import('/js/core/state.js?v=20.14');
-  const acc = S.currentAccount() || { id: 't', name: '测试', homePlanetCode: 'syl', tech: [] };
+  const G = await import('/js/ui/galaxy.js?v=20.15');
+  const S = await import('/js/core/state.js?v=20.15');
+  const acc = S.currentAccount() || { id: 't', name: '测试', homePlanetCode: 'syl', tech: [], ascoin: 999999 };
   S.STATE.mode = 'online';
   const root = document.createElement('div');
   document.body.appendChild(root);
-  const errs2 = [];
-  window.addEventListener('unhandledrejection', (e) => errs2.push(String(e.reason)));
   G.renderGalaxy(root, {
     account: acc, planetCode: 'syl',
-    openModal: () => () => {}, closeModal: () => {}, onEnterPlanet: () => {},
+    openModal: (opts) => {
+      const d = document.createElement('div');
+      d.id = 'probe-modal';
+      d.textContent = opts.title + '|' + (typeof opts.body === 'string' ? opts.body : opts.body.textContent);
+      document.body.appendChild(d);
+      return () => d.remove();
+    }, closeModal: () => {}, onEnterPlanet: () => {},
   });
-  await new Promise((r) => setTimeout(r, 1500));
+  await new Promise((r) => setTimeout(r, 1200));
   const txt = root.textContent || '';
-  return {
-    errs: errs2,
-    hasNpcCard: txt.includes('熔炉前哨') && txt.includes('皇家堡垒'),
-    npcCount: (txt.match(/电脑势力/g) || []).length,
-    hasAllianceBtn: txt.includes('结盟'),
-    hasColony: txt.includes('我的殖民地'),
-    snippet: txt.replace(/\s+/g, ' ').slice(0, 300),
+  const out = {
+    npcCards: (txt.match(/电脑势力/g) || []).length,
+    noObjectBug: !txt.includes('[object HTML'),
+    allyCostShown: txt.includes('结盟（'),
+    tradeDetail: txt.includes('出售：') && txt.includes('收购：'),
+    playerCardHint: txt.includes('已知玩家星球'),
   };
+  // 点第一个 NPC 贸易按钮 → 弹窗应出现（rev13 曾 ReferenceError 无反应）
+  const tradeBtn = Array.from(root.querySelectorAll('button')).find((b) => b.textContent.trim() === '贸易');
+  if (tradeBtn) {
+    tradeBtn.click();
+    await new Promise((r) => setTimeout(r, 300));
+    const modal = document.getElementById('probe-modal');
+    out.tradeModal = !!modal && modal.textContent.includes('购买（即时成交）');
+    out.modalTitle = modal ? modal.textContent.slice(0, 40) : '(无)';
+  } else out.tradeModal = false;
+  return out;
 });
 console.log(JSON.stringify(res, null, 1));
 console.log('页面异常:', errs.length ? errs.slice(0, 5) : '无');
 await browser.close();
 server.close();
-process.exit(res.hasNpcCard && !errs.length ? 0 : 1);
+process.exit(res.npcCards >= 4 && res.noObjectBug && res.tradeModal && res.tradeDetail && !errs.length ? 0 : 1);

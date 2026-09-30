@@ -19,7 +19,7 @@ await page.goto(`http://127.0.0.1:${PORT}/index.html`,{waitUntil:'load'});
 await page.waitForTimeout(1000);
 const click = async t => { await page.evaluate(k=>{const b=[...document.querySelectorAll('button')].find(x=>x.textContent.trim().includes(k)); if(b)b.click();},t); await page.waitForTimeout(700); };
 await click('离线模式'); await click('新建存档');
-await page.evaluate(async ()=>{ const S=await import('/js/core/state.js?v=20.14'); const Y=await import('/js/core/shipyard.js?v=20.14');
+await page.evaluate(async ()=>{ const S=await import('/js/core/state.js?v=20.15'); const Y=await import('/js/core/shipyard.js?v=20.15');
   const a=S.currentAccount(); a.tech=['t_e1','t_e2','t_e3','t_e4','t_m1','t_m2','t_m3','t_m4'];
   const inst=S.getPlanetInstance('syl'); inst.buildings={dock:1,fabricator:1,barracks:1,training_ground:1};
   Y.addEquipment(inst,'ap_frame_light','铁',6); Y.addEquipment(inst,'ap_wpn_rifle','铁',8);

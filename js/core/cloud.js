@@ -19,7 +19,7 @@
 //   → 「打别人 / 贸易别人」= 插入一条 target_uid 指向对方的事件；
 //     对方上线后在收件箱本地结算，并把回执（战报/贸易结算）作为新事件发回。
 
-import { CACHE_TAG } from '../version.js?v=20.14';
+import { CACHE_TAG } from '../version.js?v=20.15';
 
 const CLOUD_ENDPOINT = 'https://astrix.app.workbuddy.host';
 const CLOUD_PUBLISHABLE_KEY = 'wbpk_a83qn1S1YtnqmhL6Wb2oF3_dIuTVZ1qLa1Ph94JTqQhmspVf2q27z14';
@@ -346,7 +346,9 @@ export async function publishMyPlanet(snapshot) {
     if (!(await nativeEnsureReady()) || !db()) return { ok: false, reason: state.error || '云服务不可用' };
     if (!state.user) return { ok: false, reason: '请先登录云账号' };
     try {
-      const mine = await db().from('galaxy_planets').select('id').limit(1);
+      // v0.2.10 修复：必须按 owner 过滤 —— 此前 select('id').limit(1) 会拿到别人的行，
+      // 去更新它必被 RLS（owner_id = auth.uid()）拒绝 → 快照永远发布失败
+      const mine = await db().from('galaxy_planets').select('id').eq('owner_id', state.user.id).limit(1);
       if (mine.error) return { ok: false, reason: mine.error.message || '读取自身快照失败' };
       const row = {
         owner_name: snapshot.ownerName || '深空旅人',
@@ -362,7 +364,7 @@ export async function publishMyPlanet(snapshot) {
         if (!Array.isArray(up.data) || up.data.length === 0) return { ok: false, reason: '更新被拒绝（RLS）' };
         return { ok: true, updated: true };
       }
-      const ins = await db().from('galaxy_planets').insert(row).select();
+      const ins = await db().from('galaxy_planets').insert(Object.assign({ owner_id: state.user.id }, row)).select();
       if (ins.error) return { ok: false, reason: ins.error.message || '发布快照失败' };
       return { ok: true, created: true };
     } catch (e) { return { ok: false, reason: (e && e.message) || String(e) }; }
