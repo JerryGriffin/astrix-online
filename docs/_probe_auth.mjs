@@ -23,7 +23,7 @@ await page.waitForTimeout(1000);
 const NAME = '探针玩家' + Math.floor(Math.random() * 1e6);
 const PW = 'probe-pass-123';
 const res = await page.evaluate(async ({ NAME, PW }) => {
-  const C = await import('/js/core/cloud.js?v=26.6');
+  const C = await import('/js/core/cloud.js?v=26.7');
   await C.ensureReady();
   const reg = await C.registerWithName(NAME, PW);
   const uid = reg.user ? reg.user.id : null;

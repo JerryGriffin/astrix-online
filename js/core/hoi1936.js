@@ -10,10 +10,10 @@
 //   * HOI4 风格国策（三支六策，按天推进）               → focus 系列
 //   * 海域（制海权争夺 + 海战）                          → sea 系列
 import { HOI_NATIONS, HOI_BY_ID, HOI_DEEP, HOI_SEAS, ARMY_MEN, popOf, BLOC_NAME, HOI_SCENARIO_ID,
-  workforceOf, ARMY_POWER_PER_DIV, NAVY_MUL, GEAR_PARTS, SHIP_NAMES, ARMY_BP_NAME, HOI_BG } from '../data/hoi1936.js?v=26.6';
-import { BUILDING_BY_ID } from '../data/buildings.js?v=26.6';
-import { JOBS_BY_BUILDING, assignWorkers, jobCapacity, getAvailable } from './population.js?v=26.6';
-import { ELITE_DIVISIONS, ELITE_MUL } from '../data/hoi1936.js?v=26.6';
+  workforceOf, ARMY_POWER_PER_DIV, NAVY_MUL, GEAR_PARTS, SHIP_NAMES, ARMY_BP_NAME, HOI_BG } from '../data/hoi1936.js?v=26.7';
+import { BUILDING_BY_ID } from '../data/buildings.js?v=26.7';
+import { JOBS_BY_BUILDING, assignWorkers, jobCapacity, getAvailable } from './population.js?v=26.7';
+import { ELITE_DIVISIONS, ELITE_MUL } from '../data/hoi1936.js?v=26.7';
 
 // 依赖注入（避免与 state.js / production.js 形成循环导入）
 let _getInst = null;
@@ -558,6 +558,39 @@ export function ensureShipNames(acc, nation) {
     counters[cls] = (counters[cls] || 0) + 1;
     const expect = cls + ' ' + counters[cls];
     if (sh.nameCn !== expect) { sh.nameCn = expect; fixed++; }
+  }
+  return fixed;
+}
+
+/**
+ * 旧存档自愈（v0.2.6 rev7）：1936 剧本的老存档里，星球住房是按旧公式配的
+ *   （8 万人口只有 832 栋、属地只有 4 栋）→ 庇护长期不足 → 幸福度不受控下降。
+ *   本函数在进入存档后自动把住房补到「庇护需求」水平，并把已被拖垮的幸福度拉回恢复起点。
+ *   幂等：住房达标即不再改动。
+ */
+export function repairScenarioEstates(acc) {
+  if (!acc || acc.scenario !== HOI_SCENARIO_ID) return 0;
+  const SPH = (BUILDING_BY_ID.house && BUILDING_BY_ID.house.shelter) || 40;
+  const codes = [];
+  if (acc.homePlanetCode) codes.push(acc.homePlanetCode);
+  if (acc.colonyCode) codes.push(acc.colonyCode);
+  for (const c of (Array.isArray(acc.capturedPlanets) ? acc.capturedPlanets : [])) if (c && c.code) codes.push(c.code);
+  let fixed = 0;
+  for (const code of Array.from(new Set(codes))) {
+    const inst = _getInst ? _getInst(code) : null;
+    if (!inst || !inst.pop) continue;
+    const pop = Number(inst.pop.total) || 0;
+    if (pop <= 0) continue;
+    if (!(Number(inst.pop.consumeScale) > 0)) inst.pop.consumeScale = 1 / 650;
+    const need = Math.ceil((pop * 1.15) / SPH);
+    const cur = Number(inst.buildings && inst.buildings.house) || 0;
+    if (cur < need) {
+      if (!inst.buildings) inst.buildings = {};
+      inst.buildings.house = need;
+      fixed++;
+    }
+    // 被长期拖垮的幸福度：给一个可恢复的起点（不直接拉满，保留博弈空间）
+    if (!(Number(inst.pop.happiness) > 0.55)) inst.pop.happiness = 0.72;
   }
   return fixed;
 }

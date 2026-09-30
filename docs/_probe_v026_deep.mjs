@@ -1,9 +1,9 @@
 // v0.2.6 深化探针：人口比例 / 500 人编制 / 史实舰队 / 侧重生产线 / 阵营 / 国策 / 海域
-import { STATE, createAccount, getPlanetInstance } from '../js/core/state.js?v=26.6';
-import { HOI_NATIONS, HOI_BY_ID, HOI_DEEP, popOf, GER_POP_BASE, ARMY_MEN, HOI_SEAS } from '../js/data/hoi1936.js?v=26.6';
-import { scenarioDateOf, ensureFocus, startFocus, tickFocus, focusOptionsOf, contestSea, ensureSeas, enemySeaPressure, blocNameOf, deepOf } from '../js/core/hoi1936.js?v=26.6';
-import { consumptionPerSec } from '../js/core/population.js?v=26.6';
-import { listFleets } from '../js/core/fleet.js?v=26.6';
+import { STATE, createAccount, getPlanetInstance } from '../js/core/state.js?v=26.7';
+import { HOI_NATIONS, HOI_BY_ID, HOI_DEEP, popOf, GER_POP_BASE, ARMY_MEN, HOI_SEAS } from '../js/data/hoi1936.js?v=26.7';
+import { scenarioDateOf, ensureFocus, startFocus, tickFocus, focusOptionsOf, contestSea, ensureSeas, enemySeaPressure, blocNameOf, deepOf } from '../js/core/hoi1936.js?v=26.7';
+import { consumptionPerSec } from '../js/core/population.js?v=26.7';
+import { listFleets } from '../js/core/fleet.js?v=26.7';
 
 let pass = 0, fail = 0;
 function ok(cond, msg) { if (cond) { pass++; console.log('  ✓ ' + msg); } else { fail++; console.log('  ✗ ' + msg); } }
@@ -81,7 +81,7 @@ ok(enemySeaPressure(ger) === 0, '未交战 → 无敌方海上压力');
 const seaR = contestSea(ger, 'baltic', 900);
 ok(seaR.ok && seaR.control > 0.5, '无敌人时巡航提升制海权（' + Math.round(seaR.control * 100) + '%）');
 // 与海上强国交战后再测：敌方海上压力 > 0，弱小舰队会丢制海权
-const W = await import('../js/core/war.js?v=26.6');
+const W = await import('../js/core/war.js?v=26.7');
 W.declareWar(ger, { id: 'hoi_eng', nameCn: '伦敦', kind: 'npc' });
 ok(enemySeaPressure(ger) > 0, '与不列颠交战后敌方海上压力 > 0（' + Math.round(enemySeaPressure(ger)) + '）');
 const before = seas.find((x) => x.id === 'atlantic').control;
@@ -98,10 +98,10 @@ ok(missing.length === 0, '12 国均有编制/舰队/生产线/六策/阵营' + (
 
 
 // ---- H. rev3：生产线工人 / 建筑群 / 历史师数 / 史实蓝图 / 国策分支 / 外交 AI / 战时总动员 ----
-import { workforceOf, SHIP_NAMES, ARMY_BP_NAME } from '../js/data/hoi1936.js?v=26.6';
-import { tickDiploAI } from '../js/core/hoi1936.js?v=26.6';
-import { MANAGE_MODES, tickPopulation } from '../js/core/population.js?v=26.6';
-import { resolveBattle } from '../js/core/army.js?v=26.6';
+import { workforceOf, SHIP_NAMES, ARMY_BP_NAME } from '../js/data/hoi1936.js?v=26.7';
+import { tickDiploAI } from '../js/core/hoi1936.js?v=26.7';
+import { MANAGE_MODES, tickPopulation } from '../js/core/population.js?v=26.7';
+import { resolveBattle } from '../js/core/army.js?v=26.7';
 
 const ger2 = createAccount('柏林2', 'hoi1936', { countryId: 'ger' });
 const g2 = getPlanetInstance(ger2.homePlanetCode);
@@ -159,7 +159,7 @@ ok(typeof withRes.log === 'string' && withRes.log.indexOf('预备队') >= 0, '�
 
 
 // ---- I. rev5：全建筑有人工作 / 工业修正 / 王牌师 ----
-import { ELITE_DIVISIONS, ELITE_MUL } from '../js/data/hoi1936.js?v=26.6';
+import { ELITE_DIVISIONS, ELITE_MUL } from '../js/data/hoi1936.js?v=26.7';
 const ger5 = createAccount('柏林5', 'hoi1936', { countryId: 'ger' });
 const g5 = getPlanetInstance(ger5.homePlanetCode);
 ok((ger5.hoiStaffJobs || 0) > 20000, '岗位工人已分配（' + ger5.hoiStaffJobs + ' 人：农田/矿井/科研/加工等）');
@@ -177,6 +177,22 @@ ok(elite[0].power > ger5.armies[ger5.armies.length - 1].power * 1.4, '王牌师�
 const usa5 = createAccount('华盛顿5', 'hoi1936', { countryId: 'usa' });
 ok(usa5.armies[0].elite && usa5.armies[0].nameCn.indexOf('大红一师') >= 0, '美国王牌师（' + usa5.armies[0].nameCn + '）');
 ok(usa5.armies.some((a) => a.stats.atk > ger5.armies.find((x) => !x.elite).stats.atk), '美国师数值强于德国普通师');
+
+
+// ---- J. rev7：旧存档自愈（庇护补齐） ----
+import { repairScenarioEstates } from '../js/core/hoi1936.js?v=26.7';
+import { tickPopulation as tickPop2 } from '../js/core/population.js?v=26.7';
+const oldAcc = createAccount('旧档自愈', 'hoi1936', { countryId: 'sov' });
+const oldCol = getPlanetInstance(oldAcc.colonyCode);
+oldCol.buildings.house = 4;          // 模拟 rev6 前的老存档
+oldCol.pop.happiness = 0.30;
+const rFixed = repairScenarioEstates(oldAcc);
+ok(rFixed >= 1, '旧存档自愈触发（修复 ' + rFixed + ' 颗星球）');
+ok(oldCol.buildings.house >= Math.ceil(oldCol.pop.total * 1.15 / 40) - 1, '属地住房已补足（' + oldCol.buildings.house + ' 栋 / 人口 ' + Math.round(oldCol.pop.total) + '）');
+ok(oldCol.pop.happiness >= 0.7, '幸福度已回到恢复起点（' + oldCol.pop.happiness + '）');
+const sup2 = { oxygen: 1e9, organic: 1e9, water: 1e9 };
+for (let i = 0; i < 300; i++) tickPop2(oldCol.pop, 1, sup2, { shelter: 1, shelterCounts: oldCol.buildings, manageMode: oldCol.manageMode });
+ok(oldCol.pop.happiness > 0.85, '300 秒后幸福度回到 0.85+（' + oldCol.pop.happiness.toFixed(3) + '）—— 不再不受控下降');
 
 console.log('');
 console.log('通过 ' + pass + ' 项，失败 ' + fail + ' 项');
