@@ -15,41 +15,41 @@
 //    开局自带 1 座建筑工厂（设计者：「开局有一个建筑工厂」）。
 // 5. 施工队列由 tick 推进：速度 = 建筑工有效人力（受建筑工厂工位限制），无人则为 0。
 
-import { PLANETS } from '../data/planets.js?v=20.9';
-import { BUILDING_BY_ID, buildingCost } from '../data/buildings.js?v=20.9';
-import { TECH_BY_ID, canResearch, missingPrereqs, missingBuilding } from '../data/techs.js?v=20.9';
-import { UPGRADES, upgradeCost } from '../data/upgrades.js?v=20.9';
+import { PLANETS } from '../data/planets.js?v=20.10';
+import { BUILDING_BY_ID, buildingCost } from '../data/buildings.js?v=20.10';
+import { TECH_BY_ID, canResearch, missingPrereqs, missingBuilding } from '../data/techs.js?v=20.10';
+import { UPGRADES, upgradeCost } from '../data/upgrades.js?v=20.10';
 import {
   createPopulation, tickPopulation, getAvailable, gatherLaborByLayer, jobsOfBuilding, getIntensity,
   consumptionPerSec, jobOutput,
   JOBS, freeSlots,
-} from './population.js?v=20.9';
-import { buildRateOf, buildBlockReason } from './construction.js?v=20.9';
-import { tickShip, defaultBlueprints, createShip, shipBuildTick } from './shipyard.js?v=20.9';
+} from './population.js?v=20.10';
+import { buildRateOf, buildBlockReason } from './construction.js?v=20.10';
+import { tickShip, defaultBlueprints, createShip, shipBuildTick } from './shipyard.js?v=20.10';
 // v0.0.6：电力系统与配方生产。
 // 注意这两个模块**不反向 import 本文件**（否则形成循环依赖），
 // 它们只从传入的 inst 上读 buildings / pop / inventory / recipes。
-import { energyOf, computePower, tickPower } from './power.js?v=20.9';
+import { energyOf, computePower, tickPower } from './power.js?v=20.10';
 // v0.0.91：efficiencyBonus 由 production.js 导出（建筑总座数效率乘数），
 //   这里沿用既有的 state→production 单向边引入，不反向让 production import state，避免循环依赖。
-import { tickProduction, productionRates, ensureLines, lineWorkersTotal, efficiencyBonus, ensureEntry, addLine as addProductionLine, lineSlotInfo } from './production.js?v=20.9';
+import { tickProduction, productionRates, ensureLines, lineWorkersTotal, efficiencyBonus, ensureEntry, addLine as addProductionLine, lineSlotInfo } from './production.js?v=20.10';
 // v0.0.92：星际航行与殖民（管理模式 / 独立倾向 / 随机星球）
-import { tickIndependence, outputMulOf, happinessDeltaOf, ensureDiscoveredDefaults, discoverPlanet, purgeShopColonies, tickManagedColonies, SHOP_PLANET_CODE } from './planetgen.js?v=20.9';
+import { tickIndependence, outputMulOf, happinessDeltaOf, ensureDiscoveredDefaults, discoverPlanet, purgeShopColonies, tickManagedColonies, SHOP_PLANET_CODE } from './planetgen.js?v=20.10';
 // v0.1.2（需求 18/19）：永久升级的「效果」改乘方，唯一实现在 data/upgrades.js#upgradeMul
 // （UI 的 research.js 也用它，别在别处再写一套公式）。
 // 此前 upg_collect/refine/power/labor/research/build 六项付了钱却没有任何效果。
-import { upgradeMul } from '../data/upgrades.js?v=20.9';
-import { tickFleetMissions, ensureFleets } from './fleet.js?v=20.9';
-import { ensureArmies, armyBuildTick, advanceTraining, ARMY_LABOR_PER_BARRACKS } from './army.js?v=20.9';   // v0.2.0 军队
+import { upgradeMul } from '../data/upgrades.js?v=20.10';
+import { tickFleetMissions, ensureFleets } from './fleet.js?v=20.10';
+import { ensureArmies, armyBuildTick, advanceTraining, ARMY_LABOR_PER_BARRACKS } from './army.js?v=20.10';   // v0.2.0 军队
 // v0.1.0：电脑账号（离线存档里的 NPC 势力）与其交易池联动。
 //   注意 npc.js 是叶子模块（只 import 数据表），shop.js 与 state.js 互为函数级引用、无顶层副作用。
-import { ensureNpcs, tickNpcs } from './npc.js?v=20.9';
+import { ensureNpcs, tickNpcs } from './npc.js?v=20.10';
 import {
   priceOf as shopPriceOf, suggestPriceOf as shopSuggestPriceOf,
   npcListOnMarket, npcTakeFromMarket, tickShop as shopTick,
   tickListings as shopTickListings,
-} from './shop.js?v=20.9';
-import { tickAuctions } from './auction.js?v=20.9';   // v0.2.6 拍卖行
+} from './shop.js?v=20.10';
+import { tickAuctions } from './auction.js?v=20.10';   // v0.2.6 拍卖行
 
 const SAVE_PREFIX = 'astrix.save.';
 const INDEX_KEY = SAVE_PREFIX + 'index';
@@ -1333,7 +1333,8 @@ function applyDeepStart(acc, inst) {
   acc.tech = ['t_a1', 't_a2', 't_b8', 't_b1', 't_c1', 't_e2',
     't_b2', 't_c2', 't_e4', 't_a4', 't_b5', 't_b7', 't_e3',
     't_b3', 't_c3', 't_d1', 't_d2',
-    't_m1', 't_m2', 't_m3', 't_m4'];   // v0.2.6：军事科技整条线直接授予（军营已建，满足设施前置）
+    't_m1', 't_m2', 't_m3'];   // v0.2.6：军事科技整条线直接授予（军营已建，满足设施前置）；v0.2.10 重构为三级
+  acc._armyTechV3 = true;             // 新口径存档标记（军队科技迁移跳过）
   acc.researchPoints = 60000;
 
   // 2) 建筑：中期规模（v0.2.6 追加 军营×1 + 训练场×1，作为军事体系基础）

@@ -9,14 +9,14 @@
 // 「船上设施」已从科技树移到「设施」子分类，科技树里只保留解锁它们的节点。
 //
 // 研究点存放在账号对象上（acc.researchPoints / acc.tech / acc.upgrades）。
-import { TECHS, TECH_BY_ID, BRANCHES, techsByTier, canResearch, missingPrereqs, missingBuilding, facilityTechs } from '../data/techs.js?v=20.9';
-import { researchTech, buyUpgrade, currentAccount, getPlanetInstance, RESEARCH_UNIT } from '../core/state.js?v=20.9';
-import { UPGRADES, upgradeCost, upgradeMul, upgradeFactorAt } from '../data/upgrades.js?v=20.9';
-import { BUILDING_BY_ID } from '../data/buildings.js?v=20.9';
-import { FACILITIES, MATERIAL_SLOTS, DEFAULT_MATERIAL, isPartUnlocked } from '../data/ship_parts.js?v=20.9';
-import { materialMul, resolvePart } from '../core/shipyard.js?v=20.9';
-import { fmtNum, fmtTime, fmtRate } from '../core/format.js?v=20.9';
-import { jobsOfBuilding, jobOutput } from '../core/population.js?v=20.9';
+import { TECHS, TECH_BY_ID, BRANCHES, techsByTier, canResearch, missingPrereqs, missingBuilding, facilityTechs } from '../data/techs.js?v=20.10';
+import { researchTech, buyUpgrade, currentAccount, getPlanetInstance, RESEARCH_UNIT } from '../core/state.js?v=20.10';
+import { UPGRADES, upgradeCost, upgradeMul, upgradeFactorAt } from '../data/upgrades.js?v=20.10';
+import { BUILDING_BY_ID } from '../data/buildings.js?v=20.10';
+import { FACILITIES, MATERIAL_SLOTS, DEFAULT_MATERIAL, isPartUnlocked } from '../data/ship_parts.js?v=20.10';
+import { materialMul, resolvePart } from '../core/shipyard.js?v=20.10';
+import { fmtNum, fmtTime, fmtRate } from '../core/format.js?v=20.10';
+import { jobsOfBuilding, jobOutput } from '../core/population.js?v=20.10';
 
 function esc(s) {
   return String(s).replace(/[&<>"']/g, (c) => (
@@ -371,11 +371,11 @@ function renderFacilitySection(body, ctx, techSet, rerender) {
     body.appendChild(box);
   }
 
-  // ===== 0.5) 军事装备解锁（v0.2.6：t_m1~t_m4 由军事科技分支移入「设施」分区）=====
+  // ===== 0.5) 军事装备解锁（v0.2.6：军事科技移入「设施」分区；v0.2.10 重构为三级）=====
   body.appendChild(el('div', 'res-section-title', '军事装备解锁'));
   body.appendChild(el('p', 'res-sub muted',
-    '单兵武器 / 军用装甲 / 机动平台 / 火炮重武四级军事科技。需先建成**军营**方可研究，'
-    + '研究后解锁对应军事部件的生产与兵种蓝图。'));
+    '基础 / 高级 / 超级军用装备三级军事科技。需先建成**军营**方可研究，'
+    + '研究后解锁对应军事部件的生产与兵种蓝图；**超级军用装备 M3** 还可解锁「飞船编入军队」。'));
   {
     const list = facTechs.filter((t) => t.branch === 'military')
       .sort((a, b) => (a.code || '').localeCompare(b.code || ''));

@@ -6,7 +6,7 @@
 //     （key = partId@材料，与舰船部件同一库存口径，见 production.js partRecipe 的 army 分支）。
 //   * 每个部件**固定单一材料**（不走材料自选）——军队部件是小件，配方固定更直观；
 //     inputs = { 材料名: 份数 }，生产 1 件的固定投料。
-//   * 部件按军事科技逐级解锁：t_m1 单兵武器 → t_m2 军用装甲 → t_m3 机动平台 → t_m4 火炮重武。
+//   * 部件按军事科技逐级解锁：t_m1 基础军用装备 → t_m2 高级军用装备 → t_m3 超级军用装备（v0.2.10 三级）
 //   v0.2.3：全部部件的固定投料 ×5（成军是一笔大投入，资源造价极大幅度上调；
 //     工作量 buildWork 不变，只抬资源门槛）
 //   * 蓝图 = 部件清单（id × count）。组装 1 支军队 = 按蓝图扣齐部件 + buildWork 人·秒工作量。
@@ -26,7 +26,7 @@ export const ARMY_CATS = {
 
 // ---------------------------------------------------------------------------
 // 部件表
-//   tech   解锁所需军事科技（t_m1~t_m4）
+//   tech   解锁所需军事科技（t_m1~t_m3）
 //   mass   单件质量（用于投料折算参考与蓝图总质量）
 //   work   生产 1 件的工作量（人·秒）
 //   inputs 固定投料（材料名 → 份数），材料全部来自 materials.js 真实材料
@@ -41,41 +41,53 @@ export const ARMY_PARTS = [
     inputs: { '钛合金': 90, '钢': 100, '橡胶': 30 },
     atk: 0, def: 30, speed: -4, desc: '装甲载具级框架，承载重装部件，代价是机动性。' },
 
-  // —— 机动平台（t_m3）——
-  { id: 'ap_mob_hover', nameCn: '悬浮底盘', cat: 'mobility', slot: 'engine', tech: 't_m3', mass: 120, work: 700,
+  // —— 机动底盘（t_m1 轮式起步，t_m2 悬浮/履带/装甲车）——
+  { id: 'ap_mob_hover', nameCn: '悬浮底盘', cat: 'mobility', slot: 'engine', tech: 't_m2', mass: 120, work: 700,
     inputs: { '钛合金': 50, '石墨烯': 30, '氢气': 70 },
     atk: 0, def: 4, speed: 18, desc: '气垫悬浮，全地形高速机动。' },
-  { id: 'ap_mob_track', nameCn: '履带底盘', cat: 'mobility', slot: 'engine', tech: 't_m3', mass: 210, work: 780,
+  { id: 'ap_mob_track', nameCn: '履带底盘', cat: 'mobility', slot: 'engine', tech: 't_m2', mass: 210, work: 780,
     inputs: { '钢': 110, '橡胶': 60 },
     atk: 0, def: 10, speed: 6, desc: '重装履带，慢但稳，适合正面推进。' },
-  { id: 'ap_mob_wheel', nameCn: '轮式底盘', cat: 'mobility', slot: 'engine', tech: 't_m3', mass: 140, work: 620,
+  { id: 'ap_mob_wheel', nameCn: '轮式底盘', cat: 'mobility', slot: 'engine', tech: 't_m1', mass: 140, work: 620,
     inputs: { '铝': 90, '橡胶': 50 },
     atk: 0, def: 5, speed: 13, desc: '公路轮式底盘，性价比最高的机动方案。' },
+  { id: 'ap_mob_apc', nameCn: '装甲车底盘', cat: 'mobility', slot: 'engine', tech: 't_m2', mass: 300, work: 1300,
+    inputs: { '钢': 160, '钛合金': 60, '橡胶': 70 },
+    atk: 0, def: 22, speed: 8, desc: '装甲运兵载具底盘，防护与机动兼顾，机械化部队的中坚。' },
 
-  // —— 单兵与班组武器（t_m1）——
+  // —— 武器（t_m1 步枪，t_m2 机炮/火炮/激光器，t_m3 高能激光炮）——
   { id: 'ap_wpn_rifle', nameCn: '突击步枪', cat: 'weapon', slot: 'weapon', tech: 't_m1', mass: 12, work: 300,
     inputs: { '钢': 50, '塑料': 20 },
     atk: 14, def: 0, speed: 0, desc: '班组制式步枪，成本低、火力可靠。' },
   { id: 'ap_wpn_hmg', nameCn: '重机枪', cat: 'weapon', slot: 'weapon', tech: 't_m2', mass: 45, work: 560,
     inputs: { '钢': 100, '铜': 40, '炸药粉': 20 },
     atk: 32, def: 0, speed: -2, desc: '压制性持续火力，阵地战核心。' },
-  { id: 'ap_wpn_howitzer', nameCn: '榴弹炮', cat: 'weapon', slot: 'weapon', tech: 't_m4', mass: 380, work: 1800,
+  { id: 'ap_wpn_howitzer', nameCn: '榴弹炮', cat: 'weapon', slot: 'weapon', tech: 't_m2', mass: 380, work: 1800,
     inputs: { '碳化钨': 70, '钢': 150, '炸药粉': 60 },
     atk: 85, def: 0, speed: -8, desc: '远程压制火炮，单发毁伤惊人，依赖观测校射。' },
+  { id: 'ap_wpn_laser', nameCn: '激光器', cat: 'weapon', slot: 'weapon', tech: 't_m2', mass: 70, work: 900,
+    inputs: { '铜': 80, '石墨烯': 50, '银': 20 },
+    atk: 55, def: 0, speed: -1, desc: '聚焦激光束，无弹药后勤负担，高级部队的中坚火力。' },
+  { id: 'ap_wpn_helaser', nameCn: '高能激光炮', cat: 'weapon', slot: 'weapon', tech: 't_m3', mass: 420, work: 2800,
+    inputs: { '石墨烯': 120, '银': 60, '纳米碳合金': 40, '钛合金': 100 },
+    atk: 135, def: 0, speed: -8, desc: '舰载级高能激光炮，单发汽化装甲，超级部队的招牌重火。' },
 
-  // —— 装甲（t_m2）——
-  { id: 'ap_armor_light', nameCn: '轻型护甲', cat: 'armor', slot: 'armor', tech: 't_m2', mass: 60, work: 480,
+  // —— 装甲（t_m1 轻甲，t_m2 复合，t_m3 力场）——
+  { id: 'ap_armor_light', nameCn: '轻型护甲', cat: 'armor', slot: 'armor', tech: 't_m1', mass: 60, work: 480,
     inputs: { '铝': 110, '陶瓷': 30 },
     atk: 0, def: 16, speed: -1, desc: '插板式轻甲，防破片与流弹。' },
   { id: 'ap_armor_composite', nameCn: '复合装甲', cat: 'armor', slot: 'armor', tech: 't_m2', mass: 190, work: 980,
     inputs: { '钛合金': 80, '陶瓷': 70, '纳米碳合金': 20 },
     atk: 0, def: 42, speed: -5, desc: '陶艺复合层，正面抗穿甲。' },
+  { id: 'ap_armor_force', nameCn: '力场装甲', cat: 'armor', slot: 'armor', tech: 't_m3', mass: 260, work: 2100,
+    inputs: { '石墨烯': 90, '纳米碳合金': 60, '银': 40 },
+    atk: 0, def: 72, speed: -4, desc: '偏导力场发生器，将动能与热能偏转，接近免疫常规弹幕。' },
 
-  // —— 支援（t_m4）——
-  { id: 'ap_sup_radar', nameCn: '观测雷达', cat: 'support', slot: 'hull', tech: 't_m4', mass: 90, work: 860,
+  // —— 支援（t_m3）——
+  { id: 'ap_sup_radar', nameCn: '观测雷达', cat: 'support', slot: 'hull', tech: 't_m3', mass: 90, work: 860,
     inputs: { '钢': 60, '银': 20, '玻璃': 40 },
     atk: 18, def: 0, speed: -2, desc: '校射观测，显著提升远程命中（atk 增益）。' },
-  { id: 'ap_sup_supply', nameCn: '补给单元', cat: 'support', slot: 'hull', tech: 't_m4', mass: 110, work: 700,
+  { id: 'ap_sup_supply', nameCn: '补给单元', cat: 'support', slot: 'hull', tech: 't_m3', mass: 110, work: 700,
     inputs: { '铝': 70, '塑料': 50, '橡胶': 30 },
     atk: 0, def: 14, speed: 2, desc: '弹药油料随队补给，延长持续作战（def 增益）。' },
 ];
@@ -131,7 +143,7 @@ export function craftableArmyParts(techSet) {
 // ---------------------------------------------------------------------------
 export const ARMY_BLUEPRINTS = [
   {
-    // v0.2.1：军队在「单兵武器 t_m1」即解锁，游骑兵用纯 t_m1 部件，研究完 M1 立即可造。
+    // v0.2.1：军队在「基础军用装备 t_m1」即解锁，游骑兵用纯 t_m1 部件，研究完 M1 立即可造。
     id: 'ab_ranger', nameCn: '游骑兵·轻型突击队', tech: 't_m1',
     desc: '轻型框架 + 突击步枪：单兵武器阶段即可列装的基础步兵，廉价、机动，适合侦察与维稳。',
     buildWork: 3000,
@@ -141,7 +153,7 @@ export const ARMY_BLUEPRINTS = [
     ],
   },
   {
-    // v0.2.1：铁壁随「军用装甲 t_m2」解锁（部件含 t_m2/t_m3/t_m4，需相应科技后才齐料）。
+    // v0.2.1：铁壁随「高级军用装备 t_m2」解锁（部件含 t_m2 重机枪/复合装甲，需相应科技后才齐料）。
     id: 'ab_ironwall', nameCn: '铁壁·重装步兵班', tech: 't_m2',
     desc: '重型框架 + 履带 + 重机枪 + 复合装甲：慢、贵、极高装甲，正面推进的中坚。',
     buildWork: 16000,
@@ -154,8 +166,8 @@ export const ARMY_BLUEPRINTS = [
     ],
   },
   {
-    // v0.2.1：雷霆随「火炮重武 t_m4」解锁（部件含 t_m4 火炮/雷达/补给）。
-    id: 'ab_thunder', nameCn: '雷霆·机动炮组', tech: 't_m4',
+    // v0.2.1：雷霆随「超级军用装备 t_m3」解锁（部件含榴弹炮/雷达/补给，现均属 t_m2/t_m3）。
+    id: 'ab_thunder', nameCn: '雷霆·机动炮组', tech: 't_m3',
     desc: '轮式底盘 + 榴弹炮 + 观测雷达 + 补给：中速远程火力支援，单发毁伤最高。',
     buildWork: 22000,
     parts: [

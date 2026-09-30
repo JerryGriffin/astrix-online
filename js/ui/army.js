@@ -13,15 +13,16 @@
 import {
   ARMY_BLUEPRINTS, ARMY_PART_BY_ID, ARMY_SLOT_BY_CAT, ARMY_PART_COST,
   armyCapOf, armyBpPartNeeds, armyBpMaterialNeeds,
-} from '../data/army_parts.js?v=20.9';
+} from '../data/army_parts.js?v=20.10';
 import {
   armyStatsOfBp, armyPowerOf, armyPowerOfInstance, armyBuildCheck, listArmies, disbandArmy,
   getArmyBp, armyEffStats, armyPartMaterialOptions, trainArmy, cancelTraining, ARMY_LABOR_PER_BARRACKS,
-} from '../core/army.js?v=20.9';
-import { addLine, removeLine } from '../core/production.js?v=20.9';
-import { fmtNum, fmtTime } from '../core/format.js?v=20.9';
-import { currentAccount, getBuildingCounts } from '../core/state.js?v=20.9';
-import { TECH_BY_ID } from '../data/techs.js?v=20.9';
+  attachShipToArmy, detachShipFromArmy, shipEligibleForArmy, shipArmyOf, ARMY_SHIP_TECH,
+} from '../core/army.js?v=20.10';
+import { addLine, removeLine } from '../core/production.js?v=20.10';
+import { fmtNum, fmtTime } from '../core/format.js?v=20.10';
+import { currentAccount, getBuildingCounts } from '../core/state.js?v=20.10';
+import { TECH_BY_ID } from '../data/techs.js?v=20.10';
 
 const ARMY_TECH = 't_m1';
 const ARMY_CATS = ['frame', 'mobility', 'weapon', 'armor', 'support'];
@@ -83,8 +84,9 @@ export function renderArmyPage(root, ctx) {
   if (!techSet.has(ARMY_TECH)) {
     const tip = el('div', 'muted');
     tip.style.padding = '14px 4px';
-    tip.textContent = '军队系统尚未解锁：在科研「军事」分支研究「单兵武器 M1」即可列装基础步兵'
-      + '（军事部件在制造车间按生产线生产，进装备栏；后续研究 军用装甲 M2 / 机动平台 M3 / 火炮重武 M4 解锁更重型的兵种与部件）。';
+    tip.textContent = '军队系统尚未解锁：在科研「设施」分类研究「基础军用装备 M1」（前置：已建成军营）即可列装基础步兵'
+      + '（军事部件在制造车间按生产线生产，进装备栏；后续研究 高级军用装备 M2 / 超级军用装备 M3 解锁更重型的兵种与部件，'
+      + 'M3 还可将飞船编入军队、大幅提升部队数值）。';
     root.appendChild(tip);
     return;
   }
@@ -340,6 +342,54 @@ function buildArmyRow(a, root, ctx, trainingCount) {
     + ' · 综合战力 <b style="color:#9FE1CB">' + armyPowerOfInstance(a) + '</b>'
     + ((bA || bD) ? ' · <span style="color:#9FE1CB">训练加成 +' + bA + '/+' + bD + '</span>' : '');
   info.appendChild(statLine);
+
+  // v0.2.10：编入飞船（t_m3 解锁；互斥：舰队/其它军队占用不可选；每军限 1 艘旗舰）
+  {
+    const hasShipTech = Array.isArray(acc.tech) && acc.tech.includes(ARMY_SHIP_TECH);
+    const ships = Array.isArray(acc.ships) ? acc.ships : [];
+    if (a.shipId) {
+      const ship = ships.find((s) => s && s.id === a.shipId);
+      const shipLine = el('div', 's muted');
+      shipLine.innerHTML = '🚀 编入飞船：<b style="color:#9FE1CB">'
+        + (ship ? (ship.name || ship.className || ship.id) : a.shipId)
+        + '</b>（战力 ' + fmtNum((a.shipBonus && a.shipBonus.strength) || 0)
+        + ' · 火力 +60% 防护 +40% 战力 +25%）';
+      const detach = el('button', 'btn btn-sm', '解编飞船');
+      detach.style.marginLeft = '8px';
+      detach.addEventListener('click', () => {
+        const r = detachShipFromArmy(acc, a.id);
+        if (!r.ok) { alert(r.reason); return; }
+        renderArmyPage(root, ctx);
+      });
+      shipLine.appendChild(detach);
+      info.appendChild(shipLine);
+    } else if (hasShipTech) {
+      const eligible = ships.filter((s) => s && shipEligibleForArmy(acc, s.id).ok);
+      if (eligible.length) {
+        const shipLine = el('div', 's muted');
+        shipLine.appendChild(document.createTextNode('编入飞船（M3 解锁）：'));
+        const sel = document.createElement('select');
+        sel.className = 'pop-sel';
+        sel.style.minHeight = '40px';
+        for (const s of eligible) {
+          const o = document.createElement('option');
+          o.value = s.id;
+          o.textContent = (s.name || s.className || '飞船') + '（战力 ' + fmtNum(s.strength) + '）';
+          sel.appendChild(o);
+        }
+        const attach = el('button', 'btn btn-sm', '编入军队');
+        attach.style.marginLeft = '8px';
+        attach.style.minHeight = '40px';
+        attach.addEventListener('click', () => {
+          const r = attachShipToArmy(acc, a.id, sel.value);
+          if (!r.ok) { alert(r.reason); return; }
+          renderArmyPage(root, ctx);
+        });
+        shipLine.append(sel, attach);
+        info.appendChild(shipLine);
+      }
+    }
+  }
   row.appendChild(info);
 
   // v0.2.6：训练中显示进度条 + 取消；否则显示训练按钮（需训练场）
@@ -493,7 +543,7 @@ function renderArmyDesigner(sec, root, ctx, techSet) {
         partsWrap.appendChild(addRow);
       } else {
         partsWrap.appendChild(el('p', 'bp-tip muted',
-          '尚未解锁该类部件 —— 研究军事科技后开放（框架/武器 t_m1、装甲/重型框架 t_m2、机动 t_m3、火炮/支援 t_m4）。'));
+          '尚未解锁该类部件 —— 研究军事科技后开放（基础 M1：框架/步枪/轻甲/轮式底盘；高级 M2：重型框架/重机枪/复合装甲/悬浮·履带/榴弹炮/激光器/装甲车；超级 M3：高能激光炮/力场装甲/雷达/补给 + 飞船编入）。'));
       }
     }
   }

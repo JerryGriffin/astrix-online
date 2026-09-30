@@ -190,36 +190,33 @@ const RAW_TECHS = [
         + '',
   },
 
-  // ===== M 线：军事（v0.2.0 新增；v0.2.5 移除无实际功能的 t_m5 军队指挥）=====
+  // ===== M 线：军事（v0.2.0 新增；v0.2.5 移除无实际功能的 t_m5 军队指挥；v0.2.10 重构为三级）=====
   // 【v0.2.6 改动】整条线从「军事」科技分支**移入「设施」子分类**（与船上设施、电力设施并列），
   //   且**前置改为「已建成军营」**（reqBuilding）—— 先建军营、再谈军备，与造船（t_e3）互为平行支线。
+  // 【v0.2.10 改动】四级重构为三级：M1 基础军用装备 / M2 高级军用装备 / M3 超级军用装备。
+  //   老存档迁移： researched t_m4 → t_m3、仅 t_m3 → t_m2（state.js 载入时跑）。
+  //   M3 额外解锁「飞船编入军队」（army.js 的 attachShipToArmy 以 t_m3 为门槛）。
   //   部件解锁仍走本线（army_parts.js 的 tech 字段），军队系统在 t_m1 研究后开放（组装由军营驱动）。
   {
-    id: 't_m1', code: 'M1', nameCn: '单兵武器', branch: 'military', section: 'facility',
+    id: 't_m1', code: 'M1', nameCn: '基础军用装备', branch: 'military', section: 'facility',
     prereq: ['t_e4'], reqBuilding: 'barracks', cost: 3000, unlocksBuilding: null,
     unlockResources: [],
-    desc: '轻武器工坊开张：制造车间解锁**突击步枪**与**轻型框架**的生产，'
+    desc: '轻武器工坊开张：制造车间解锁**突击步枪 / 轻型框架 / 轻型护甲 / 轮式底盘**的生产，'
         + '军队体系的起点。需先建成**军营**方可研究。',
   },
   {
-    id: 't_m2', code: 'M2', nameCn: '军用装甲', branch: 'military', section: 'facility',
-    prereq: ['t_m1'], reqBuilding: 'barracks', cost: 9000, unlocksBuilding: null,
+    id: 't_m2', code: 'M2', nameCn: '高级军用装备', branch: 'military', section: 'facility',
+    prereq: ['t_m1'], reqBuilding: 'barracks', cost: 24000, unlocksBuilding: null,
     unlockResources: [],
-    desc: '防护工程：解锁**轻型护甲 / 复合装甲 / 重机枪 / 重型框架**的生产，'
-        + '部队从此抗得住正面交火。',
+    desc: '机械化与能量武器：解锁**重型框架 / 重机枪 / 复合装甲 / 悬浮·履带底盘 / 榴弹炮**，'
+        + '以及**激光器**与**装甲车底盘**——部队从此抗得住正面交火、跑得起野外机动。',
   },
   {
-    id: 't_m3', code: 'M3', nameCn: '机动平台', branch: 'military', section: 'facility',
-    prereq: ['t_m2'], reqBuilding: 'barracks', cost: 24000, unlocksBuilding: null,
+    id: 't_m3', code: 'M3', nameCn: '超级军用装备', branch: 'military', section: 'facility',
+    prereq: ['t_m2'], reqBuilding: 'barracks', cost: 150000, unlocksBuilding: null,
     unlockResources: [],
-    desc: '载具化：解锁**悬浮 / 履带 / 轮式**三种底盘，军队从「徒步班组」升级为「机械化部队」。',
-  },
-  {
-    id: 't_m4', code: 'M4', nameCn: '火炮重武', branch: 'military', section: 'facility',
-    prereq: ['t_m3'], reqBuilding: 'barracks', cost: 60000, unlocksBuilding: null,
-    unlockResources: [],
-    desc: '重火力：解锁**榴弹炮 / 观测雷达 / 补给单元**的生产，远程压制成为可能。'
-        + '至此军事科技全部研究完毕，三张默认兵种蓝图全部解锁。',
+    desc: '顶级军备：解锁**高能激光炮 / 力场装甲 / 观测雷达 / 补给单元**的生产；'
+        + '并将**解锁「飞船编入军队」**——把现役飞船编入部队，大幅提升其火力与防护。',
   },
 
   // ===== 电力设施解锁（v0.0.7 新增，共 12 个，section: 'facility'）=====

@@ -12,9 +12,9 @@
 
 import {
   ARMY_BP_BY_ID, ARMY_PART_BY_ID, ARMY_SLOT_BY_CAT, armyBpPartNeeds,
-} from '../data/army_parts.js?v=20.9';
-import { MATERIAL_SLOTS } from '../data/ship_parts.js?v=20.9';
-import { materialMul } from './shipyard.js?v=20.9';   // 无循环：shipyard 不依赖本模块
+} from '../data/army_parts.js?v=20.10';
+import { MATERIAL_SLOTS } from '../data/ship_parts.js?v=20.10';
+import { materialMul } from './shipyard.js?v=20.10';   // 无循环：shipyard 不依赖本模块
 
 // ============================================================================
 // 一、账号军队列表（迁移 + 查询）
@@ -39,11 +39,102 @@ export function listArmies(acc) {
 /** 老存档迁移：确保 acc.armies 存在。state.js 载入 / tick 时调用，幂等 */
 export function ensureArmies(acc) {
   listArmies(acc);
+  migrateArmyTechs(acc);
+  migrateArmyShips(acc);
   return true;
+}
+
+/** v0.2.10 老存档科技迁移：旧四级军事线（…t_m3 机动平台 / t_m4 火炮重武）→ 新三级。
+ *  规则：researched t_m4 → 保留为 t_m3（超级）；仅 t_m3 → 降为 t_m2（高级）。
+ *  幂等：迁移完打 _armyTechV3 标记；新口径存档（漫溯深空赠送段）直接带标记跳过。 */
+function migrateArmyTechs(acc) {
+  if (!acc || !Array.isArray(acc.tech) || acc._armyTechV3) return;
+  const hadM4 = acc.tech.includes('t_m4');
+  const hadM3 = acc.tech.includes('t_m3');
+  if (!hadM4 && !hadM3) return;
+  if (hadM4) {
+    acc.tech = acc.tech.filter((t) => t !== 't_m3' && t !== 't_m4');
+    acc.tech.push('t_m3');
+  } else {
+    acc.tech = acc.tech.filter((t) => t !== 't_m3');
+    acc.tech.push('t_m2');
+  }
+  acc._armyTechV3 = true;
 }
 
 export function armyById(acc, armyId) {
   return listArmies(acc).find((a) => a && a.id === armyId) || null;
+}
+
+// ============================================================================
+// 二点七、飞船编入军队（v0.2.10，需 t_m3 超级军用装备）
+// ============================================================================
+// 6:4 分摊攻防 + 25% 入战力(hp)；加成快照 army.shipBonus = { strength }（战斗确定性）。
+// 互斥：一艘船同时只能编入一个军队或舰队；每支军队上限 1 艘（旗舰）。
+export const ARMY_SHIP_TECH = 't_m3';
+
+function shipBonusSnapshot(ship) {
+  return { strength: Math.max(0, Number(ship && ship.strength) || 0) };
+}
+
+/** 该船当前被哪支军队占用（未占用返回 null） */
+export function shipArmyOf(acc, shipId) {
+  if (!acc || !shipId) return null;
+  for (const a of listArmies(acc)) {
+    if (a && a.shipId === shipId) return a;
+  }
+  return null;
+}
+
+/** 该船是否可编入军队：存在、未编入舰队、未被其它军队占用 */
+export function shipEligibleForArmy(acc, shipId) {
+  const s = (acc && Array.isArray(acc.ships)) ? acc.ships.find((x) => x && x.id === shipId) : null;
+  if (!s) return { ok: false, reason: '飞船不存在' };
+  const inFleet = (acc.fleets || []).some((f) => f && Array.isArray(f.shipIds) && f.shipIds.includes(shipId));
+  if (inFleet) return { ok: false, reason: '该飞船已编入舰队（先在舰队页移出）' };
+  const holder = shipArmyOf(acc, shipId);
+  if (holder && holder.id !== (acc && acc._attachTargetArmyId)) {
+    return { ok: false, reason: '该飞船已编入军队「' + (holder.nameCn || holder.id) + '」' };
+  }
+  return { ok: true, ship: s };
+}
+
+/** 把飞船编入军队（t_m3 解锁；互斥：不能同时在舰队里；每军限 1 艘） */
+export function attachShipToArmy(acc, armyId, shipId) {
+  const a = armyById(acc, armyId);
+  if (!a) return { ok: false, reason: '军队不存在' };
+  if (a.shipId) return { ok: false, reason: '该军队已编入飞船（先解编）' };
+  if (!Array.isArray(acc.tech) || !acc.tech.includes(ARMY_SHIP_TECH)) {
+    return { ok: false, reason: '需先研究「超级军用装备 M3」才能将飞船编入军队' };
+  }
+  const elig = shipEligibleForArmy(acc, shipId);
+  if (!elig.ok) return elig;
+  a.shipId = shipId;
+  a.shipBonus = shipBonusSnapshot(elig.ship);
+  return { ok: true, army: a, ship: elig.ship };
+}
+
+/** 解编飞船（恢复纯步兵数值；船回可用池） */
+export function detachShipFromArmy(acc, armyId) {
+  const a = armyById(acc, armyId);
+  if (!a) return { ok: false, reason: '军队不存在' };
+  if (!a.shipId) return { ok: false, reason: '该军队没有编入飞船' };
+  const sid = a.shipId;
+  a.shipId = null;
+  a.shipBonus = null;
+  return { ok: true, shipId: sid };
+}
+
+/** 迁移/自愈：shipId 悬空（船被卖掉或被编进舰队）→ 解编；strength 变了 → 刷新快照。ensureArmies 调 */
+function migrateArmyShips(acc) {
+  for (const a of listArmies(acc)) {
+    if (a.shipId === undefined) a.shipId = null;
+    if (!a.shipId) { if (a.shipBonus) a.shipBonus = null; continue; }
+    const s = (Array.isArray(acc.ships) ? acc.ships : []).find((x) => x && x.id === a.shipId);
+    const inFleet = (acc.fleets || []).some((f) => f && Array.isArray(f.shipIds) && f.shipIds.includes(a.shipId));
+    if (!s || inFleet) { a.shipId = null; a.shipBonus = null; continue; }
+    a.shipBonus = shipBonusSnapshot(s);
+  }
 }
 
 /** v0.2.4：蓝图解析 —— 兼容默认蓝图 id / 蓝图对象 / 自定义蓝图 id（查 acc.armyBlueprints） */
@@ -122,12 +213,14 @@ export function armyStatsOfBp(bpOrId) {
   return out;
 }
 
-/** 军队实例的有效属性 = 蓝图属性 + 训练加成（v0.2.4） */
+/** 军队实例的有效属性 = 蓝图属性 + 训练加成 + 编入飞船加成（v0.2.10）
+ *  飞船加成（需 t_m3）：战力 6:4 分摊攻防。shipBonus.strength 为编入时的飞船战力快照（战斗确定性） */
 export function armyEffStats(army) {
   const base = armyStatsOfBp(army && (army.blueprint || army.blueprintId));
+  const sb = (army && army.shipId && army.shipBonus) ? (Number(army.shipBonus.strength) || 0) : 0;
   return {
-    atk: Math.round(((base.atk || 0) + (Number(army && army.bonusAtk) || 0)) * 10) / 10,
-    def: Math.round(((base.def || 0) + (Number(army && army.bonusDef) || 0)) * 10) / 10,
+    atk: Math.round(((base.atk || 0) + (Number(army && army.bonusAtk) || 0) + sb * 0.6) * 10) / 10,
+    def: Math.round(((base.def || 0) + (Number(army && army.bonusDef) || 0) + sb * 0.4) * 10) / 10,
     speed: base.speed || 0,
     mass: base.mass || 0,
     men: base.men || 0,
@@ -141,11 +234,12 @@ export function armyPowerOf(stats) {
   return Math.round((Number(stats.atk) || 0) * 1.0 + (Number(stats.def) || 0) * 0.8 + mob * 100);
 }
 
-/** 某军队实例的战力（有训练加成时按有效属性重算，否则用快照/蓝图兜底） */
+/** 某军队实例的战力（有训练/飞船加成时按有效属性重算 + 飞船 25% 入 hp，否则用快照/蓝图兜底） */
 export function armyPowerOfInstance(army) {
   if (!army) return 0;
-  const hasBonus = (Number(army.bonusAtk) || 0) !== 0 || (Number(army.bonusDef) || 0) !== 0;
-  if (hasBonus) return armyPowerOf(armyEffStats(army));
+  const sb = (army.shipId && army.shipBonus) ? (Number(army.shipBonus.strength) || 0) : 0;
+  const hasBonus = (Number(army.bonusAtk) || 0) !== 0 || (Number(army.bonusDef) || 0) !== 0 || sb > 0;
+  if (hasBonus) return Math.round(armyPowerOf(armyEffStats(army)) + sb * 0.25);
   const p = Number(army.power);
   if (Number.isFinite(p) && p > 0) return Math.round(p);
   return armyPowerOf(armyStatsOfBp(army.blueprintId));
@@ -286,8 +380,20 @@ function mulberry32(seed) {
 /** 军队实例 → 战斗单位（power 快照兜底按蓝图重算） */
 export function armyToUnit(a) {
   if (!a) return null;
-  const stats = a.stats || armyStatsOfBp(a.blueprintId);
-  const power = Math.max(1, Number(a.power) || armyPowerOf(stats));
+  // v0.2.10：编入飞船时叠加 6:4 攻防 + 25% 入 hp；无飞船时保持旧口径
+  // （显式 stats 快照优先 → 存档战力 → 蓝图重算，战斗测试与快照兼容）
+  const sb = (a.shipId && a.shipBonus) ? (Number(a.shipBonus.strength) || 0) : 0;
+  // 编入飞船时与 armyEffStats 同口径（蓝图基线）；无飞船保持旧口径（显式 stats 快照优先）
+  const base = sb > 0 ? armyStatsOfBp(a.blueprint || a.blueprintId)
+    : (a.stats || armyStatsOfBp(a.blueprint || a.blueprintId));
+  const stats = sb > 0 ? {
+    atk: Math.round(((base.atk || 0) + sb * 0.6) * 10) / 10,
+    def: Math.round(((base.def || 0) + sb * 0.4) * 10) / 10,
+    speed: base.speed || 0,
+  } : base;
+  const power = sb > 0
+    ? Math.max(1, Math.round(armyPowerOf(stats) + sb * 0.25))   // 编入飞船：按有效属性重算（存量快照不含飞船加成）
+    : Math.max(1, Number(a.power) || armyPowerOf(stats));
   return {
     nameCn: a.nameCn || a.id || '部队',
     atk: Math.max(0, Number(stats && stats.atk) || 0),
