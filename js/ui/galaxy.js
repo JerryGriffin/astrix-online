@@ -1,814 +1,866 @@
-// 星际大厅与在线星图界面（Astrix v0.2.0）
-// 纯原生 ES 模块，深空玻璃拟态风格，移动端与 PC 端自适应（点击区 >= 44px）
+// 星际页（Astrix v0.2.1）—— 云服务跨玩家
+// 造出船坞 + 在线模式后开放。登录云账号（邮箱）后：
+//   * 自动把自己的殖民地快照发布到星系 registry（galaxy_planets，公开读 / 本人写）
+//   * 浏览其他玩家的星球，发起 贸易（trade_offer）或 进攻（attack）
+//   * 收件箱（galaxy_incidents 异步邮箱）：对方上线后本地结算，
+//     回执（battle_report / trade_result）作为新事件发回进攻/贸易发起方
+// 跨玩家写不可能（RLS owner 隔离），全部交互走「事件邮箱 + 双端确定性结算」模型。
+//
+// v0.2.1 变化：
+//   · 在线模式「星球选择」合并进本页 —— 顶部「我的殖民地」区块内嵌殖民地管理（含内联报告），
+//     不再有独立的「星球选择」tab；离线模式仍保留独立的「星球选择」。
+//   · UI 升级：顶部状态栏（指挥官 / 邮箱 / 防御战力 / 收件箱未读徽标 / 发布 / 退出）、
+//     搜索栏、其他玩家星球的玻璃卡片网格（势力标签 / 防御战力着色 / 战略简报 / 特产标签）。
 
-import { currentAccount, getPlanetInstance, ownedOf, getStorageMode, setStorageMode } from '../core/state.js?v=21.18';
 import {
-  ensureCloudProfile, bindEmail, getShieldStatus, fetchGalaxyRegistry,
-  getInbox, markMessageRead, markAllMessagesRead, unreadCount,
-  sendGalaxyRaid, sendGalaxyTrade, evaluateFleetPower,
-  syncOnlineServer, fetchRemoteGalaxyRegistry, fetchOnlineChatMessages, sendOnlineChatMessage,
-  fetchOnlineMarketListings, buyOnlineMarketListing, createOnlineMarketListing,
-  getRelayStatus, onRelayStatus, currentTransport
-} from '../core/cloud.js?v=21.18';
-import { listFleets } from '../core/fleet.js?v=21.18';
-import { fmtNum } from '../core/format.js?v=21.18';
-import { openBattleView } from './combat.js?v=21.18';
-import { playWarp, playPing, playVictory } from '../core/sound.js?v=21.18';
+  ensureReady, cloudStatus, cloudUser,
+  signInWithPassword, sendEmailOtp, verifyEmailOtp, signOutCloud,
+  listPublicPlanets, publishMyPlanet, postIncident, fetchInbox, markIncidentResolved,
+} from '../core/cloud.js?v=20.8';
+import { currentAccount, getPlanetInstance, ownedOf, spendOwned } from '../core/state.js?v=20.8';
+import { ensureEntry } from '../core/production.js?v=20.8';
+import { listFleets, fleetPowerOf, defenseBonusOf } from '../core/fleet.js?v=20.8';
+import { totalArmyPowerOf, listArmies, disbandArmy, resolveBattle } from '../core/army.js?v=20.8';
+// v0.2.1：内嵌殖民地管理（含内联报告），取代在线模式独立的「星球选择」tab
+import { renderColony } from './colony.js?v=20.8';
+import { PLANETS } from '../data/planets.js?v=20.8';
+import { fmtNum } from '../core/format.js?v=20.8';
 
-function escapeHtml(s) {
-  return String(s ?? '').replace(/[&<>"']/g, (c) => (
+function el(tag, cls, text) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text != null) e.textContent = String(text);
+  return e;
+}
+
+function ascoinOf(acc) { return Math.floor(Number(acc && acc.ascoin) || 0); }
+
+/** 我的防御总战力：全部舰队战力 + 全部军队战力 + 驻防加成 */
+function myDefensePower(acc) {
+  let ships = 0;
+  for (const f of listFleets(acc)) ships += fleetPowerOf(acc, f);
+  return ships + totalArmyPowerOf(acc) + defenseBonusOf(acc) * 10;
+}
+
+/** 把货单加进某星球物品栏（贸易收货 / 退货用） */
+function addGoods(inst, goods) {
+  const moved = {};
+  for (const mat in (goods || {})) {
+    const qty = Math.floor(Number(goods[mat]) || 0);
+    if (!(qty > 0)) continue;
+    const e = ensureEntry(inst, mat, 'refined');
+    if (e) { e.owned = (Number(e.owned) || 0) + qty; moved[mat] = qty; }
+  }
+  return moved;
+}
+
+function goodsText(goods) {
+  return Object.keys(goods || {}).map((m) => m + ' ×' + fmtNum(goods[m])).join('、') || '（无）';
+}
+
+// 快照发布节流（60s）
+let _lastPublish = 0;
+
+/** 构造并静默/手动发布我的殖民地快照 */
+function buildSnapshot(acc, ctx) {
+  const code = ctx.planetCode || (acc && acc.homePlanetCode) || 'syl';
+  const inst = getPlanetInstance(code);
+  const p = PLANETS.find((x) => x.code === code);
+  return {
+    ownerName: (acc && acc.name) || '深空旅人',
+    planetCode: code,
+    planetNameCn: (p && p.nameCn) || '母星',
+    faction: '殖民者',
+    summary: {
+      pop: Math.round((inst && inst.pop && inst.pop.total) || 0),
+      buildings: Object.values((inst && inst.buildings) || {}).reduce((s, n) => s + (Number(n) || 0), 0),
+      defense: myDefensePower(acc),
+      armies: (acc && Array.isArray(acc.armies) ? acc.armies.length : 0),
+    },
+  };
+}
+
+export function renderGalaxy(root, ctx) {
+  ctx = ctx || {};
+  const acc = ctx.account || currentAccount();
+  root.innerHTML = '';
+  root.appendChild(el('div', 'page-title', '星际'));
+
+  const statusEl = el('div', 'galaxy-status');
+  root.appendChild(statusEl);
+  const body = el('div', 'galaxy-body');
+  root.appendChild(body);
+
+  // ---- 首屏：连接云服务 ----
+  statusEl.textContent = '连接云服务…';
+  ensureReady().then((ok) => {
+    // 守卫：SDK 懒加载可能耗时数秒，期间玩家可能已切到别的 tab（planet.js 复用
+    // 同一个 contentInner）。页面标记不在了就放弃回写，避免污染其它 tab。
+    const title = root.querySelector && root.querySelector('.page-title');
+    if (!title || title.textContent !== '星际') return;
+    statusEl.innerHTML = '';
+    if (!ok) {
+      statusEl.appendChild(el('span', 'army-miss', '云服务不可用：' + (cloudStatus().error || '网络异常')
+        + '（离线模式不受影响）'));
+      return;
+    }
+    renderShell(body, ctx, () => renderGalaxy(root, ctx));
+  });
+}
+
+// ============================================================================
+// 主体外壳：顶部状态栏 + 搜索栏 + 我的殖民地 + 收件箱 + 玩家星球网格
+// ============================================================================
+function renderShell(body, ctx, rerender) {
+  const acc = ctx.account || currentAccount();
+  const u = cloudUser();
+  body.innerHTML = '';
+
+  // ---- 1. 顶部状态栏 ----
+  const header = el('div', 'gx-header glass');
+  const idBox = el('div', 'gx-id');
+  const callsign = el('div', 'gx-callsign');
+  callsign.appendChild(el('span', null, (acc && acc.name) || '深空旅人'));
+  if (u) callsign.appendChild(el('span', 'gx-tag', u.email || u.id));
+  idBox.appendChild(callsign);
+  idBox.appendChild(el('div', 'gx-email' + (u ? '' : ' unbound'),
+    u ? ('邮箱 ' + (u.email || u.id)) : '未登录（无法查看其他玩家星球）'));
+  header.appendChild(idBox);
+
+  const actions = el('div', 'gx-actions');
+  actions.appendChild(el('div', 'gx-stat', [
+    el('span', 'gx-stat-k', '我的防御战力'),
+    el('span', 'gx-stat-v', fmtNum(myDefensePower(acc))),
+  ]));
+
+  const inboxBtn = el('button', 'btn btn-sm', '收件箱');
+  inboxBtn.addEventListener('click', () => openInboxModal(ctx, rerender));
+  actions.appendChild(inboxBtn);
+
+  if (u) {
+    const pubBtn = el('button', 'btn btn-sm btn-primary', '发布快照');
+    pubBtn.addEventListener('click', async () => {
+      pubBtn.disabled = true;
+      const r = await publishMyPlanet(buildSnapshot(acc, ctx));
+      pubBtn.disabled = false;
+      pubBtn.textContent = r.ok ? '已发布 ✓' : '发布失败';
+      setTimeout(() => { pubBtn.textContent = '发布快照'; }, 1500);
+    });
+    actions.appendChild(pubBtn);
+
+    const outBtn = el('button', 'btn btn-sm', '退出');
+    outBtn.addEventListener('click', async () => { await signOutCloud(); rerender(); });
+    actions.appendChild(outBtn);
+  } else {
+    const loginBtn = el('button', 'btn btn-sm btn-primary', '登录 / 注册');
+    loginBtn.addEventListener('click', () => openLoginModal(ctx, rerender));
+    actions.appendChild(loginBtn);
+  }
+  header.appendChild(actions);
+  body.appendChild(header);
+
+  // ---- 2. 搜索栏（过滤玩家星球网格）----
+  let query = '';
+  const searchWrap = el('div', 'gx-search');
+  const searchInput = document.createElement('input');
+  searchInput.type = 'text';
+  searchInput.placeholder = '搜索玩家星球 / 指挥官 / 星球代号…';
+  searchInput.addEventListener('input', () => {
+    query = searchInput.value.trim().toLowerCase();
+    renderPlanetGrid(planetGrid, ctx, rerender, u, acc, query);
+  });
+  searchWrap.appendChild(searchInput);
+  body.appendChild(searchWrap);
+
+  // ---- 3. 我的殖民地（内嵌殖民地管理 + 内联报告，取代在线模式独立「星球选择」）----
+  const colSec = el('div', 'gx-section');
+  colSec.appendChild(el('div', 'section-title', '我的殖民地'));
+  const colBox = el('div', 'gx-colony');
+  colSec.appendChild(colBox);
+  body.appendChild(colSec);
+  renderColony(colBox, {
+    openModal: ctx.openModal, closeModal: ctx.closeModal,
+    planetCode: ctx.planetCode, account: acc,
+    // v0.2.1：点「进入」切到该星球（透传 planet.js 的真实路由）
+    onEnterPlanet: (code) => {
+      if (code && code !== ctx.planetCode && typeof ctx.onEnterPlanet === 'function') ctx.onEnterPlanet(code);
+    },
+  });
+
+  // ---- 4. 我的殖民地快照说明 / 收件箱 / 玩家星球网格 ----
+  const snapNote = el('div', 'muted', '说明：进入本页会自动把你的殖民地概况（人口 / 建筑 / 防御）'
+    + '发布到星系，供其他旅行者查看；点「发布快照」可手动刷新。每颗殖民地的报告见上方对应星球行。');
+  body.appendChild(snapNote);
+
+  const inboxSec = el('div', 'gx-section');
+  inboxSec.appendChild(el('div', 'section-title', '收件箱（贸易要约 / 进攻 / 回执）'));
+  body.appendChild(inboxSec);
+
+  const planetsSec = el('div', 'gx-section');
+  planetsSec.appendChild(el('div', 'section-title', '已知玩家星球'));
+  const planetGrid = el('div', 'gx-grid');
+  planetsSec.appendChild(planetGrid);
+  body.appendChild(planetsSec);
+
+  if (!u) {
+    inboxSec.appendChild(el('div', 'muted', '登录后可见贸易 / 进攻事件与对其他玩家星球的操作。'));
+    renderPlanetGrid(planetGrid, ctx, rerender, null, acc, '');
+    return;
+  }
+
+  // 收取件箱（含未读计数 → 顶栏徽标）+ 拉玩家星球网格
+  fetchInbox().then((r) => {
+    const title = body.querySelector && body.querySelector('.page-title');
+    if (!title) return;
+    if (r.ok) {
+      renderInbox(inboxSec, ctx, rerender, r.items, acc);
+      const unread = r.items.filter((it) => !it.resolved).length;
+      if (unread > 0) inboxBtn.innerHTML = '收件箱<span class="gx-badge">' + unread + '</span>';
+    } else {
+      inboxSec.appendChild(el('div', 'muted', '收件箱读取失败：' + (r.reason || '')));
+    }
+    renderPlanetGrid(planetGrid, ctx, rerender, u, acc, query);
+  });
+
+  // 进入本页即静默发布（60s 节流）
+  const now = Date.now();
+  if (now - _lastPublish > 60000) {
+    _lastPublish = now;
+    publishMyPlanet(buildSnapshot(acc, ctx));
+  }
+}
+
+// ============================================================================
+// 认证：登录 / 注册模态
+// ============================================================================
+function openLoginModal(ctx, rerender) {
+  const openModal = ctx.openModal;
+  if (!openModal) return;
+  const wrap = el('div');
+  // —— 密码登录 ——
+  wrap.appendChild(el('div', 'section-title', '密码登录'));
+  const f1 = el('div', 'galaxy-form');
+  const email1 = document.createElement('input');
+  email1.type = 'email'; email1.placeholder = '邮箱';
+  const pw1 = document.createElement('input');
+  pw1.type = 'password'; pw1.placeholder = '密码';
+  const btn1 = el('button', 'btn btn-primary', '登录');
+  const msg1 = el('div', 'muted');
+  btn1.addEventListener('click', async () => {
+    msg1.textContent = '登录中…';
+    const r = await signInWithPassword(email1.value, pw1.value);
+    msg1.textContent = r.ok ? '成功' : (r.reason || '失败');
+    if (r.ok) { ctx.closeModal && ctx.closeModal(); rerender(); }
+  });
+  f1.appendChild(email1); f1.appendChild(pw1); f1.appendChild(btn1);
+  wrap.appendChild(f1); wrap.appendChild(msg1);
+
+  // —— 验证码登录 / 注册 ——
+  wrap.appendChild(el('div', 'section-title', '验证码登录 / 注册'));
+  const f2 = el('div', 'galaxy-form');
+  const email2 = document.createElement('input');
+  email2.type = 'email'; email2.placeholder = '邮箱';
+  const code2 = document.createElement('input');
+  code2.type = 'text'; code2.placeholder = '验证码'; code2.style.display = 'none';
+  const pw2 = document.createElement('input');
+  pw2.type = 'password'; pw2.placeholder = '设置密码（新账号必填）'; pw2.style.display = 'none';
+  const btnSend = el('button', 'btn', '获取验证码');
+  const btnGo = el('button', 'btn btn-primary', '提交');
+  btnGo.style.display = 'none';
+  const msg2 = el('div', 'muted');
+  btnSend.addEventListener('click', async () => {
+    msg2.textContent = '发送中…';
+    const r = await sendEmailOtp(email2.value);
+    if (!r.ok) { msg2.textContent = r.reason || '发送失败'; return; }
+    msg2.textContent = r.isExistingUser ? '验证码已发送，请查收邮箱。' : '新账号：验证码已发送，请设置密码后提交。';
+    code2.style.display = ''; btnGo.style.display = '';
+    if (!r.isExistingUser) pw2.style.display = '';
+    btnSend.disabled = true;
+  });
+  btnGo.addEventListener('click', async () => {
+    msg2.textContent = '提交中…';
+    const r = await verifyEmailOtp(code2.value, pw2.value);
+    msg2.textContent = r.ok ? '成功' : (r.reason || '验证失败');
+    if (r.ok) { ctx.closeModal && ctx.closeModal(); rerender(); }
+  });
+  f2.appendChild(email2); f2.appendChild(btnSend); f2.appendChild(code2); f2.appendChild(pw2); f2.appendChild(btnGo);
+  wrap.appendChild(f2); wrap.appendChild(msg2);
+  openModal({ title: '云账号（邮箱）', body: wrap });
+}
+
+// ============================================================================
+// 收件箱（弹窗 + 内联区块共用渲染）
+// ============================================================================
+const INCIDENT_LABEL = {
+  attack: '进攻宣告',
+  trade_offer: '贸易要约',
+  battle_report: '战报回执',
+  trade_result: '贸易结算',
+};
+
+function renderInbox(sec, ctx, rerender, items, acc) {
+  if (!items.length) {
+    sec.appendChild(el('div', 'muted', '暂无待处理事件。'));
+    return;
+  }
+  for (const it of items) {
+    const pay = it.payload || {};
+    const card = el('div', 'galaxy-incident');
+    card.appendChild(el('b', null, INCIDENT_LABEL[it.type] || it.type));
+    card.appendChild(el('div', 'muted', '来自：' + (pay.fromName || it.owner_id) + ' · ' + new Date(it.created_at).toLocaleString()));
+
+    const act = el('div', 'galaxy-incident-actions');
+
+    if (it.type === 'attack') {
+      card.appendChild(el('div', null, '敌方发起进攻宣告（'
+        + ((pay.atkArmies && pay.atkArmies.length) ? pay.atkArmies.length + ' 支部队 · ' : '')
+        + '总战力 ' + fmtNum(pay.atkPower || 0) + '）。我方以全部建制军队应战：'
+        + '钢铁雄心式多回合交战 —— 组织度被打空的部队撤出战斗，战斗宽度每方 3 支，'
+        + '回合耗尽进攻方撤退，败方承受战损。'));
+      const btn = el('button', 'btn btn-sm btn-primary', '应战（本地结算）');
+      btn.addEventListener('click', async () => {
+        btn.disabled = true;
+        // v0.2.2：以我方全部建制军队为守方单位会战（HOI4 式多回合确定性结算）
+        const defUnits = listArmiesLocal(acc).map((a) => ({
+          nameCn: a.nameCn || a.id, power: a.power,
+          atk: a.stats ? a.stats.atk : 0, def: a.stats ? a.stats.def : 0,
+        }));
+        const res = resolveBattleSafe(pay.seed,
+          pay.atkArmies || (Number(pay.atkPower) || 0), defUnits);
+        // 守方损失：败了按比例解散军队；被攻破还被掠夺 ascoin
+        let plunder = 0;
+        const lostArmies = [];
+        if (res.attackerWin) {
+          plunder = Math.floor(ascoinOf(acc) * res.plunderRatio);
+          acc.ascoin = ascoinOf(acc) - plunder;
+          const armies = listArmiesLocal(acc);
+          const nLose = Math.floor(armies.length * res.defLossRatio);
+          for (let i = 0; i < nLose && armies.length; i++) {
+            const a = armies.splice(Math.floor(Math.random() * armies.length), 1)[0];
+            lostArmies.push(a.nameCn || a.id);
+            removeArmyLocal(acc, a.id);
+          }
+        }
+        await postIncident(it.owner_id, 'battle_report', {
+          attackerWin: res.attackerWin,
+          plunder,
+          defLossRatio: res.defLossRatio,
+          atkLossRatio: res.atkLossRatio,
+          rounds: res.rounds,
+          battleLog: (res.logLines || []).slice(0, 10),
+          defName: (acc && acc.name) || '深空旅人',
+          log: (res.logLines && res.logLines[0] ? res.logLines[0] + '；' : '')
+            + (res.attackerWin
+              ? ('守方损失军队 ' + (lostArmies.length ? lostArmies.join('、') : '无') + '，被掠夺 ' + plunder + ' Ascoin')
+              : '进攻方被击退，未得手'),
+        });
+        await markIncidentResolved(it.id);
+        if (ctx.openModal) {
+          const body = document.createElement('div');
+          body.style.whiteSpace = 'pre-line';
+          body.textContent = res.log + '\n\n'
+            + (res.attackerWin
+              ? '我方战败：损失军队 ' + (lostArmies.length ? lostArmies.join('、') : '无')
+                + '，被掠夺 ' + plunder + ' Ascoin。'
+              : '我方成功防守，敌军被击退。');
+          ctx.openModal({ title: '战斗结算（' + res.rounds + ' 回合）', body });
+        }
+        rerender();
+      });
+      act.appendChild(btn);
+    } else if (it.type === 'trade_offer') {
+      card.appendChild(el('div', null, '对方出货：' + goodsText(pay.goods) + '，要价 '
+        + fmtNum(pay.askAscoin || 0) + ' Ascoin。'));
+      const ok = el('button', 'btn btn-sm btn-primary', '接受');
+      const no = el('button', 'btn btn-sm', '拒绝');
+      ok.addEventListener('click', async () => {
+        ok.disabled = true; no.disabled = true;
+        const cost = Math.floor(Number(pay.askAscoin) || 0);
+        if (ascoinOf(acc) < cost) {
+          ok.disabled = false; no.disabled = false;
+          ok.textContent = 'Ascoin 不足'; return;
+        }
+        acc.ascoin = ascoinOf(acc) - cost;
+        const inst = getPlanetInstance(ctx.planetCode || (acc && acc.homePlanetCode) || 'syl');
+        const got = addGoods(inst, pay.goods);
+        await postIncident(it.owner_id, 'trade_result', { accepted: true, goods: pay.goods, askAscoin: cost });
+        await markIncidentResolved(it.id);
+        ctx.openModal && ctx.openModal({ title: '交易完成', body: '已支付 ' + fmtNum(cost)
+          + ' Ascoin，收到：' + goodsText(got) + '（入当前星球物品栏）。' });
+        rerender();
+      });
+      no.addEventListener('click', async () => {
+        ok.disabled = true; no.disabled = true;
+        await postIncident(it.owner_id, 'trade_result', { accepted: false, goods: pay.goods });
+        await markIncidentResolved(it.id);
+        rerender();
+      });
+      act.appendChild(ok); act.appendChild(no);
+    } else if (it.type === 'battle_report') {
+      card.appendChild(el('div', null, (pay.log || '')
+        + '　（我方战损比 ' + Math.round((pay.atkLossRatio || 0) * 100) + '%）'));
+      // v0.2.2：钢铁雄心式逐回合战报
+      if (Array.isArray(pay.battleLog) && pay.battleLog.length) {
+        const bl = el('div', 'muted');
+        bl.style.whiteSpace = 'pre-line';
+        bl.style.fontSize = '0.8rem';
+        bl.style.padding = '4px 0';
+        bl.textContent = pay.battleLog.join('\n');
+        card.appendChild(bl);
+      }
+      if (pay.attackerWin) {
+        // 我（进攻方）胜利：收掠夺款 + 按战损比解散军队
+        const gain = Math.floor(Number(pay.plunder) || 0);
+        acc.ascoin = ascoinOf(acc) + gain;
+        const armies = listArmiesLocal(acc);
+        const nLose = Math.floor(armies.length * (pay.atkLossRatio || 0));
+        const lost = [];
+        for (let i = 0; i < nLose && armies.length; i++) {
+          const a = armies.splice(Math.floor(Math.random() * armies.length), 1)[0];
+          lost.push(a.nameCn || a.id);
+          removeArmyLocal(acc, a.id);
+        }
+        card.appendChild(el('div', null, '掠夺入账 ' + fmtNum(gain) + ' Ascoin'
+          + (lost.length ? '；我方损失军队 ' + lost.join('、') : '；我方无建制损失')));
+      } else {
+        card.appendChild(el('div', null, '进攻未得手，军队无损失（败退）。'));
+      }
+      const seen = el('button', 'btn btn-sm', '已阅');
+      seen.addEventListener('click', async () => { await markIncidentResolved(it.id); rerender(); });
+      act.appendChild(seen);
+    } else if (it.type === 'trade_result') {
+      if (pay.accepted) {
+        const gain = Math.floor(Number(pay.askAscoin) || 0);
+        acc.ascoin = ascoinOf(acc) + gain;
+        card.appendChild(el('div', null, '对方接受了要约，货款 ' + fmtNum(gain) + ' Ascoin 已入账。'));
+      } else {
+        const inst = getPlanetInstance(ctx.planetCode || (acc && acc.homePlanetCode) || 'syl');
+        const back = addGoods(inst, pay.goods);
+        card.appendChild(el('div', null, '对方拒绝了要约，货已退回物品栏：' + goodsText(back) + '。'));
+      }
+      const seen = el('button', 'btn btn-sm', '已阅');
+      seen.addEventListener('click', async () => { await markIncidentResolved(it.id); rerender(); });
+      act.appendChild(seen);
+    }
+    card.appendChild(act);
+    sec.appendChild(card);
+  }
+}
+
+function openInboxModal(ctx, rerender) {
+  const openModal = ctx.openModal;
+  if (!openModal) return;
+  const div = el('div');
+  div.style.cssText = 'max-height:60vh;overflow-y:auto;';
+  div.appendChild(el('div', 'muted', '读取中…'));
+  openModal({ title: '收件箱与回执', body: div });
+  fetchInbox().then((r) => {
+    div.innerHTML = '';
+    if (!r.ok) { div.appendChild(el('div', 'muted', '读取失败：' + (r.reason || ''))); return; }
+    if (!r.items.length) { div.appendChild(el('div', 'muted', '星际信箱空空如也，暂无最新战报或回执。')); return; }
+    renderInbox(div, ctx, rerender, r.items, ctx.account || currentAccount());
+  });
+}
+
+// army.js 的 listArmies / disbandArmy / resolveBattle 已并入顶部导入，这里仅做本地别名
+function listArmiesLocal(acc) { return listArmies(acc); }
+function removeArmyLocal(acc, id) { disbandArmy(acc, id); }
+function resolveBattleSafe(seed, a, d) {
+  try { return resolveBattle(seed, a, d); }
+  catch (e) { return { attackerWin: a >= d, atkLossRatio: 0.3, defLossRatio: 0.3, plunderRatio: 0.1, log: '战斗结算（降级）' }; }
+}
+
+// ============================================================================
+// 玩家星球：搜索过滤 + 玻璃卡片网格
+// ============================================================================
+// ============================================================================
+// 电脑势力星球（v0.2.4：在线模式常驻 NPC —— 沿用离线 NPC 势力设定）
+// ============================================================================
+// 不走异步邮箱：NPC 在本地即时结算。交易价已含势力偏好（售价/收价不同）；
+// 进攻按钢铁雄心式多回合对 NPC 驻军，胜利掠夺其金库。
+const NPC_FACTIONS = [
+  { id: 'npc_pioneer', owner: '开拓者', code: 'npc-forge', nameCn: '熔炉前哨',
+    defense: 500, ascoin: 9000,
+    sell: { '钢': [200, 60], '玻璃': [150, 30], '塑料': [120, 50] },
+    buys: { '铁': 25, '铜': 40, '铝': 30 },
+    desc: '拓荒者公会的前哨站：出售基础建材，收购金属原矿。' },
+  { id: 'npc_guild', owner: '商会', code: 'npc-exchange', nameCn: '商队自由港',
+    defense: 1200, ascoin: 30000,
+    sell: { '钛合金': [40, 500], '石墨烯': [25, 1100] },
+    buys: { '钢': 45, '陶瓷': 35, '玻璃': 22 },
+    desc: '星系商会的自由港：高价出售合金材料，也高价回收精炼品。' },
+  { id: 'npc_scrap', owner: '拾荒团', code: 'npc-junkyard', nameCn: '废铁拆解场',
+    defense: 2200, ascoin: 16000,
+    sell: { '钢': [400, 35], '陶瓷': [200, 25], '橡胶': [120, 40] },
+    buys: { '铁': 20, '石头': 8, '石英': 15 },
+    desc: '什么都能拆的拾荒团：什么都卖也什么都收，价格被压得很低；民风彪悍，防守不弱。' },
+  { id: 'npc_royal', owner: 'Royal', code: 'npc-citadel', nameCn: '皇家堡垒',
+    defense: 5200, ascoin: 90000,
+    sell: { '纳米碳合金': [20, 1900], '钻石': [12, 1600], '钛合金': [60, 420] },
+    buys: { '石墨烯': 850, '碳化钨': 300, '钛合金': 300 },
+    desc: '大后期的皇家势力：防守森严（重防星），但最讲信用——贵族价收购稀有材料。' },
+];
+
+// NPC 会话内状态（库存/金库会因交互耗减；仅内存，刷新重置）
+const _npcState = {};
+function npcStateOf(f) {
+  if (!_npcState[f.id]) {
+    const stock = {};
+    for (const m in (f.sell || {})) stock[m] = f.sell[m][0];
+    _npcState[f.id] = { stock, ascoin: Number(f.ascoin) || 0 };
+  }
+  return _npcState[f.id];
+}
+
+/** NPC 驻军：3 支合成单位，总战力 ≈ defense（钢铁雄心式接战正好占满宽度） */
+function npcGarrison(f) {
+  const per = Math.max(1, Math.round((Number(f.defense) || 0) / 3));
+  return [0, 1, 2].map((i) => ({
+    nameCn: f.owner + '驻军 ' + (i + 1) + ' 队',
+    power: per, atk: Math.round(per * 0.45), def: Math.round(per * 0.55),
+  }));
+}
+
+async function renderPlanetGrid(grid, ctx, rerender, u, acc, query) {
+  grid.innerHTML = '';
+  // v0.2.4：电脑势力星球常驻网格（查看不需登录，交互需要云账号）
+  const npcs = NPC_FACTIONS.filter((f) => !query
+    || (f.nameCn + f.owner + f.code).toLowerCase().includes(query));
+  for (const f of npcs) grid.appendChild(buildNpcCard(f, ctx, rerender, acc));
+  if (!u) {
+    grid.appendChild(el('div', 'muted', '登录云账号后可与其他玩家的星球交易 / 交战；电脑势力星球随时可以交互。'));
+    return;
+  }
+  grid.appendChild(el('div', 'muted', '读取星系中…'));
+  const r = await listPublicPlanets();
+  // 守卫：期间可能已切走/重渲染
+  if (!grid.isConnected) return;
+  grid.innerHTML = '';
+  if (!r.ok) {
+    grid.appendChild(el('div', 'army-miss', '读取失败：' + (r.reason || '')));
+    return;
+  }
+  let others = r.planets.filter((p) => p.owner_id !== u.id);
+  if (query) {
+    others = others.filter((p) =>
+      (('' + (p.planet_name_cn || p.planet_code)).toLowerCase().includes(query)) ||
+      (('' + (p.owner_name || '')).toLowerCase().includes(query)) ||
+      (('' + (p.planet_code || '')).toLowerCase().includes(query)));
+  }
+  if (!others.length) {
+    grid.appendChild(el('div', 'muted', query ? '没有匹配「' + query + '」的星球。' : '星系里暂时只有你（或还没有其他玩家发布快照）。快照在对方登录并打开「星际」页后自动发布。'));
+    return;
+  }
+  for (const p of others) grid.appendChild(buildPlanetCard(p, ctx, rerender, acc));
+}
+
+/** 单颗玩家星球卡片（玻璃卡片 + 势力标签 + 防御着色 + 战略简报 + 贸易/进攻）*/
+function buildPlanetCard(p, ctx, rerender, acc) {
+  const refresh = () => { if (typeof rerender === 'function') rerender(); };
+  const s = p.summary || {};
+  const defense = Number(s.defense || 0);
+  const defCls = defense > 2500 ? 'def-high' : 'def-ok';
+
+  const card = el('div', 'gx-card');
+  const top = el('div', 'gx-card-top');
+
+  const line1 = el('div', 'gx-card-line1');
+  const nameWrap = el('div');
+  nameWrap.appendChild(el('span', 'gx-card-name', p.planet_name_cn || p.planet_code || '未知星球'));
+  if (p.planet_code) nameWrap.appendChild(el('span', 'gx-card-code', p.planet_code));
+  line1.appendChild(nameWrap);
+  line1.appendChild(el('span', 'gx-faction', p.faction || '—'));
+  top.appendChild(line1);
+
+  const info = el('div', 'gx-card-info');
+  info.innerHTML =
+    '<div>指挥官：<b>' + esc(p.owner_name || '未知') + '</b></div>'
+    + '<div>人口 <b>' + fmtNum(s.pop || 0) + '</b> · 建筑 <b>' + fmtNum(s.buildings || 0)
+    + '</b> · 在线 ' + new Date(p.last_seen).toLocaleDateString() + '</div>'
+    + '<div>要塞战力：<b class="' + defCls + '">' + fmtNum(defense) + '</b></div>';
+  top.appendChild(info);
+
+  // 战略简报（依据公开字段合成）
+  const intel = el('div', 'gx-intel');
+  intel.textContent = '殖民地概况：人口 ' + fmtNum(s.pop || 0) + ' · 建筑 ' + fmtNum(s.buildings || 0)
+    + ' · 军队 ' + fmtNum(s.armies || 0) + ' 支 · 防御战力 ' + fmtNum(defense)
+    + (defense > 2500 ? '（重防星）' : '（可试探）');
+  top.appendChild(intel);
+  card.appendChild(top);
+
+  const act = el('div', 'gx-card-actions');
+  const tradeBtn = el('button', 'btn btn-sm btn-primary', '贸易');
+  tradeBtn.addEventListener('click', () => openTradeModal(ctx, rerender, acc, p, refresh));
+  const atkBtn = el('button', 'btn btn-sm btn-danger', '进攻');
+  atkBtn.addEventListener('click', () => openAttackModal(ctx, rerender, acc, p, refresh));
+  act.appendChild(tradeBtn);
+  act.appendChild(atkBtn);
+  card.appendChild(act);
+  return card;
+}
+
+function esc(s) {
+  return String(s).replace(/[&<>"']/g, (c) => (
     { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
   ));
 }
 
-// 联机状态标签的重绘订阅（每次重绘重绑，避免监听器泄漏）
-let _linkUnsub = null;
+// ============================================================================
+// 电脑势力卡片 + 即时交易 / 即时进攻（v0.2.4）
+// ============================================================================
+function buildNpcCard(f, ctx, rerender, acc) {
+  const st = npcStateOf(f);
+  const refresh = () => { if (typeof rerender === 'function') rerender(); };
+  const defCls = f.defense > 2500 ? 'def-high' : 'def-ok';
+  const card = el('div', 'gx-card');
+  const top = el('div', 'gx-card-top');
+  const line1 = el('div', 'gx-card-line1');
+  const nameWrap = el('div');
+  nameWrap.appendChild(el('span', 'gx-card-name', f.nameCn));
+  nameWrap.appendChild(el('span', 'gx-card-code', f.code));
+  line1.appendChild(nameWrap);
+  line1.appendChild(el('span', 'gx-faction', '🤖 ' + f.owner + ' · 电脑势力'));
+  top.appendChild(line1);
+  const info = el('div', 'gx-card-info');
+  info.innerHTML = '<div>驻军战力：<b class="' + defCls + '">' + fmtNum(f.defense) + '</b></div>'
+    + '<div>金库 <b>' + fmtNum(st.ascoin) + '</b> Ascoin（战胜可掠夺 10%~25%）</div>';
+  top.appendChild(info);
+  const intel = el('div', 'gx-intel');
+  intel.textContent = f.desc;
+  top.appendChild(intel);
+  card.appendChild(top);
 
-export function renderGalaxy(root, ctx) {
-  const { openModal, closeModal, onBack } = ctx;
+  const act = el('div', 'gx-card-actions');
+  const tradeBtn = el('button', 'btn btn-sm btn-primary', '贸易');
+  tradeBtn.addEventListener('click', () => openNpcTradeModal(ctx, f, refresh));
+  const atkBtn = el('button', 'btn btn-sm btn-danger', '进攻');
+  atkBtn.addEventListener('click', () => openNpcAttackModal(ctx, rerender, acc, f, refresh));
+  act.appendChild(tradeBtn);
+  act.appendChild(atkBtn);
+  card.appendChild(act);
+  return card;
+}
+
+/** NPC 即时交易：买 = 从 NPC 库存按售价扣 Ascoin 入物品栏；卖 = NPC 按收价付 Ascoin */
+function openNpcTradeModal(ctx, f, refresh) {
+  const openModal = ctx.openModal;
+  if (!openModal) return;
+  const st = npcStateOf(f);
+  const wrap = el('div');
   const acc = currentAccount();
-  if (!acc) {
-    root.innerHTML = '<div class="glass" style="padding:24px;text-align:center;">请先载入或创建指挥官存档。</div>';
+  const inst = getPlanetInstance((acc && acc.homePlanetCode) || 'syl');
+
+  wrap.appendChild(el('div', 'section-title', '向 ' + f.owner + ' 购买（即时成交）'));
+  const buySel = document.createElement('select');
+  buySel.className = 'bp-select';
+  for (const m in (f.sell || {})) {
+    const o = document.createElement('option');
+    o.value = m;
+    o.textContent = m + '（剩 ' + fmtNum(st.stock[m] || 0) + ' · ' + fmtNum(f.sell[m][1]) + '/件）';
+    buySel.appendChild(o);
+  }
+  const buyQty = document.createElement('input');
+  buyQty.type = 'number'; buyQty.min = '1'; buyQty.value = '10'; buyQty.className = 'bp-input';
+  const buyBtn = el('button', 'btn btn-sm btn-primary', '购买');
+  const buyMsg = el('span', 'muted');
+  buyBtn.addEventListener('click', () => {
+    const m = buySel.value;
+    const price = f.sell[m][1];
+    const qty = Math.max(1, Math.floor(Number(buyQty.value) || 0));
+    const avail = st.stock[m] || 0;
+    const take = Math.min(qty, avail);
+    if (!(take > 0)) { buyMsg.textContent = m + ' 已售罄。'; return; }
+    const cost = Math.floor(take * price);
+    if ((Number(acc && acc.ascoin) || 0) < cost) {
+      buyMsg.textContent = 'Ascoin 不足（需 ' + fmtNum(cost) + '）。';
+      return;
+    }
+    acc.ascoin = (Number(acc.ascoin) || 0) - cost;
+    st.stock[m] = avail - take;
+    if (inst) addGoods(inst, { [m]: take });
+    buyMsg.textContent = '购入 ' + m + ' ×' + take + '，支付 ' + fmtNum(cost) + ' Ascoin（入母星物品栏）。';
+    refresh();
+  });
+  const buyRow = el('div', 'bp-row');
+  buyRow.appendChild(buySel); buyRow.appendChild(buyQty); buyRow.appendChild(buyBtn); buyRow.appendChild(buyMsg);
+  wrap.appendChild(buyRow);
+
+  wrap.appendChild(el('div', 'section-title', '向 ' + f.owner + ' 出售（即时成交，按其收价）'));
+  const sellSel = document.createElement('select');
+  sellSel.className = 'bp-select';
+  for (const m in (f.buys || {})) {
+    const o = document.createElement('option');
+    o.value = m;
+    o.textContent = m + '（收价 ' + fmtNum(f.buys[m]) + '/件 · 你持有 ' + fmtNum(inst ? ownedOf(inst, m) : 0) + '）';
+    sellSel.appendChild(o);
+  }
+  const sellQty = document.createElement('input');
+  sellQty.type = 'number'; sellQty.min = '1'; sellQty.value = '10'; sellQty.className = 'bp-input';
+  const sellBtn = el('button', 'btn btn-sm btn-primary', '出售');
+  const sellMsg = el('span', 'muted');
+  sellBtn.addEventListener('click', () => {
+    const m = sellSel.value;
+    const price = f.buys[m];
+    const qty = Math.max(1, Math.floor(Number(sellQty.value) || 0));
+    const owned = inst ? ownedOf(inst, m) : 0;
+    const give = Math.min(qty, Math.floor(owned));
+    if (!(give > 0)) { sellMsg.textContent = m + ' 库存不足（持有 ' + fmtNum(owned) + '）。'; return; }
+    const gain = Math.floor(give * price);
+    if (st.ascoin < gain) { sellMsg.textContent = f.owner + ' 金库 Ascoin 不足（剩 ' + fmtNum(st.ascoin) + '）。'; return; }
+    spendOwned(inst, m, give);
+    st.ascoin -= gain;
+    acc.ascoin = (Number(acc.ascoin) || 0) + gain;
+    sellMsg.textContent = '售出 ' + m + ' ×' + give + '，入账 ' + fmtNum(gain) + ' Ascoin。';
+    refresh();
+  });
+  const sellRow = el('div', 'bp-row');
+  sellRow.appendChild(sellSel); sellRow.appendChild(sellQty); sellRow.appendChild(sellBtn); sellRow.appendChild(sellMsg);
+  wrap.appendChild(sellRow);
+  openModal({ title: '贸易：' + f.nameCn + '（' + f.owner + '）', body: wrap });
+}
+
+/** NPC 即时进攻：钢铁雄心式多回合对驻军；胜掠夺金库，败按战损解散军队 */
+function openNpcAttackModal(ctx, rerender, acc, f, refresh) {
+  const openModal = ctx.openModal;
+  if (!openModal) return;
+  const st = npcStateOf(f);
+  const wrap = el('div');
+  const myPower = myDefensePower(acc);
+  const armies = listArmies(acc);
+  wrap.appendChild(el('div', null, '以当前全部舰队 + 军队（战力 ' + fmtNum(myPower)
+    + (armies.length ? '，建制军队 ' + armies.length + ' 支' : '')
+    + '）进攻「' + f.nameCn + '」（' + f.owner + ' 驻军战力 ' + fmtNum(f.defense) + '）。'
+    + '钢铁雄心式多回合会战，即时结算：胜方掠夺其金库 10%~25%，双方按兵力损失承受战损。'));
+  const go = el('button', 'btn btn-danger', '确认发起进攻');
+  const msg = el('div', 'muted');
+  go.addEventListener('click', () => {
+    go.disabled = true;
+    const myUnits = armies.map((a) => ({
+      nameCn: a.nameCn || a.id, power: a.power,
+      atk: a.stats ? a.stats.atk : 0, def: a.stats ? a.stats.def : 0,
+    }));
+    const seed = (Date.now() ^ Math.floor(Math.random() * 1e9)) >>> 0;
+    const res = resolveBattleSafe(seed,
+      myUnits.length ? myUnits : myPower, npcGarrison(f));
+    // 攻方按兵力损失比解散军队（胜负都损耗）
+    const list = listArmiesLocal(acc);
+    const nLose = Math.floor(list.length * (res.atkLossRatio || 0));
+    const lost = [];
+    for (let i = 0; i < nLose && list.length; i++) {
+      const a = list.splice(Math.floor(Math.random() * list.length), 1)[0];
+      lost.push(a.nameCn || a.id);
+      removeArmyLocal(acc, a.id);
+    }
+    let plunder = 0;
+    if (res.attackerWin && st.ascoin > 0) {
+      plunder = Math.floor(st.ascoin * (res.plunderRatio || 0));
+      st.ascoin -= plunder;
+      acc.ascoin = (Number(acc.ascoin) || 0) + plunder;
+    }
+    const body = document.createElement('div');
+    body.style.whiteSpace = 'pre-line';
+    body.textContent = res.log + '\n\n'
+      + (res.attackerWin
+        ? '攻破「' + f.nameCn + '」！掠夺 ' + fmtNum(plunder) + ' Ascoin。'
+        : '进攻被击退' + (lost.length ? '，损失军队 ' + lost.join('、') : '，军队无损（火力侦察）') + '。')
+      + (lost.length && res.attackerWin ? '\n战损解散：' + lost.join('、') : '');
+    openModal({ title: '战斗结算（' + res.rounds + ' 回合）', body });
+    refresh();
+  });
+  wrap.appendChild(go);
+  wrap.appendChild(msg);
+  openModal({ title: '进攻：' + f.nameCn + '（' + f.owner + '）', body: wrap });
+}
+
+function openTradeModal(ctx, rerender, acc, planet, after) {
+  const openModal = ctx.openModal;
+  if (!openModal) return;
+  const inst = getPlanetInstance(ctx.planetCode || (acc && acc.homePlanetCode) || 'syl');
+  // 从当前星球物品栏聚合持有 >0 的材料
+  const owned = new Map();
+  if (inst && Array.isArray(inst.inventory)) {
+    for (const e of inst.inventory) {
+      if (!e || !e.mat) continue;
+      owned.set(e.mat, (owned.get(e.mat) || 0) + (Number(e.owned) || 0));
+    }
+  }
+  const mats = [...owned.entries()].filter(([, n]) => n > 0).sort((a, b) => b[1] - a[1]);
+  const wrap = el('div');
+  if (!mats.length) {
+    wrap.appendChild(el('div', 'muted', '当前星球没有可出货的材料。'));
+    openModal({ title: '贸易：' + (planet.planet_name_cn || planet.planet_code), body: wrap });
     return;
   }
-
-  const profile = ensureCloudProfile(acc);
-  const curStorage = getStorageMode();
-  if (curStorage.mode === 'online' && curStorage.email && !profile.email) {
-    bindEmail(acc, curStorage.email);
+  const f = el('div', 'galaxy-form');
+  const sel = document.createElement('select');
+  for (const [m, n] of mats) {
+    const opt = document.createElement('option');
+    opt.value = m;
+    opt.textContent = m + '（持有 ' + fmtNum(n) + '）';
+    sel.appendChild(opt);
   }
-  let searchQuery = '';
-  let selectedFaction = 'all';
-
-  function refresh() {
-    renderView();
-  }
-
-  function renderView() {
-    root.innerHTML = '';
-    const container = document.createElement('div');
-    container.className = 'galaxy-view';
-    container.style.cssText = 'padding:16px;max-width:960px;margin:0 auto;color:#c8d4e0;';
-
-    // 1. 顶部状态栏（身份、保护盾、信箱）
-    const header = document.createElement('div');
-    header.className = 'glass';
-    header.style.cssText = 'padding:16px;margin-bottom:16px;border-radius:10px;display:flex;flex-wrap:wrap;gap:12px;justify-content:space-between;align-items:center;';
-
-    const idBox = document.createElement('div');
-    idBox.innerHTML = `
-      <div style="font-size:16px;font-weight:bold;color:#7cd7ff;display:flex;align-items:center;gap:8px;">
-        <span>🛰️ ${escapeHtml(profile.callsign)}</span>
-        <span style="font-size:12px;color:#7d8a97;background:rgba(255,255,255,0.06);padding:2px 6px;border-radius:4px;">${escapeHtml(profile.commanderId)}</span>
-      </div>
-      <div style="font-size:12px;color:#94a3b8;margin-top:4px;">
-        邮箱：${profile.email ? escapeHtml(profile.email) : '<span style="color:#ffc46b">未绑定（支持跨端同步）</span>'}
-      </div>
-    `;
-
-    const btnGroup = document.createElement('div');
-    btnGroup.style.cssText = 'display:flex;gap:8px;flex-wrap:wrap;align-items:center;';
-
-    // 绑定邮箱按钮
-    const btnEmail = document.createElement('button');
-    btnEmail.className = 'btn-action';
-    btnEmail.style.cssText = 'padding:6px 12px;min-height:44px;border:1px solid #345;border-radius:6px;background:rgba(124,215,255,0.08);color:#7cd7ff;cursor:pointer;';
-    btnEmail.textContent = profile.email ? '更换邮箱' : '绑定邮箱';
-    btnEmail.onclick = () => openEmailModal();
-    btnGroup.appendChild(btnEmail);
-
-    // 保护盾状态
-    const shield = getShieldStatus(acc);
-    const shieldTag = document.createElement('div');
-    shieldTag.style.cssText = `padding:6px 12px;min-height:44px;border-radius:6px;display:flex;align-items:center;font-size:13px;border:1px solid ${shield.active ? '#ffc46b' : '#345'};background:${shield.active ? 'rgba(255,196,107,0.1)' : 'rgba(255,255,255,0.04)'};color:${shield.active ? '#ffc46b' : '#94a3b8'};`;
-    shieldTag.innerHTML = `🛡️ ${shield.text}`;
-    btnGroup.appendChild(shieldTag);
-
-    // 联机链路状态：让玩家看得见「走的是哪条链路、连上没有、现在多少人在线」。
-    // 静态托管（HuggingFace）下没有同源服务端，自动走公网中继 MQTT 广播世界。
-    const linkTag = document.createElement('div');
-    linkTag.style.cssText = 'padding:6px 12px;min-height:44px;border-radius:6px;display:flex;align-items:center;font-size:13px;border:1px solid #345;background:rgba(255,255,255,0.04);color:#94a3b8;';
-    const paintLink = (status) => {
-      if (getStorageMode().mode !== 'online') {
-        linkTag.style.borderColor = '#345';
-        linkTag.style.color = '#94a3b8';
-        linkTag.textContent = '📡 离线模式';
-        linkTag.title = '离线单机：不连接任何在线链路';
-        return;
-      }
-      const s = status || getRelayStatus();
-      const via = currentTransport() === 'server' ? '本地服务端' : '公网中继';
-      const online = s.state === 'connected';
-      linkTag.style.borderColor = online ? '#38bdf860' : '#345';
-      linkTag.style.color = online ? '#7cd7ff' : '#94a3b8';
-      linkTag.textContent = online
-        ? `📡 ${via} · 已连接（${s.players} 人在线）`
-        : `📡 ${via} · 连接中…`;
-      linkTag.title = online
-        ? `链路：${via}\n代理：${s.broker}\n房间：${s.room}`
-        : '正在建立联机链路…';
-    };
-    paintLink(null);
-    if (_linkUnsub) _linkUnsub();
-    _linkUnsub = onRelayStatus((s) => { if (linkTag.isConnected) paintLink(s); });
-    btnGroup.appendChild(linkTag);
-
-    // 信箱入口（带未读徽标）
-    const unread = unreadCount(acc);
-    const btnInbox = document.createElement('button');
-    btnInbox.className = 'btn-action';
-    btnInbox.style.cssText = 'padding:6px 14px;min-height:44px;border:1px solid #345;border-radius:6px;background:rgba(124,215,255,0.12);color:#c8d4e0;cursor:pointer;position:relative;';
-    btnInbox.innerHTML = `📬 星际信箱 ${unread > 0 ? `<span style="background:#ff6b81;color:#fff;font-size:11px;padding:2px 6px;border-radius:10px;margin-left:4px;">${unread}</span>` : ''}`;
-    btnInbox.onclick = () => openInboxModal();
-    btnGroup.appendChild(btnInbox);
-
-    // 公频通讯入口
-    const btnChat = document.createElement('button');
-    btnChat.className = 'btn-action';
-    btnChat.style.cssText = 'padding:6px 14px;min-height:44px;border:1px solid #38bdf850;border-radius:6px;background:rgba(56,189,248,0.15);color:#7cd7ff;cursor:pointer;';
-    btnChat.innerHTML = '💬 星区广播通信';
-    btnChat.onclick = () => openChatModal();
-    btnGroup.appendChild(btnChat);
-
-    // 全星区在线集市入口
-    const btnMarket = document.createElement('button');
-    btnMarket.className = 'btn-action';
-    btnMarket.style.cssText = 'padding:6px 14px;min-height:44px;border:1px solid #10b98150;border-radius:6px;background:rgba(16,185,129,0.15);color:#6ee7b7;cursor:pointer;';
-    btnMarket.innerHTML = '🌐 全星区集市';
-    btnMarket.onclick = () => openMarketModal();
-    btnGroup.appendChild(btnMarket);
-
-    header.appendChild(idBox);
-    header.appendChild(btnGroup);
-    container.appendChild(header);
-
-    // 2. 搜索与过滤工具栏
-    const filterBar = document.createElement('div');
-    filterBar.style.cssText = 'margin-bottom:16px;display:flex;flex-wrap:wrap;gap:10px;align-items:center;';
-
-    const searchInput = document.createElement('input');
-    searchInput.type = 'text';
-    searchInput.placeholder = '定向搜索星系名称 / 指挥官 / 编号…';
-    searchInput.value = searchQuery;
-    searchInput.style.cssText = 'flex:1;min-width:240px;min-height:44px;padding:8px 12px;background:#0b101c;border:1px solid #22354c;border-radius:6px;color:#c8d4e0;font-size:14px;';
-    searchInput.oninput = (e) => {
-      searchQuery = e.target.value;
-      renderCards(cardContainer);
-    };
-    filterBar.appendChild(searchInput);
-
-    container.appendChild(filterBar);
-
-    // 3. 星球列表网格
-    const cardContainer = document.createElement('div');
-    cardContainer.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fill, minmax(290px, 1fr));gap:14px;';
-    renderCards(cardContainer);
-    container.appendChild(cardContainer);
-
-    root.appendChild(container);
-  }
-
-  function renderCards(grid) {
-    grid.innerHTML = '';
-    const systems = fetchGalaxyRegistry(acc, searchQuery);
-
-    if (systems.length === 0) {
-      grid.innerHTML = '<div style="grid-column:1/-1;padding:32px;text-align:center;color:#64748b;">未搜索到符合条件的星系。</div>';
+  const qty = document.createElement('input');
+  qty.type = 'number'; qty.min = '1'; qty.value = '10';
+  const price = document.createElement('input');
+  price.type = 'number'; price.min = '1'; price.value = '100';
+  const go = el('button', 'btn btn-primary', '发出要约（货即托管）');
+  const msg = el('div', 'muted', '要约发出后货物立即从当前星球扣走托管；对方接受则收回货款，拒绝则原货退回。');
+  go.addEventListener('click', async () => {
+    const mat = sel.value;
+    const n = Math.floor(Number(qty.value) || 0);
+    const ask = Math.floor(Number(price.value) || 0);
+    if (!(n > 0) || !(ask > 0)) { msg.textContent = '数量与要价必须为正数'; return; }
+    const have = ownedOf(inst, mat);
+    if (have < n) { msg.textContent = '持有不足：只有 ' + fmtNum(have); return; }
+    spendOwned(inst, mat, n);
+    const r = await postIncident(planet.owner_id, 'trade_offer', {
+      goods: { [mat]: n }, askAscoin: ask, fromName: (acc && acc.name) || '深空旅人',
+    });
+    if (!r.ok) {
+      // 发送失败：退货
+      const e2 = ensureEntry(inst, mat, 'refined');
+      if (e2) e2.owned = (Number(e2.owned) || 0) + n;
+      msg.textContent = '发送失败：' + (r.reason || '') + '（货已退回）';
       return;
     }
+    ctx.closeModal && ctx.closeModal();
+    after && after();
+  });
+  f.appendChild(sel); f.appendChild(qty); f.appendChild(price); f.appendChild(go);
+  wrap.appendChild(f); wrap.appendChild(msg);
+  openModal({ title: '贸易要约 → ' + (planet.owner_name || '?'), body: wrap });
+}
 
-    for (const sys of systems) {
-      const card = document.createElement('div');
-      card.className = 'glass';
-      card.style.cssText = 'padding:14px;border-radius:8px;display:flex;flex-direction:column;justify-content:space-between;gap:10px;border:1px solid rgba(124,215,255,0.15);';
-
-      // 保护盾判定
-      const hasShield = sys.shieldUntil && sys.shieldUntil > Date.now();
-
-      const top = document.createElement('div');
-      top.innerHTML = `
-        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px;">
-          <div>
-            <span style="font-weight:bold;font-size:15px;color:#f1f5f9;">${escapeHtml(sys.planetNameCn)}</span>
-            <span style="font-size:11px;color:#7d8a97;margin-left:4px;">${escapeHtml(sys.planetCode)}</span>
-          </div>
-          <span style="font-size:11px;padding:2px 6px;border-radius:4px;background:rgba(255,255,255,0.06);color:${sys.factionColor || '#7cd7ff'};border:1px solid ${sys.factionColor || '#7cd7ff'}40;">
-            ${escapeHtml(sys.faction)}
-          </span>
-        </div>
-        <div style="font-size:12px;color:#94a3b8;line-height:1.5;">
-          <div>指挥官：<b>${escapeHtml(sys.callsign)}</b> ${sys.isNpc ? '<span style="color:#7d8a97">(NPC)</span>' : '<span style="color:#7cd7ff">(玩家)</span>'}</div>
-          <div>距离：${sys.distanceLy === 0 ? '<span style="color:#9FE1CB">母星主权区</span>' : `${sys.distanceLy} 光年`} · 人口：${fmtNum(sys.population)}</div>
-          <div>要塞战力：<b style="color:${sys.defensePower > 2500 ? '#f09595' : '#9FE1CB'}">${fmtNum(sys.defensePower)}</b></div>
-        </div>
-        ${hasShield ? '<div style="margin-top:6px;font-size:11px;color:#ffc46b;background:rgba(255,196,107,0.1);padding:3px 6px;border-radius:4px;">🛡️ 免战护盾保护中</div>' : ''}
-        <div style="margin-top:6px;font-size:12px;color:#cbd5e1;background:rgba(0,0,0,0.25);padding:6px;border-radius:4px;line-height:1.4;">
-          ${escapeHtml(sys.intel || '暂无详细战略简报。')}
-        </div>
-      `;
-
-      // 特产在售标签
-      const goodsBox = document.createElement('div');
-      goodsBox.style.cssText = 'margin-top:4px;font-size:12px;';
-      if (sys.goods && sys.goods.length > 0) {
-        goodsBox.innerHTML = '<span style="color:#64748b;">特产：</span>' + sys.goods.map((g) => (
-          `<span style="display:inline-block;background:rgba(124,215,255,0.08);color:#93c5fd;padding:2px 5px;border-radius:3px;margin:2px 4px 2px 0;">${escapeHtml(g.nameCn || g.mat)} · ${g.priceAscoin}₳</span>`
-        )).join('');
-      }
-      top.appendChild(goodsBox);
-
-      // 底部操作按钮
-      const actions = document.createElement('div');
-      actions.style.cssText = 'display:flex;gap:8px;margin-top:8px;';
-
-      if (sys.commanderId === profile.commanderId) {
-        actions.innerHTML = '<div style="flex:1;text-align:center;padding:8px;color:#64748b;font-size:12px;background:rgba(255,255,255,0.03);border-radius:4px;">自方主权基地</div>';
-      } else {
-        const btnTrade = document.createElement('button');
-        btnTrade.className = 'btn-action';
-        btnTrade.style.cssText = 'flex:1;min-height:44px;background:rgba(159,225,203,0.12);border:1px solid #9FE1CB40;color:#9FE1CB;border-radius:6px;cursor:pointer;font-size:13px;font-weight:600;';
-        btnTrade.textContent = '🤝 贸易交割';
-        btnTrade.onclick = () => openTradeModal(sys);
-
-        const btnRaid = document.createElement('button');
-        btnRaid.className = 'btn-action';
-        btnRaid.style.cssText = `flex:1;min-height:44px;background:${hasShield ? 'rgba(255,255,255,0.05)' : 'rgba(240,149,149,0.12)'};border:1px solid ${hasShield ? '#475569' : '#f0959540'};color:${hasShield ? '#64748b' : '#f09595'};border-radius:6px;cursor:${hasShield ? 'not-allowed' : 'pointer'};font-size:13px;font-weight:600;`;
-        btnRaid.textContent = '⚔️ 远征进攻';
-        btnRaid.disabled = !!hasShield;
-        btnRaid.title = hasShield ? '目标处于免战护盾中' : '派遣舰队突防要塞并掠夺战利品';
-        btnRaid.onclick = () => openRaidModal(sys);
-
-        actions.appendChild(btnTrade);
-        actions.appendChild(btnRaid);
-      }
-
-      card.appendChild(top);
-      card.appendChild(actions);
-      grid.appendChild(card);
-    }
-  }
-
-  // ==========================================================================
-  // 弹窗实现：绑定邮箱、信箱、贸易、远征
-  // ==========================================================================
-
-  function openEmailModal() {
-    const div = document.createElement('div');
-    div.innerHTML = `
-      <p style="color:#94a3b8;font-size:13px;line-height:1.6;margin-bottom:12px;">
-        绑定邮箱后，指挥官身份凭据将与云端关联，便于多端同步与跨设备漫游。
-      </p>
-      <input type="email" id="cloud-email-input" placeholder="commander@domain.com"
-             value="${escapeHtml(profile.email || '')}"
-             style="width:100%;min-height:44px;box-sizing:border-box;background:#0b101c;border:1px solid #22354c;border-radius:6px;padding:8px 12px;color:#c8d4e0;font-size:14px;margin-bottom:12px;">
-      <div id="email-err" style="color:#ff6b81;font-size:12px;margin-bottom:10px;"></div>
-      <button id="btn-save-email" style="width:100%;min-height:44px;background:#7cd7ff;color:#0b101c;font-weight:bold;border:none;border-radius:6px;cursor:pointer;">确认绑定</button>
-    `;
-
-    openModal({ title: '指挥官云档案绑定', body: div });
-
-    setTimeout(() => {
-      const btn = document.getElementById('btn-save-email');
-      const inp = document.getElementById('cloud-email-input');
-      const err = document.getElementById('email-err');
-      if (btn && inp) {
-        btn.onclick = () => {
-          const res = bindEmail(acc, inp.value);
-          if (!res.ok) {
-            err.textContent = res.reason;
-          } else {
-            closeModal();
-            refresh();
-          }
-        };
-      }
-    }, 50);
-  }
-
-  function openInboxModal() {
-    const list = getInbox(acc);
-    const div = document.createElement('div');
-    div.style.cssText = 'max-height:420px;overflow-y:auto;';
-
-    if (list.length === 0) {
-      div.innerHTML = '<div style="padding:24px;text-align:center;color:#64748b;">星际信箱空空如也，暂无最新战报或回执。</div>';
-    } else {
-      const tool = document.createElement('div');
-      tool.style.cssText = 'display:flex;justify-content:flex-end;margin-bottom:10px;';
-      const markAll = document.createElement('button');
-      markAll.style.cssText = 'background:none;border:none;color:#7cd7ff;font-size:12px;cursor:pointer;padding:4px 8px;';
-      markAll.textContent = '全部标为已读';
-      markAll.onclick = () => {
-        markAllMessagesRead(acc);
-        openInboxModal();
-        refresh();
-      };
-      tool.appendChild(markAll);
-      div.appendChild(tool);
-
-      for (const m of list) {
-        const item = document.createElement('div');
-        item.style.cssText = `padding:10px;margin-bottom:8px;border-radius:6px;border:1px solid #22354c;background:${m.read ? 'rgba(255,255,255,0.02)' : 'rgba(124,215,255,0.06)'};`;
-        const timeStr = new Date(m.at).toLocaleTimeString();
-        item.innerHTML = `
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
-            <span style="font-weight:bold;color:${m.type.includes('win') ? '#9FE1CB' : m.type.includes('loss') ? '#f09595' : '#7cd7ff'}">${escapeHtml(m.title)}</span>
-            <span style="font-size:11px;color:#64748b;">${timeStr}</span>
-          </div>
-          <div style="font-size:12px;color:#c8d4e0;line-height:1.4;margin-bottom:4px;">${escapeHtml(m.body)}</div>
-          ${m.details ? `<div style="font-size:11px;color:#94a3b8;white-space:pre-wrap;background:rgba(0,0,0,0.3);padding:6px;border-radius:4px;">${escapeHtml(m.details)}</div>` : ''}
-        `;
-        div.appendChild(item);
-      }
-    }
-
-    openModal({ title: '星际信箱与回执', body: div });
-  }
-
-  function openTradeModal(sys) {
-    const goods = sys.goods || [];
-    if (goods.length === 0) {
-      alert('该星球暂无挂售货物。');
-      return;
-    }
-
-    const div = document.createElement('div');
-    div.innerHTML = `
-      <p style="color:#94a3b8;font-size:13px;line-height:1.5;margin-bottom:12px;">
-        从「${escapeHtml(sys.planetNameCn)}」直采特产，交割后由星际物流直接运抵母星物品栏。
-      </p>
-      <div style="margin-bottom:12px;">
-        <label style="font-size:12px;color:#94a3b8;display:block;margin-bottom:4px;">选择采购品类：</label>
-        <select id="trade-mat-sel" style="width:100%;min-height:44px;background:#0b101c;border:1px solid #22354c;color:#c8d4e0;border-radius:6px;padding:8px;">
-          ${goods.map((g) => `<option value="${escapeHtml(g.mat)}">${escapeHtml(g.nameCn || g.mat)}（单价 ${g.priceAscoin}₳，库存 ${fmtNum(g.stock)}）</option>`).join('')}
-        </select>
-      </div>
-      <div style="margin-bottom:12px;">
-        <label style="font-size:12px;color:#94a3b8;display:block;margin-bottom:4px;">采购数量：</label>
-        <input type="number" id="trade-qty-inp" min="1" max="10000" value="50"
-               style="width:100%;min-height:44px;box-sizing:border-box;background:#0b101c;border:1px solid #22354c;color:#c8d4e0;border-radius:6px;padding:8px 12px;font-size:14px;">
-      </div>
-      <div id="trade-summary" style="font-size:12px;color:#7cd7ff;margin-bottom:12px;"></div>
-      <div id="trade-err" style="color:#ff6b81;font-size:12px;margin-bottom:10px;"></div>
-      <button id="btn-confirm-trade" style="width:100%;min-height:44px;background:#9FE1CB;color:#0b101c;font-weight:bold;border:none;border-radius:6px;cursor:pointer;">确认交割</button>
-    `;
-
-    openModal({ title: `与 ${sys.planetNameCn} 贸易交割`, body: div });
-
-    setTimeout(() => {
-      const sel = document.getElementById('trade-mat-sel');
-      const inp = document.getElementById('trade-qty-inp');
-      const sum = document.getElementById('trade-summary');
-      const err = document.getElementById('trade-err');
-      const btn = document.getElementById('btn-confirm-trade');
-
-      function updateSum() {
-        const mat = sel.value;
-        const g = goods.find((x) => x.mat === mat);
-        const qty = parseInt(inp.value, 10) || 0;
-        const cost = (g ? g.priceAscoin : 0) * qty;
-        const curAscoin = Math.floor(Number(acc.ascoin) || 0);
-        sum.innerHTML = `交割总额：<b>${cost}</b> Ascoin（当前持有 <b>${curAscoin}</b> ₳ / 折合 <b>${goldCost}</b> 纯金）`;
-      }
-      sel.onchange = updateSum;
-      inp.oninput = updateSum;
-      updateSum();
-
-      btn.onclick = () => {
-        const mat = sel.value;
-        const qty = parseInt(inp.value, 10) || 0;
-        if (qty <= 0) {
-          err.textContent = '采购数量必须大于 0';
-          return;
-        }
-        const res = sendGalaxyTrade(acc, null, sys, mat, qty);
-        if (!res.ok) {
-          err.textContent = res.reason;
-        } else {
-          playVictory();
-          closeModal();
-          alert(res.msg);
-          refresh();
-        }
-      };
-    }, 50);
-  }
-
-  function generateDefenderShips(sys) {
-    const p = sys.defensePower || 1000;
-    const count = Math.max(2, Math.min(5, Math.round(p / 700)));
-    const ships = [];
-    for (let i = 0; i < count; i++) {
-      const isCapital = i === 0;
-      const roleId = isCapital ? (p >= 3000 ? 'battleship' : 'cruiser') : (i % 2 === 0 ? 'destroyer' : 'interceptor');
-      const hp = isCapital ? Math.round(p * 0.7 + 600) : Math.round(p * 0.25 + 250);
-      const shield = isCapital ? Math.round(p * 0.5 + 400) : Math.round(p * 0.15 + 150);
-      const firepower = isCapital ? Math.round(p * 0.1 + 60) : Math.round(p * 0.05 + 30);
-      ships.push({
-        id: `def_${sys.id || 'planet'}_${i}`,
-        name: isCapital ? `${sys.planetNameCn}·轨道要塞核心舰` : `${sys.planetNameCn}·护卫哨艇 #${i}`,
-        roleId,
-        role: roleId,
-        hullMax: hp,
-        shieldMax: shield,
-        firepower: firepower,
-        speed: 12 + (count - i),
-        critChance: 0.1,
-      });
-    }
-    return ships;
-  }
-
-  async function openChatModal() {
-    const div = document.createElement('div');
-    div.style.cssText = 'display:flex;flex-direction:column;gap:12px;height:450px;max-height:70vh;';
-    div.innerHTML = `
-      <div style="font-size:12px;color:#94a3b8;padding:6px 10px;background:rgba(56,189,248,0.08);border-radius:6px;border:1px solid rgba(56,189,248,0.2);">
-        📡 实时全星区超空间广播频段已连接（跨玩家公频通讯通道）
-      </div>
-      <div id="chat-msg-list" style="flex:1;overflow-y:auto;background:rgba(0,0,0,0.3);border:1px solid #22354c;border-radius:8px;padding:12px;display:flex;flex-direction:column;gap:8px;">
-        <div style="color:#64748b;text-align:center;padding:20px;">正在连接超空间广播频段...</div>
-      </div>
-      <div style="display:flex;gap:8px;align-items:center;">
-        <input type="text" id="chat-input" placeholder="输入广播信息（按 Enter 发送）..." maxlength="120"
-               style="flex:1;min-height:44px;padding:8px 12px;background:#0b101c;border:1px solid #22354c;border-radius:6px;color:#c8d4e0;font-size:14px;">
-        <button id="btn-send-chat" style="min-height:44px;padding:0 16px;background:#38bdf8;color:#0b101c;font-weight:bold;border:none;border-radius:6px;cursor:pointer;white-space:nowrap;">
-          发送广播
-        </button>
-      </div>
-    `;
-
-    openModal({ title: '💬 全星区超空间公频广播', body: div });
-
-    setTimeout(async () => {
-      const msgList = document.getElementById('chat-msg-list');
-      const input = document.getElementById('chat-input');
-      const btnSend = document.getElementById('btn-send-chat');
-      if (!msgList || !input || !btnSend) return;
-
-      async function refreshMessages() {
-        const res = await fetchOnlineChatMessages();
-        const msgs = (res && res.messages) ? res.messages : [];
-        if (msgs.length === 0) {
-          msgList.innerHTML = '<div style="color:#64748b;text-align:center;padding:20px;">当前公频尚无广播讯息，发一条向全星际打个招呼吧！</div>';
-          return;
-        }
-        msgList.innerHTML = msgs.map((m) => {
-          const isMe = m.senderId === profile.commanderId;
-          const time = new Date(m.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-          return `
-            <div style="padding:6px 10px;border-radius:6px;background:${isMe ? 'rgba(56,189,248,0.12)' : 'rgba(255,255,255,0.03)'};border:1px solid ${isMe ? '#38bdf840' : '#22354c'};">
-              <div style="display:flex;justify-content:space-between;font-size:11px;color:${isMe ? '#7cd7ff' : '#94a3b8'};margin-bottom:2px;">
-                <span>${escapeHtml(m.senderName)} <span style="font-size:10px;color:#64748b;">[${escapeHtml(m.senderId)}]</span></span>
-                <span>${time}</span>
-              </div>
-              <div style="font-size:13px;color:#f1f5f9;line-height:1.4;word-break:break-word;">${escapeHtml(m.text)}</div>
-            </div>
-          `;
-        }).join('');
-        msgList.scrollTop = msgList.scrollHeight;
-      }
-
-      await refreshMessages();
-
-      async function doSend() {
-        const text = input.value.trim();
-        if (!text) return;
-        input.value = '';
-        btnSend.disabled = true;
-        playPing();
-        await sendOnlineChatMessage(acc, text);
-        btnSend.disabled = false;
-        await refreshMessages();
-        input.focus();
-      }
-
-      btnSend.onclick = doSend;
-      input.onkeydown = (e) => {
-        if (e.key === 'Enter') {
-          e.preventDefault();
-          doSend();
-        }
-      };
-    }, 50);
-  }
-
-  async function openMarketModal() {
-    const homeCode = acc.homePlanetCode || 'syl';
-    const inst = getPlanetInstance(homeCode) || getPlanetInstance(homeCode.replace(/\d+$/, ''));
-    let activeTab = 'browse'; // 'browse' | 'list'
-
-    const div = document.createElement('div');
-    div.style.cssText = 'display:flex;flex-direction:column;gap:12px;height:480px;max-height:75vh;';
-    div.innerHTML = `
-      <div style="display:flex;gap:8px;border-bottom:1px solid #22354c;padding-bottom:8px;">
-        <button id="market-tab-browse" style="flex:1;min-height:40px;background:rgba(16,185,129,0.2);color:#6ee7b7;font-weight:bold;border:1px solid #10b98160;border-radius:6px;cursor:pointer;">
-          🛒 浏览在售货单
-        </button>
-        <button id="market-tab-post" style="flex:1;min-height:40px;background:rgba(255,255,255,0.05);color:#94a3b8;font-weight:bold;border:1px solid #22354c;border-radius:6px;cursor:pointer;">
-          📦 上架挂售物资
-        </button>
-      </div>
-      <div id="market-content" style="flex:1;overflow-y:auto;display:flex;flex-direction:column;">
-      </div>
-    `;
-
-    openModal({ title: '🌐 全星区星际跳蚤集市', body: div });
-
-    setTimeout(() => {
-      const tabBrowse = document.getElementById('market-tab-browse');
-      const tabPost = document.getElementById('market-tab-post');
-      const content = document.getElementById('market-content');
-      if (!tabBrowse || !tabPost || !content) return;
-
-      function switchTab(tab) {
-        activeTab = tab;
-        if (tab === 'browse') {
-          tabBrowse.style.background = 'rgba(16,185,129,0.2)';
-          tabBrowse.style.color = '#6ee7b7';
-          tabBrowse.style.borderColor = '#10b98160';
-          tabPost.style.background = 'rgba(255,255,255,0.05)';
-          tabPost.style.color = '#94a3b8';
-          tabPost.style.borderColor = '#22354c';
-          renderBrowse();
-        } else {
-          tabPost.style.background = 'rgba(16,185,129,0.2)';
-          tabPost.style.color = '#6ee7b7';
-          tabPost.style.borderColor = '#10b98160';
-          tabBrowse.style.background = 'rgba(255,255,255,0.05)';
-          tabBrowse.style.color = '#94a3b8';
-          tabBrowse.style.borderColor = '#22354c';
-          renderPost();
-        }
-      }
-
-      tabBrowse.onclick = () => switchTab('browse');
-      tabPost.onclick = () => switchTab('list');
-
-      async function renderBrowse() {
-        content.innerHTML = '<div style="color:#64748b;text-align:center;padding:30px;">正在连接星际集市数据库...</div>';
-        const listings = await fetchOnlineMarketListings();
-        if (listings.length === 0) {
-          content.innerHTML = `
-            <div style="padding:30px;text-align:center;color:#64748b;">
-              当前全星区集市暂无挂单。<br>
-              <span style="font-size:12px;color:#94a3b8;margin-top:6px;display:inline-block;">你可以点击上方「上架挂售物资」成为第一个星际大亨！</span>
-            </div>
-          `;
-          return;
-        }
-
-        const curAscoin = Math.floor(Number(acc.ascoin) || 0);
-        content.innerHTML = `
-          <div style="display:flex;justify-content:space-between;align-items:center;font-size:12px;color:#94a3b8;margin-bottom:8px;">
-            <span>当前持有：<b style="color:#7cd7ff">${curAscoin}</b> Ascoin</span>
-            <button id="btn-refresh-market" style="padding:4px 10px;background:rgba(255,255,255,0.06);border:1px solid #334155;color:#c8d4e0;border-radius:4px;cursor:pointer;">🔄 刷新集市</button>
-          </div>
-          <div id="market-items-list" style="display:flex;flex-direction:column;gap:8px;"></div>
-        `;
-
-        const refreshBtn = document.getElementById('btn-refresh-market');
-        if (refreshBtn) refreshBtn.onclick = () => renderBrowse();
-
-        const itemsList = document.getElementById('market-items-list');
-        for (const item of listings) {
-          const isMyListing = item.sellerId === profile.commanderId;
-          const totalCost = item.priceAscoin * item.qty;
-          const card = document.createElement('div');
-          card.style.cssText = 'padding:10px 12px;border-radius:6px;background:rgba(0,0,0,0.3);border:1px solid #22354c;display:flex;justify-content:space-between;align-items:center;gap:10px;';
-          card.innerHTML = `
-            <div style="flex:1;">
-              <div style="font-size:14px;font-weight:bold;color:#f1f5f9;display:flex;align-items:center;gap:6px;">
-                <span>${escapeHtml(item.nameCn)}</span>
-                <span style="font-size:12px;color:#6ee7b7;background:rgba(16,185,129,0.15);padding:1px 6px;border-radius:4px;">×${item.qty}</span>
-              </div>
-              <div style="font-size:11px;color:#94a3b8;margin-top:2px;">
-                卖家：<span style="color:#c8d4e0;">${escapeHtml(item.sellerCallsign)}</span>
-                ${isMyListing ? '<span style="color:#ffc46b;margin-left:4px;">(我的货单)</span>' : ''}
-              </div>
-              <div style="font-size:12px;color:#7cd7ff;margin-top:2px;">
-                单价 <b>${item.priceAscoin}</b> ₳ | 总计 <b>${totalCost}</b> Ascoin
-              </div>
-            </div>
-            <div>
-              <button class="btn-buy-listing" data-id="${item.id}" ${isMyListing ? 'disabled' : ''} style="min-height:38px;padding:0 14px;border:none;border-radius:6px;background:${isMyListing ? '#334155' : '#10b981'};color:${isMyListing ? '#64748b' : '#0b101c'};font-weight:bold;cursor:${isMyListing ? 'not-allowed' : 'pointer'};">
-                ${isMyListing ? '自挂货单' : '采购交割'}
-              </button>
-            </div>
-          `;
-          itemsList.appendChild(card);
-        }
-
-        itemsList.querySelectorAll('.btn-buy-listing').forEach((btn) => {
-          btn.addEventListener('click', async () => {
-            const listingId = btn.getAttribute('data-id');
-            btn.disabled = true;
-            btn.textContent = '交割中...';
-            const res = await buyOnlineMarketListing(acc, listingId);
-            if (!res.ok) {
-              alert(res.reason || '采购失败');
-              btn.disabled = false;
-              btn.textContent = '采购交割';
-            } else {
-              playVictory();
-              alert(res.msg);
-              refresh();
-              renderBrowse();
-            }
-          });
-        });
-      }
-
-      function renderPost() {
-        if (!inst || !Array.isArray(inst.inventory)) {
-          content.innerHTML = '<div style="padding:20px;text-align:center;color:#64748b;">母星仓储数据暂不可用。</div>';
-          return;
-        }
-
-        const availableMats = inst.inventory.filter((e) => (Number(e.owned) || 0) >= 1);
-        if (availableMats.length === 0) {
-          content.innerHTML = `
-            <div style="padding:30px;text-align:center;color:#64748b;">
-              母星仓储中暂无可挂售的物资。<br>
-              <span style="font-size:12px;color:#94a3b8;margin-top:6px;display:inline-block;">请先在工厂或矿区采集生产一些物资后再来挂单！</span>
-            </div>
-          `;
-          return;
-        }
-
-        content.innerHTML = `
-          <div style="background:rgba(0,0,0,0.25);border:1px solid #22354c;border-radius:8px;padding:14px;display:flex;flex-direction:column;gap:10px;">
-            <div>
-              <label style="font-size:12px;color:#94a3b8;display:block;margin-bottom:4px;">选择出售物资：</label>
-              <select id="post-mat-sel" style="width:100%;min-height:44px;background:#0b101c;border:1px solid #22354c;color:#c8d4e0;border-radius:6px;padding:8px 12px;font-size:14px;">
-                ${availableMats.map((e) => `<option value="${escapeHtml(e.mat)}">${escapeHtml(e.mat)} (当前存量: ${Math.floor(e.owned)})</option>`).join('')}
-              </select>
-            </div>
-            <div>
-              <label style="font-size:12px;color:#94a3b8;display:block;margin-bottom:4px;">上架数量：</label>
-              <input type="number" id="post-qty-inp" min="1" max="10000" value="10"
-                     style="width:100%;min-height:44px;box-sizing:border-box;background:#0b101c;border:1px solid #22354c;color:#c8d4e0;border-radius:6px;padding:8px 12px;font-size:14px;">
-            </div>
-            <div>
-              <label style="font-size:12px;color:#94a3b8;display:block;margin-bottom:4px;">出售单价 (Ascoin)：</label>
-              <input type="number" id="post-price-inp" min="1" max="100000" value="50"
-                     style="width:100%;min-height:44px;box-sizing:border-box;background:#0b101c;border:1px solid #22354c;color:#c8d4e0;border-radius:6px;padding:8px 12px;font-size:14px;">
-            </div>
-            <div id="post-summary" style="font-size:12px;color:#6ee7b7;margin-top:2px;"></div>
-            <div id="post-err" style="color:#ff6b81;font-size:12px;"></div>
-            <button id="btn-submit-post" style="width:100%;min-height:44px;background:#10b981;color:#0b101c;font-weight:bold;border:none;border-radius:6px;cursor:pointer;margin-top:4px;">
-              🚀 确认发布到全星区集市
-            </button>
-          </div>
-        `;
-
-        const matSel = document.getElementById('post-mat-sel');
-        const qtyInp = document.getElementById('post-qty-inp');
-        const priceInp = document.getElementById('post-price-inp');
-        const summary = document.getElementById('post-summary');
-        const err = document.getElementById('post-err');
-        const btnSubmit = document.getElementById('btn-submit-post');
-
-        function updatePostSum() {
-          const q = parseInt(qtyInp.value, 10) || 0;
-          const p = parseInt(priceInp.value, 10) || 0;
-          summary.innerHTML = `预计回款总额：<b>${q * p}</b> Ascoin`;
-        }
-        matSel.onchange = updatePostSum;
-        qtyInp.oninput = updatePostSum;
-        priceInp.oninput = updatePostSum;
-        updatePostSum();
-
-        btnSubmit.onclick = async () => {
-          const mat = matSel.value;
-          const qty = parseInt(qtyInp.value, 10) || 0;
-          const priceAscoin = parseInt(priceInp.value, 10) || 0;
-          if (qty <= 0 || priceAscoin <= 0) {
-            err.textContent = '数量与单价必须大于 0';
-            return;
-          }
-          btnSubmit.disabled = true;
-          btnSubmit.textContent = '正在挂单...';
-          const res = await createOnlineMarketListing(acc, { mat, nameCn: mat, qty, priceAscoin });
-          if (!res.ok) {
-            err.textContent = res.reason || '挂单失败';
-            btnSubmit.disabled = false;
-            btnSubmit.textContent = '🚀 确认发布到全星区集市';
-          } else {
-            playVictory();
-            alert(res.msg);
-            refresh();
-            switchTab('browse');
-          }
-        };
-      }
-
-      renderBrowse();
-    }, 50);
-  }
-
-  function openRaidModal(sys) {
-    const fleets = listFleets(acc);
-    const div = document.createElement('div');
-    const dist = sys.distanceLy || 2.0;
-    const fuelNeed = Math.round(dist * 150);
-
-    div.innerHTML = `
-      <p style="color:#94a3b8;font-size:13px;line-height:1.5;margin-bottom:12px;">
-        派遣主力舰队执行突击掠夺。若攻破敌要塞阵列，将劫掠其 5%~10% 的特产仓储运回母星，战后该星将进入 12 小时免战保护。
-      </p>
-      <div style="background:rgba(0,0,0,0.25);padding:10px;border-radius:6px;font-size:12px;color:#c8d4e0;margin-bottom:12px;">
-        <div>目标防线评级：<b>${fmtNum(sys.defensePower)}</b> 点</div>
-        <div>往返航程距离：<b>${dist}</b> 光年（需要消耗 <b>${fuelNeed}</b> mol 甲烷/氢气）</div>
-      </div>
-      <div style="margin-bottom:12px;">
-        <label style="font-size:12px;color:#94a3b8;display:block;margin-bottom:4px;">指派突击编队：</label>
-        <select id="raid-fleet-sel" style="width:100%;min-height:44px;background:#0b101c;border:1px solid #22354c;color:#c8d4e0;border-radius:6px;padding:8px;">
-          ${fleets.length === 0 ? '<option value="">(当前无可用编队，请先在舰队页组建)</option>' : fleets.map((f) => `<option value="${f.id}">${escapeHtml(f.nameCn)}（战力评估：${evaluateFleetPower(acc, f)}）</option>`).join('')}
-        </select>
-      </div>
-      <div id="raid-err" style="color:#ff6b81;font-size:12px;margin-bottom:10px;"></div>
-      <div style="display:flex;gap:10px;flex-wrap:wrap;">
-        <button id="btn-tactical-raid" style="flex:1;min-width:130px;min-height:44px;background:#38bdf8;color:#0b101c;font-weight:bold;border:none;border-radius:6px;cursor:pointer;">⚔️ 亲临实操交火</button>
-        <button id="btn-confirm-raid" style="flex:1;min-width:130px;min-height:44px;background:#f09595;color:#0b101c;font-weight:bold;border:none;border-radius:6px;cursor:pointer;">⚡ 快速推演突击</button>
-      </div>
-    `;
-
-    openModal({ title: `远征进攻：${sys.planetNameCn}`, body: div });
-
-    setTimeout(() => {
-      const sel = document.getElementById('raid-fleet-sel');
-      const err = document.getElementById('raid-err');
-      const btnTactical = document.getElementById('btn-tactical-raid');
-      const btnQuick = document.getElementById('btn-confirm-raid');
-
-      if (btnQuick) {
-        btnQuick.onclick = () => {
-          const fleetId = sel.value;
-          if (!fleetId) {
-            err.textContent = '请先指派具备战斗力的空闲编队';
-            return;
-          }
-          playWarp();
-          const res = sendGalaxyRaid(acc, fleetId, sys);
-          if (!res.ok) {
-            err.textContent = res.reason;
-          } else {
-            closeModal();
-            alert(res.msg);
-            refresh();
-          }
-        };
-      }
-
-      if (btnTactical) {
-        btnTactical.onclick = () => {
-          const fleetId = sel.value;
-          if (!fleetId) {
-            err.textContent = '请先指派具备战斗力的空闲编队';
-            return;
-          }
-          const fleet = fleets.find((f) => f.id === fleetId);
-          if (!fleet || !fleet.shipIds || fleet.shipIds.length === 0) {
-            err.textContent = '该编队没有指派战舰';
-            return;
-          }
-          playWarp();
-          const fleetShips = (acc.ships || []).filter((s) => fleet.shipIds.includes(s.id));
-          const defenderShips = generateDefenderShips(sys);
-
-          closeModal();
-          openBattleView(fleetShips, defenderShips, {
-            attackerName: `${profile.callsign} [${fleet.nameCn}]`,
-            defenderName: `${sys.planetNameCn} 防御阵列`,
-            openModal,
-            closeModal,
-            onFinish: (result) => {
-              const res = sendGalaxyRaid(acc, fleetId, sys, { forceWin: result.win });
-              refresh();
-            },
-          });
-        };
-      }
-    }, 50);
-  }
-
-  // 初始启动
-  refresh();
-
-  // 拉取真实在线玩家并回填注册表缓存，再重绘一次 —— 星图的星系列表读的就是这份
-  // 缓存，所以这样才能看到全服真人（此前该接口从未被调用，星图里永远只有 NPC）。
-  if (getStorageMode().mode === 'online') {
-    let filled = false;
-    const fill = (list) => {
-      if (filled) return;
-      if (Array.isArray(list) && list.length > 0) {
-        filled = true;
-        refresh();
-      }
-    };
-    fetchRemoteGalaxyRegistry(acc, '').then(fill).catch(() => {});
-    // 中继刚连上时可能还没收到他人广播，稍后再补拉一次。
-    setTimeout(() => { fetchRemoteGalaxyRegistry(acc, '').then(fill).catch(() => {}); }, 5000);
-  }
+function openAttackModal(ctx, rerender, acc, planet, after) {
+  const openModal = ctx.openModal;
+  if (!openModal) return;
+  const myPower = myDefensePower(acc);   // 同一口径：全部舰队 + 军队 + 驻防
+  // v0.2.2：把建制军队快照带进 payload —— 守方按钢铁雄心式多回合会战结算
+  const armies = listArmies(acc).map((a) => ({
+    nameCn: a.nameCn || a.id, power: a.power,
+    atk: a.stats ? a.stats.atk : 0, def: a.stats ? a.stats.def : 0,
+  }));
+  const wrap = el('div');
+  wrap.appendChild(el('div', null, '以当前全部舰队 + 军队战力（' + fmtNum(myPower)
+    + (armies.length ? '，建制军队 ' + armies.length + ' 支' : '，无建制军队 —— 按总战力折算一支远征军')
+    + '）向「' + (planet.owner_name || '?') + '」的 ' + (planet.planet_name_cn || planet.planet_code)
+    + ' 发起进攻宣告。对方上线后按钢铁雄心式多回合会战本地结算（同一随机种子：组织度被打空的部队撤出战斗、'
+    + '战斗宽度每方 3 支、回合耗尽进攻方撤退）；胜方掠夺对方 10%~25% Ascoin，双方按兵力损失承受战损。'));
+  const go = el('button', 'btn btn-danger', '确认发起进攻');
+  const msg = el('div', 'muted');
+  go.addEventListener('click', async () => {
+    go.disabled = true;
+    const seed = (Date.now() ^ Math.floor(Math.random() * 1e9)) >>> 0;
+    const r = await postIncident(planet.owner_id, 'attack', {
+      seed, atkPower: myPower, atkArmies: armies, fromName: (acc && acc.name) || '深空旅人',
+      fromPlanet: planet.planet_code || '',
+    });
+    if (!r.ok) { go.disabled = false; msg.textContent = '发送失败：' + (r.reason || ''); return; }
+    ctx.closeModal && ctx.closeModal();
+    ctx.openModal && ctx.openModal({ title: '进攻已宣告', body: '进攻宣告已发出。对方登录并处理收件箱后，'
+      + '你会在此页收件箱收到战报回执（逐回合战报、掠夺与战损随后入账）。' });
+    after && after();
+  });
+  wrap.appendChild(go); wrap.appendChild(msg);
+  openModal({ title: '进攻：' + (planet.planet_name_cn || planet.planet_code), body: wrap });
 }

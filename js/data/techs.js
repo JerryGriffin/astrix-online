@@ -190,42 +190,36 @@ const RAW_TECHS = [
         + '',
   },
 
-  // ===== M 线：军事（v0.2.0 新增）=====
-  // 【定位】枪炮等军事部件在制造车间生产（部件解锁走本线），
-  //   组装成建制裁军队需要「军队指挥 t_m5」。整条线挂在制造车间（t_e4）之下，
-  //   保证「先有产能，再谈军备」，与造船（t_e3）互为平行支线。
+  // ===== M 线：军事（v0.2.0 新增；v0.2.5 移除无实际功能的 t_m5 军队指挥）=====
+  // 【v0.2.6 改动】整条线从「军事」科技分支**移入「设施」子分类**（与船上设施、电力设施并列），
+  //   且**前置改为「已建成军营」**（reqBuilding）—— 先建军营、再谈军备，与造船（t_e3）互为平行支线。
+  //   部件解锁仍走本线（army_parts.js 的 tech 字段），军队系统在 t_m1 研究后开放（组装由军营驱动）。
   {
-    id: 't_m1', code: 'M1', nameCn: '单兵武器', branch: 'military',
-    prereq: ['t_e4'], cost: 3000, unlocksBuilding: null,
+    id: 't_m1', code: 'M1', nameCn: '单兵武器', branch: 'military', section: 'facility',
+    prereq: ['t_e4'], reqBuilding: 'barracks', cost: 3000, unlocksBuilding: null,
     unlockResources: [],
     desc: '轻武器工坊开张：制造车间解锁**突击步枪**与**轻型框架**的生产，'
-        + '军队体系的起点。',
+        + '军队体系的起点。需先建成**军营**方可研究。',
   },
   {
-    id: 't_m2', code: 'M2', nameCn: '军用装甲', branch: 'military',
-    prereq: ['t_m1'], cost: 9000, unlocksBuilding: null,
+    id: 't_m2', code: 'M2', nameCn: '军用装甲', branch: 'military', section: 'facility',
+    prereq: ['t_m1'], reqBuilding: 'barracks', cost: 9000, unlocksBuilding: null,
     unlockResources: [],
     desc: '防护工程：解锁**轻型护甲 / 复合装甲 / 重机枪 / 重型框架**的生产，'
         + '部队从此抗得住正面交火。',
   },
   {
-    id: 't_m3', code: 'M3', nameCn: '机动平台', branch: 'military',
-    prereq: ['t_m2'], cost: 24000, unlocksBuilding: null,
+    id: 't_m3', code: 'M3', nameCn: '机动平台', branch: 'military', section: 'facility',
+    prereq: ['t_m2'], reqBuilding: 'barracks', cost: 24000, unlocksBuilding: null,
     unlockResources: [],
     desc: '载具化：解锁**悬浮 / 履带 / 轮式**三种底盘，军队从「徒步班组」升级为「机械化部队」。',
   },
   {
-    id: 't_m4', code: 'M4', nameCn: '火炮重武', branch: 'military',
-    prereq: ['t_m3'], cost: 60000, unlocksBuilding: null,
+    id: 't_m4', code: 'M4', nameCn: '火炮重武', branch: 'military', section: 'facility',
+    prereq: ['t_m3'], reqBuilding: 'barracks', cost: 60000, unlocksBuilding: null,
     unlockResources: [],
-    desc: '重火力：解锁**榴弹炮 / 观测雷达 / 补给单元**的生产，远程压制成为可能。',
-  },
-  {
-    id: 't_m5', code: 'M5', nameCn: '军队指挥', branch: 'military',
-    prereq: ['t_m4'], cost: 150000, unlocksBuilding: null,
-    unlockResources: [],
-    desc: '建军门槛：建立指挥体系后，可以在「军队」页按蓝图把造好的部件'
-        + '**组装成建制裁军队**（游骑兵 / 铁壁 / 雷霆三张蓝图），并参与星际进攻与防御。',
+    desc: '重火力：解锁**榴弹炮 / 观测雷达 / 补给单元**的生产，远程压制成为可能。'
+        + '至此军事科技全部研究完毕，三张默认兵种蓝图全部解锁。',
   },
 
   // ===== 电力设施解锁（v0.0.7 新增，共 12 个，section: 'facility'）=====
@@ -352,20 +346,38 @@ export const TECHS = RAW_TECHS.map((t) => ({ ...t, tier: TIER[t.id] }));
 export const TECH_BY_ID = Object.fromEntries(TECHS.map((t) => [t.id, t]));
 
 // 前置全部研究完成才可研究
-export function canResearch(techId, researched) {
+// v0.2.6：research 门禁支持「建筑前置」—— 部分设施类科技要求先建成某建筑（reqBuilding）。
+//   builtBuildings 为「已建成建筑 id 集合」（inst.buildings 中座数 > 0 的 id）；缺省时只判科技前置。
+export function canResearch(techId, researched, builtBuildings) {
   const t = TECH_BY_ID[techId];
   if (!t) return false;
   const done = researched instanceof Set ? researched : new Set(researched || []);
   if (done.has(techId)) return false;
-  return (t.prereq || []).every((p) => done.has(p));
+  if (!(t.prereq || []).every((p) => done.has(p))) return false;
+  if (t.reqBuilding) {
+    const built = builtBuildings instanceof Set ? builtBuildings
+      : new Set(builtBuildings || []);
+    if (!built.has(t.reqBuilding)) return false;
+  }
+  return true;
 }
 
-// 该科技是否已具备研究条件（只差研究点）
+// 该科技是否已具备研究条件（只差研究点）。返回未满足的科技前置 id；
+// 建筑前置单独由 missingBuilding() 给出，避免与科技 id 混用。
 export function missingPrereqs(techId, researched) {
   const t = TECH_BY_ID[techId];
   if (!t) return [];
   const done = researched instanceof Set ? researched : new Set(researched || []);
   return (t.prereq || []).filter((p) => !done.has(p));
+}
+
+// v0.2.6：返回该科技要求的「未建成建筑 id」列表（已建成则为空）。
+export function missingBuilding(techId, builtBuildings) {
+  const t = TECH_BY_ID[techId];
+  if (!t || !t.reqBuilding) return [];
+  const built = builtBuildings instanceof Set ? builtBuildings
+    : new Set(builtBuildings || []);
+  return built.has(t.reqBuilding) ? [] : [t.reqBuilding];
 }
 
 // 按层级分组，便于 UI 逐层渲染

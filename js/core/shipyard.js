@@ -10,15 +10,15 @@
 // 全部公式集中在这里，方便策划调参
 // ============================================================================
 
-import { MATERIALS } from '../data/materials.js?v=21.18';
+import { MATERIALS } from '../data/materials.js?v=20.8';
 import {
   PART_BY_ID, HULLS, ENGINES, WEAPONS, FACILITIES, MARKS,
   MATERIAL_SLOTS, DEFAULT_MATERIAL, PART_CATEGORIES,
   craftableParts, craftWorkOf, isPartUnlocked,
-} from '../data/ship_parts.js?v=21.18';
-import { POWER_FACILITY_BY_ID } from '../data/facilities.js?v=21.18';
-import { FUEL_BY_NAME } from '../data/fuels.js?v=21.18';
-import { PLANETS } from '../data/planets.js?v=21.18';
+} from '../data/ship_parts.js?v=20.8';
+import { POWER_FACILITY_BY_ID } from '../data/facilities.js?v=20.8';
+import { FUEL_BY_NAME } from '../data/fuels.js?v=20.8';
+import { PLANETS } from '../data/planets.js?v=20.8';
 
 // 自建材料中文名索引（materials.js 只导出 MATERIALS 数组）
 const MAT_BY_NAME = Object.fromEntries(MATERIALS.map((m) => [m.nameCn, m]));
@@ -372,7 +372,7 @@ export function evaluateBlueprint(bp, ctx = {}) {
   const massT = totalMass(bp);
   if (massT <= 0) errors.push('总质量为 0');
   if (engines.length && agg.thrust / Math.max(1, massT) < 2) {
-    warnings.push('推重比偏低（每吨质量推力不足 2 千牛），航速会很慢');
+    warnings.push('推重比偏低（< 2 kN/t），航速会很慢');
   }
   if (agg.tempBandBonus < 8) warnings.push('乘员仓偏少，温度安全区间很窄');
   if (agg.damage === 0) warnings.push('无武装');
@@ -729,9 +729,9 @@ export function genBlueprintId(kind) {
   return 'bp_' + (kind || 'custom') + '_' + Date.now().toString(36) + '_' + _bpSeq.toString(36);
 }
 
-// 默认 5 张蓝图（覆盖五大体量全序列）：
-//   探索哨戒艇 MKI「疾风」 / 护卫舰 MKI「刺猬」 / 运输船 MKI「驮鹿」 / 巡洋舰 MKI「游隼」 / 战列主力舰 MKI「泰坦」
-// 全部必须能通过 evaluateBlueprint（容量不超 / 引擎数合法 / 有乘员仓）。
+// 默认 3 张低级蓝图（命名严格照抄设计者）：
+//   护卫舰 MKI「刺猬」 / 运输船 MKI「驮鹿」 / 巡洋舰 MKI「游隼」
+// 三张都必须能通过 evaluateBlueprint（容量不超 / 引擎数合法 / 有乘员仓）。
 export function defaultBlueprints() {
   const now = Date.now();
   const mk = (o) => Object.assign({
@@ -742,15 +742,6 @@ export function defaultBlueprints() {
     planetCode: 'syl',
   }, o, { hull: o.hullId });   // 额外带 hull 字段（= hullId），与 emptyBlueprint 的 hullId 并存
   return [
-    mk({
-      kind: 'scout', nameCn: '探索哨戒艇 MKI「疾风」',
-      hullId: 'hull_xs_mk1', hullMaterial: DEFAULT_MATERIAL.hull,
-      engines: [{ id: 'engine_light_mk1', material: DEFAULT_MATERIAL.engine }],
-      parts: [
-        { id: 'wpn_mg_mk1', material: DEFAULT_MATERIAL.weapon },
-        { id: 'fac_crew_mk1', material: null },
-      ],
-    }),
     mk({
       kind: 'frigate', nameCn: '护卫舰 MKI「刺猬」',
       hullId: 'hull_s_mk1', hullMaterial: DEFAULT_MATERIAL.hull,
@@ -785,22 +776,6 @@ export function defaultBlueprints() {
       parts: [
         { id: 'wpn_cannon_mk1', material: DEFAULT_MATERIAL.weapon },
         { id: 'wpn_cannon_mk1', material: DEFAULT_MATERIAL.weapon },
-        { id: 'fac_armor_mk1', material: DEFAULT_MATERIAL.armor },
-        { id: 'fac_armor_mk1', material: DEFAULT_MATERIAL.armor },
-        { id: 'fac_crew_mk1', material: null },
-      ],
-    }),
-    mk({
-      kind: 'dreadnought', nameCn: '战列主力舰 MKI「泰坦」',
-      hullId: 'hull_xl_mk1', hullMaterial: DEFAULT_MATERIAL.hull,
-      engines: [
-        { id: 'engine_super_mk1', material: DEFAULT_MATERIAL.engine },
-        { id: 'engine_heavy_mk1', material: DEFAULT_MATERIAL.engine },
-      ],
-      parts: [
-        { id: 'wpn_cannon_mk1', material: DEFAULT_MATERIAL.weapon },
-        { id: 'wpn_cannon_mk1', material: DEFAULT_MATERIAL.weapon },
-        { id: 'wpn_rocket_mk1', material: DEFAULT_MATERIAL.weapon },
         { id: 'fac_armor_mk1', material: DEFAULT_MATERIAL.armor },
         { id: 'fac_armor_mk1', material: DEFAULT_MATERIAL.armor },
         { id: 'fac_crew_mk1', material: null },

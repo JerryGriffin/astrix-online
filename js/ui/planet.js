@@ -10,17 +10,17 @@
 // 3. 底部菜单新增「电力」tab（储电站与设施，js/ui/power.js）。
 // 4. 底部菜单的「殖民」占位 tab 被 **「星球选择」** 取代（需求 R13）：
 //    它只在**造出船坞之后**才出现，用于管理各殖民地的发展（js/ui/colony.js）。
-import { PLANETS } from '../data/planets.js?v=21.18';
-import { getPlanetByCode as _idxGetPlanet } from '../data/index.js?v=21.18';
-import { currentAccount, getPlanetInstance, buildingCount } from '../core/state.js?v=21.18';
-import { fmtNum } from '../core/format.js?v=21.18';
-import { renderInventory } from './inventory.js?v=21.18';
-import { renderResearch } from './research.js?v=21.18';
-import { renderShipyard } from './shipyard.js?v=21.18';
+import { PLANETS } from '../data/planets.js?v=20.8';
+import { getPlanetByCode as _idxGetPlanet } from '../data/index.js?v=20.8';
+import { STATE, currentAccount, getPlanetInstance, buildingCount } from '../core/state.js?v=20.8';
+import { fmtNum } from '../core/format.js?v=20.8';
+import { renderInventory } from './inventory.js?v=20.8';
+import { renderResearch } from './research.js?v=20.8';
+import { renderShipyard } from './shipyard.js?v=20.8';
 // v0.0.92：舰队编队 / 星际指令 / 殖民管理 / 商店星
-import { renderFleet as renderFleetPage } from './fleet.js?v=21.18';
-import { renderBuildings } from './buildings.js?v=21.18';
-import { renderDesign } from './design.js?v=21.18';
+import { renderFleet as renderFleetPage } from './fleet.js?v=20.8';
+import { renderBuildings } from './buildings.js?v=20.8';
+import { renderDesign } from './design.js?v=20.8';
 
 // 优先走数据层 index.js 的查询函数（数据层修正后生效），失败则直接扫描 PLANETS 兜底，
 // 以兼容不同字段命名（id/code、name/nameCn）。
@@ -132,6 +132,7 @@ export function renderPlanet(root, ctx) {
   //   原来这里挂的是个纯占位的「殖民」tab（点了只显示「尚未开放」），
   //   现在由真正能用的「星球选择」取代它，避免两个含义重叠的入口并存。
   const hasDock = buildingCount(inst, 'dock') > 0;
+  // v0.2.4：军队 tab 恒显示（未研究「单兵武器 t_m1」时军队页内提示需解锁的科技，不再藏按钮）。
   const tabs = [
     { key: 'inv', label: '物品栏' },
     { key: 'pop', label: '人力' },
@@ -141,9 +142,15 @@ export function renderPlanet(root, ctx) {
     { key: 'fleet', label: '舰队' },
     { key: 'army', label: '军队' },
   ];
+  // v0.2.0：星际（云服务跨玩家）与「星球选择」在造出船坞后才进入菜单。
+  // v0.2.1：星际仅在线模式开放（离线模式只经营本地殖民地，无星际 tab）；
+  //   在线模式用「星际」承载殖民地管理，不再有独立的「星球选择」tab。
   if (hasDock) {
-    tabs.push({ key: 'colony', label: '星球选择' });
-    tabs.push({ key: 'galaxy', label: '星际' });
+    if (STATE.mode === 'online') {
+      tabs.push({ key: 'galaxy', label: '星际' });
+    } else {
+      tabs.push({ key: 'colony', label: '星球选择' });
+    }
   }
 
   const tabBtns = {};
@@ -193,10 +200,12 @@ export function renderPlanet(root, ctx) {
       showPower(contentInner);
     } else if (key === 'colony') {
       showColony(contentInner);
-    } else if (key === 'galaxy') {
-      showGalaxy(contentInner);
     } else if (key === 'army') {
+      // v0.2.0：军队页（组装生产线 / 蓝图 / 建制军队）
       showArmy(contentInner);
+    } else if (key === 'galaxy') {
+      // v0.2.0：星际页（云服务跨玩家：登录 / 快照发布 / 收件箱 / 贸易·进攻）
+      showGalaxy(contentInner);
     } else {
       contentInner.innerHTML =
         `<div class="placeholder glass">` +
@@ -226,19 +235,19 @@ export function renderPlanet(root, ctx) {
 
   // 动态接入人力面板：renderPopulation(contentRoot, currentPlanet)
   function showPopulation(root) {
-    return showPanel(root, './population.js?v=21.18', 'renderPopulation', [root, getPlanetInstance(planetCode)], '人力系统');
+    return showPanel(root, './population.js?v=20.8', 'renderPopulation', [root, getPlanetInstance(planetCode)], '人力系统');
   }
 
   // v0.0.6：电力面板（储电站、12 项电力设施、发电/耗电/储能结算）
   function showPower(root) {
-    return showPanel(root, './power.js?v=21.18', 'renderPower', [root, {
+    return showPanel(root, './power.js?v=20.8', 'renderPower', [root, {
       openModal, closeModal, planetCode, account, planet: getPlanetInstance(planetCode),
     }], '电力系统');
   }
 
   // v0.0.6（需求 R13）：星球选择 / 殖民地管理
   function showColony(root) {
-    return showPanel(root, './colony.js?v=21.18', 'renderColony', [root, {
+    return showPanel(root, './colony.js?v=20.8', 'renderColony', [root, {
       openModal, closeModal, planetCode, account, planet: getPlanetInstance(planetCode),
       // v0.1.1（需求 17）：透传给 main.js 的真实路由（nav.showPlanet(code)）。
       //   此前这里是「目标 ≠ 当前就 onBack 回主界面」的桩，星球切换从未生效。
@@ -250,18 +259,24 @@ export function renderPlanet(root, ctx) {
     }], '星球选择');
   }
 
-  // v0.2.0：星际星系大厅
-  function showGalaxy(root) {
-    return showPanel(root, './galaxy.js?v=21.18', 'renderGalaxy', [root, {
-      openModal, closeModal, planetCode, account, onBack: () => rerender(),
-    }], '星际大厅');
+  // v0.2.0：军队页（组装生产线 / 三张蓝图 / 建制军队）。内部有 t_m5 + 制造车间门禁。
+  function showArmy(root) {
+    return showPanel(root, './army.js?v=20.8', 'renderArmyPage', [root, {
+      openModal, closeModal, planetCode, account, planet: getPlanetInstance(planetCode),
+    }], '军队系统');
   }
 
-  // v0.2.0：军队系统
-  function showArmy(root) {
-    return showPanel(root, './army.js?v=21.18', 'renderArmy', [root, {
-      openModal, closeModal, planetCode, account, onBack: () => rerender(),
-    }], '军队系统');
+  // v0.2.0：星际页（云服务跨玩家）。ensureReady 懒加载 SDK，异常只影响本 tab。
+  // v0.2.1：透传 onEnterPlanet —— 在线模式星际页内嵌了殖民地管理，点「进入」要切到该星球。
+  function showGalaxy(root) {
+    return showPanel(root, './galaxy.js?v=20.8', 'renderGalaxy', [root, {
+      openModal, closeModal, planetCode, account,
+      onEnterPlanet: (code) => {
+        if (code && code !== planetCode && typeof ctx.onEnterPlanet === 'function') {
+          ctx.onEnterPlanet(code);
+        }
+      },
+    }], '星际');
   }
 
   // v0.0.8：舰队面板。顶部分支「舰船 / 设计」——「设计」是造出船坞后才出现的子分支，
@@ -278,7 +293,8 @@ export function renderPlanet(root, ctx) {
     const hasDock = buildingCount(inst, 'dock') > 0;
     // v0.0.92：「舰队与殖民」子页提供编队 / 五指令 / 殖民管理 / 商店星
     const defs = [{ key: 'ship', label: '舰船' }, { key: 'expedition', label: '舰队与殖民' }];
-    if (hasDock) defs.push({ key: 'design', label: '设计' });
+    // v0.2.1：设计子页改名「设计与建造」
+    if (hasDock) defs.push({ key: 'design', label: '设计与建造' });
 
     const btns = {};
     defs.forEach((d) => {

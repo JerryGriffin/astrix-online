@@ -7,14 +7,14 @@
 // 运输：本模块只负责「下单与结算」；**货必须由运输船运**（运输判定在 core/fleet.js，
 //   订单上带 cells 供其判断载货格数是否够）。
 
-import { MATERIALS } from '../data/materials.js?v=21.18';
-import { ownedOf, spendOwned, currentAccount, STATE } from './state.js?v=21.18';
-import { ensureEntry } from './production.js?v=21.18';
-import { ASCOIN_PER_GOLD } from './currency.js?v=21.18';
+import { MATERIALS } from '../data/materials.js?v=20.8';
+import { ownedOf, spendOwned, currentAccount, STATE } from './state.js?v=20.8';
+import { ensureEntry } from './production.js?v=20.8';
+import { ASCOIN_PER_GOLD } from './currency.js?v=20.8';
 // v0.1.2 R9：装备类交易键走 partId@材料（与 v0.1.1 贡品契约同口径），
 // 需能识别部件 id 并估值，故引入部件数据表（PART_BY_ID）与 resolvePart。
-import { PART_BY_ID } from '../data/ship_parts.js?v=21.18';
-import { resolvePart } from './shipyard.js?v=21.18';
+import { PART_BY_ID } from '../data/ship_parts.js?v=20.8';
+import { resolvePart } from './shipyard.js?v=20.8';
 
 const MAT_BY_NAME = Object.fromEntries(MATERIALS.map((m) => [m.nameCn, m]));
 
@@ -36,7 +36,7 @@ export const SHOP_PLANET = {
   nameEn: 'Ast1',
   type: '商业空间站',
   isShop: true,
-  description: '一座往来商船云集的商业空间站：用物资换 Ascoin，或用 Ascoin 换物资，价格随成交实时变化。',
+  description: '一座往来商船云集的商业空间站：用物资换 ascoin，或用 ascoin 换物资，价格随成交实时变化。',
   orbit: { radius: 18, phase: 180 },
   layers: { surface: [], underground: [], deep: [], core: [] },
   gases: [],
@@ -49,6 +49,8 @@ export const SHOP_PLANET = {
 // ============================================================================
 // 基准价：按材料的稀缺度给（自然 < 精炼 < 复合；再用强度+耐久微调）
 // ============================================================================
+function categoryOf(m) { return m.category || 'natural'; }
+
 function basePriceOf(m) {
   // 需求22：金（gold）价格恒为 ASCOIN_PER_GOLD = 1048576 Ascoin（货币锚定，设计者规则
   // 「1048576 Ascoin 恒等于 1 金」），不套用普通材料公式，也不受成交浮动影响。
@@ -59,9 +61,41 @@ function basePriceOf(m) {
     const raw = 10 + (Number(m.strength) || 0) * 60 + (Number(m.durability) || 0) * 8;
     return Math.max(1e8, Math.round(raw));
   }
-  const catMul = m.category === 'composite' ? 6 : (m.category === 'refined' ? 2.5 : 1);
+  const cat = categoryOf(m);
   const raw = 10 + (Number(m.strength) || 0) * 60 + (Number(m.durability) || 0) * 8;
-  return Math.max(10, Math.min(5000, Math.round(raw * catMul)));
+  // v0.2.6 股市改版：基准价按层级拉开，并让「低级资源（natural）极度不值钱」——
+  //   原 natural 档最低 10、与 refined(×2.5) 差距不大；现改为 natural 仅 ×0.12（几乎白送），
+  //   refined ×1.0、composite ×4，凸显「越原始越廉价、越深加共越值钱」的股市感。
+  if (cat === 'composite') return Math.max(50, Math.min(20000, Math.round(raw * 4)));
+  if (cat === 'refined') return Math.max(5, Math.min(8000, Math.round(raw * 1.0)));
+  return Math.max(1, Math.round(raw * 0.12));   // natural：极低基准价
+}
+
+// ============================================================================
+// 商店星仓库（v0.2.6 股市）：每种物资的商店库存。买=从仓库减、卖=进仓库增；
+// 仓库随心跳缓慢回补到基线，保证市场长期有供给。价格随成交实时涨跌（买涨卖跌）+ 自然回归。
+// ============================================================================
+function warehouseBaseline(m) {
+  const cat = categoryOf(m);
+  if (m.id === 'gold') return 1e9;
+  if (m.id === 'eridium') return 200;
+  if (cat === 'composite') return 240;
+  if (cat === 'refined') return 1200;
+  return 6000;   // natural：低级资源库存极大（配合极低单价）
+}
+
+/** 惰性初始化账号的商店仓库：acc.shopWarehouse = { [matNameCn]: qty } */
+export function ensureShopWarehouse(acc) {
+  if (!acc) return;
+  if (!acc.shopWarehouse || typeof acc.shopWarehouse !== 'object') acc.shopWarehouse = {};
+  for (const m of MATERIALS) {
+    if (acc.shopWarehouse[m.nameCn] == null) acc.shopWarehouse[m.nameCn] = warehouseBaseline(m);
+  }
+}
+
+export function warehouseOf(acc, mat) {
+  ensureShopWarehouse(acc);
+  return Number(acc.shopWarehouse[mat]) || 0;
 }
 
 // 可交易物资：材料表里的全部 nameCn
@@ -70,7 +104,7 @@ const TRADABLES = MATERIALS.map((m) => m.nameCn);
 // v0.1.2 R9：装备类交易键判定（与 v0.1.1 贡品契约 state.js#deliverTributeToHome 同口径）。
 // 形如 'hull_s_mk1@钛'、'engine_basic@钢'、'wpn_mg@碳化钨'、'fac_crew_mk1@铝合金'，
 // 即「部件 id @ 材料名」。材料名可空（部分设施部件不可选材料，键形如 'fac_x_mk1@'）。
-function isEquipmentKey(mat) {
+export function isEquipmentKey(mat) {
   if (typeof mat !== 'string' || mat.indexOf('@') < 0) return false;
   const partId = mat.slice(0, mat.indexOf('@'));
   return !!PART_BY_ID[partId];
@@ -102,6 +136,7 @@ function equipmentValue(mat) {
 export function shopStateOf(acc) {
   if (!acc) return {};
   if (!acc.shopState || typeof acc.shopState !== 'object') acc.shopState = {};
+  ensureShopWarehouse(acc);   // v0.2.6：同步初始化商店仓库
   for (const m of MATERIALS) {
     if (!acc.shopState[m.nameCn]) {
       const base = basePriceOf(m);
@@ -136,7 +171,7 @@ export function shopPrices(acc) {
     .sort((a, b) => b.price - a.price || a.mat.localeCompare(b.mat, 'zh'));
 }
 
-/** 价格自然回归（由心跳每秒调用）：price → base（每秒 1%）。金恒价，跳过回归 */
+/** 价格自然回归 + 仓库缓慢回补（由心跳每秒调用）。金恒价跳过回归 */
 export function tickShop(acc, dt) {
   if (!acc) return;
   const st = shopStateOf(acc);
@@ -145,6 +180,15 @@ export function tickShop(acc, dt) {
     if (isGold(mat)) continue;   // 需求22：金不参与回归，恒为 ASCOIN_PER_GOLD
     const s = st[mat];
     s.price = s.price + (s.base - s.price) * k;
+  }
+  // v0.2.6 股市：仓库随心跳缓慢回补到基线（每秒 2%），保证长期供给、避免买空后永久缺货
+  ensureShopWarehouse(acc);
+  const kr = Math.min(1, 0.02 * (Number(dt) || 0));
+  for (const m of MATERIALS) {
+    if (m.id === 'gold') continue;
+    const base = warehouseBaseline(m);
+    const cur = Number(acc.shopWarehouse[m.nameCn]) || 0;
+    if (cur < base) acc.shopWarehouse[m.nameCn] = cur + (base - cur) * kr;
   }
 }
 
@@ -168,7 +212,7 @@ export function allOrders(acc) {
   return acc.shopOrders;
 }
 
-function ascoinOf(acc) {
+export function ascoinOf(acc) {
   const v = Number(acc && acc.ascoin);
   return Number.isFinite(v) ? v : 0;
 }
@@ -286,6 +330,67 @@ export function grantAscoin(acc, amt) {
 }
 
 // ============================================================================
+// 股市即时交易（v0.2.6）：每种资源随时可买卖，价格随成交实时涨跌（买涨卖跌）+ 自然回归，
+// 货物从「商店星仓库」增减（买减卖增，仓库随心跳回补）。无需运输船、即时交割。
+//   marketBuy  → 花 ascoin，从仓库扣货并入库到目标星球，价格买涨
+//   marketSell → 从目标星球扣货进仓库，按（价 ×(1-佣金)）付 ascoin，价格卖跌
+// 装备不在股市内（请走「挂单/拍卖」），股市只做材料（MATERIALS 表内资源）。
+// ============================================================================
+export function marketBuy(acc, mat, qty, inst) {
+  if (!acc) return { ok: false, reason: '账号缺失' };
+  if (!isTradable(mat)) return { ok: false, reason: '商店不经营这种物资' };
+  if (isEquipmentKey(mat)) return { ok: false, reason: '装备请在「挂单/拍卖」中交易' };
+  const n = Math.floor(Number(qty) || 0);
+  if (!(n > 0)) return { ok: false, reason: '数量必须是正整数' };
+  ensureShopWarehouse(acc);
+  const stock = warehouseOf(acc, mat);
+  if (stock <= 0) return { ok: false, reason: SHOP_PLANET.nameCn + ' 的「' + mat + '」暂时缺货' };
+  const buyN = Math.min(n, Math.floor(stock));
+  const price = priceOf(acc, mat);
+  const cost = Math.round(price * buyN);
+  if (ascoinOf(acc) < cost) return { ok: false, reason: 'Ascoin 不足：需要 ' + cost + '，现有 ' + Math.floor(ascoinOf(acc)) };
+  acc.ascoin = ascoinOf(acc) - cost;
+  acc.shopWarehouse[mat] = stock - buyN;
+  // 买涨：成交推动（金恒价跳过）。成交量相对库存越大，涨幅越明显
+  if (!isGold(mat)) {
+    const st = shopStateOf(acc)[mat];
+    if (st) {
+      const surge = 1 + Math.min(0.06, 0.015 * (buyN / Math.max(1, stock)));
+      st.price = Math.min(st.base * 6, st.price * surge);
+    }
+  }
+  const e = ensureEntry(inst, mat, 'refined');
+  if (e) e.owned = (Number(e.owned) || 0) + buyN;
+  return { ok: true, qty: buyN, cost, price };
+}
+
+export function marketSell(acc, mat, qty, inst) {
+  if (!acc) return { ok: false, reason: '账号缺失' };
+  if (!isTradable(mat)) return { ok: false, reason: '商店不经营这种物资' };
+  if (isEquipmentKey(mat)) return { ok: false, reason: '装备请在「挂单/拍卖」中交易' };
+  const n = Math.floor(Number(qty) || 0);
+  if (!(n > 0)) return { ok: false, reason: '数量必须是正整数' };
+  if (!inst) return { ok: false, reason: '缺少目标星球' };
+  const have = ownedOf(inst, mat);
+  if (have < n) return { ok: false, reason: '货物不足：需要 ' + n + '，该星球只有 ' + Math.floor(have) };
+  const price = priceOf(acc, mat);
+  const gross = Math.round(price * n);
+  const net = Math.round(gross * (1 - MARKET_FEE));
+  spendOwned(inst, mat, n);
+  acc.ascoin = ascoinOf(acc) + net;
+  // 进仓库增（封顶基线 ×4，避免无限堆积把价格压死）
+  ensureShopWarehouse(acc);
+  const cap = warehouseBaseline(MATERIALS.find((x) => x.nameCn === mat)) * 4;
+  acc.shopWarehouse[mat] = Math.min(cap, (Number(acc.shopWarehouse[mat]) || 0) + n);
+  // 卖跌（金恒价跳过）
+  if (!isGold(mat)) {
+    const st = shopStateOf(acc)[mat];
+    if (st) st.price = Math.max(st.base * 0.15, st.price * 0.97);
+  }
+  return { ok: true, qty: n, gain: net, price };
+}
+
+// ============================================================================
 // 交易池（v0.1.0）：玩家 / 电脑都可以把自己的任意物品挂单买卖
 // 数据结构：acc.shopListings = [{ id, sellerAccountId, mat, qty, price, at }]
 //   sellerAccountId 为 acc.id 表示玩家自己的挂单；为 npc.id 表示电脑账号挂单。
@@ -295,6 +400,10 @@ export function grantAscoin(acc, amt) {
 // buyListing / tickListings / npcTakeFromMarket 三条成交路径）。展示端
 // （ui/fleet.js）按 marketListings 返回的 netPrice 口径展示到手价。
 export const MARKET_FEE = 0.05;
+
+// v0.2.0 定价弹性硬门槛：挂单价 > 建议价 × 8 视为「定价离谱」，电脑买家与 NPC 一律跳过。
+// （此前只是概率 ∝ 建议价/挂单价 → 趋近 0 但不等于 0，离谱高价仍有极小概率被买走。）
+export const SHOP_ABSURD_RATIO = 8;
 
 function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
 
@@ -479,6 +588,8 @@ export function tickListings(acc, dt) {
     for (const L of [...pool]) {
       if (L.price <= 0) continue;
       const sugg = suggestPriceOf(acc, L.mat);
+      // v0.2.0 定价弹性（硬门槛）：离谱高价直接无人问津（与 npcTakeFromMarket 同一倍率）
+      if (sugg > 0 && L.price > sugg * SHOP_ABSURD_RATIO) continue;
       const p = clamp(0.35 * (sugg / L.price), 0, 0.9);
       if (Math.random() < p) {
         const total = Math.round(L.price * L.qty);
@@ -537,6 +648,8 @@ export function npcTakeFromMarket(acc, npc) {
   if (!cands.length) return { bought: false };
   const L = cands[0];
   const sugg = suggestPriceOf(acc, L.mat);
+  // v0.2.0 定价弹性（硬门槛）：定价超过建议价 8 倍 = 定价离谱，NPC 一律不买、不看概率
+  if (sugg > 0 && L.price > sugg * SHOP_ABSURD_RATIO) return { bought: false, skippedAbsurd: true };
   const p = Math.max(0, Math.min(0.9, 0.35 * (L.price > 0 ? sugg / L.price : 0)));
   if (Math.random() > p) return { bought: false };
   // 需求16：部分成交——最多买到「余额买得起」与「挂单剩余」中的较小者

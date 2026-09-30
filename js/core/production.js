@@ -13,19 +13,17 @@
 //   * 不修改 state.js / ui/* / data/buildings.js / data/materials.js / data/facilities.js /
 //     data/techs.js / version.js / index.html。
 
-import { RECIPES, RECIPE_BY_ID, recipesOfBuilding, getRecipe } from '../data/recipes.js?v=21.18';
-import { jobsOfBuilding, getIntensity, getAvailable, buildingSlots, jobOutput } from './population.js?v=21.18';
-import { MATERIALS } from '../data/materials.js?v=21.18';
-import { PART_BY_ID, craftableParts, craftWorkOf } from '../data/ship_parts.js?v=21.18';
-import { POWER_FACILITY_BY_ID } from '../data/facilities.js?v=21.18';
+import { RECIPES, RECIPE_BY_ID, recipesOfBuilding, getRecipe } from '../data/recipes.js?v=20.8';
+import { jobsOfBuilding, getIntensity, getAvailable, buildingSlots, jobOutput } from './population.js?v=20.8';
+import { MATERIALS } from '../data/materials.js?v=20.8';
+import { PART_BY_ID, MATERIAL_SLOTS, craftableParts, craftWorkOf } from '../data/ship_parts.js?v=20.8';
+import { ARMY_PART_BY_ID, ARMY_BP_BY_ID, ARMY_SLOT_BY_CAT, craftableArmyParts } from '../data/army_parts.js?v=20.8';   // v0.2.0 军事部件
+import { POWER_FACILITY_BY_ID } from '../data/facilities.js?v=20.8';
 // v0.0.92：殖民管理模式对产出的倍率（自由 1.25 / 剥削 1.60 / 领土 0.85 …）
-import { outputMulOf } from './planetgen.js?v=21.18';
-import { addEquipment } from './shipyard.js?v=21.18';
+import { outputMulOf } from './planetgen.js?v=20.8';
+import { addEquipment } from './shipyard.js?v=20.8';
 // v0.1.2（需求 18/19）：永久升级「冶炼 / 人力」的乘方效果，唯一实现在 data/upgrades.js#upgradeMul
-import { upgradeMul } from '../data/upgrades.js?v=21.18';
-import { ARMY_PARTS, ARMY_PART_BY_ID } from '../data/army_parts.js?v=21.18';
-// v0.2.2：离线 mod 生产线倍率（叶子模块，无循环依赖）
-import { modEffects } from './mods.js?v=21.18';
+import { upgradeMul } from '../data/upgrades.js?v=20.8';
 
 // nameCn → 材料对象（供 derivedStatsOf 查属性，纯查表不读 inst）
 const MATERIAL_BY_NAME = Object.fromEntries(MATERIALS.map((m) => [m.nameCn, m]));
@@ -53,22 +51,6 @@ export function efficiencyBonus(inst) {
 // 是否为气体类材料（投料走气体双来源规则）
 function isGasName(name) {
   return GAS_NAMES.has(name);
-}
-
-// rev18：对外暴露同一判定，供 state.js#computeNetRates 与 ui/inventory.js 对齐口径
-//   （「净增长」必须只统计**真正从物品栏扣掉**的量：气体走 _consumeGas 扣的是星球储量与大气层，
-//     不碰 owned，所以绝不能算进净增长 —— 与氧气呼吸同一条理由）。
-export function isGasMaterial(name) {
-  return isGasName(name);
-}
-
-// 该投入材料是否真的从「物品栏 owned」里扣。
-//   gasDual 建筑（熔炉家族 / bio_factory / 农田）的气体 → 走 inst._consumeGas（扣 remaining + 大气层）；
-//   其余（固体、或 chem_lab 这类非 gasDual）→ 走 spendTotal（扣物品栏）。
-//   inst._consumeGas 不存在（极老的裸实例）时退化为只扣物品栏。
-export function paidFromInventory(inst, mat, gasDual) {
-  if (!(gasDual && isGasName(mat))) return true;
-  return typeof (inst && inst._consumeGas) !== 'function';
 }
 
 // 气体类材料的「可用量」= 物品栏持有 + 大气层累积（需求 3）
@@ -212,6 +194,7 @@ export function resolveRecipe(inst, recipeId) {
 // 所以 inputs 留空、由 tickProduction 按 line.material 换算后扣料。
 export const PART_AMOUNT_PER_MASS = 1;      // 每 1 单位质量折算 1 份所选材料
 export function partAmountOf(partId) {
+  if (ARMY_PART_BY_ID[partId]) return 0;   // 军事部件投料固定，不走质量折算
   const p = PART_BY_ID[partId];
   if (!p) return 0;
   const mass = Number(p.category === 'hull' ? (p.emptyMass ?? p.mass) : p.mass) || 0;
@@ -219,42 +202,44 @@ export function partAmountOf(partId) {
 }
 export function partRecipe(partId) {
   const p = PART_BY_ID[partId];
-  if (p) {
+  if (!p) {
+    // v0.2.0：军事部件（army_parts）——固定单一材料配方，不走材料自选
+    const ap = ARMY_PART_BY_ID[partId];
+    if (!ap) return null;
     return {
       id: 'part_' + partId,
       buildingId: 'fabricator',
-      nameCn: '制造：' + p.nameCn,
-      inputs: {},                       // 由 line.material 决定，见 partInputsOf
-      outputs: {},                      // 产出为装备库存，不是物品栏材料
-      work: craftWorkOf(partId) || 300,
-      producesPart: partId,
-      desc: '在制造车间按选定材料生产一件「' + p.nameCn + '」，产出进入装备库存。',
-      byproductNote: '',
-    };
-  }
-  const ap = ARMY_PART_BY_ID && ARMY_PART_BY_ID[partId];
-  if (ap) {
-    const defaultMat = Object.keys(ap.inputs || {})[0] || '钢';
-    return {
-      id: 'part_' + partId,
-      buildingId: 'fabricator',
-      nameCn: '军造：' + ap.nameCn,
-      inputs: ap.inputs || {},
+      nameCn: '制造：' + ap.nameCn,
+      inputs: Object.assign({}, ap.inputs || {}),   // 固定投料
       outputs: {},
-      work: ap.work || 400,
+      work: ap.work || 300,
       producesPart: partId,
-      isArmy: true,
-      defaultMaterial: defaultMat,
-      desc: '在制造车间生产军事装备部件「' + ap.nameCn + '」，产出进入装备库存。',
+      armyPart: true,
+      desc: '在制造车间生产一件军事部件「' + ap.nameCn + '」，产出进入装备库存（' + (ap.desc || '') + '）。',
       byproductNote: '',
     };
   }
-  return null;
+  return {
+    id: 'part_' + partId,
+    buildingId: 'fabricator',
+    nameCn: '制造：' + p.nameCn,
+    inputs: {},                       // 由 line.material 决定，见 partInputsOf
+    outputs: {},                      // 产出为装备库存，不是物品栏材料
+    work: craftWorkOf(partId) || 300,
+    producesPart: partId,
+    desc: '在制造车间按选定材料生产一件「' + p.nameCn + '」，产出进入装备库存。',
+    byproductNote: '',
+  };
 }
 // 某部件配方在指定材料下的实际投料：{ 材料名: 份数 }
 export function partInputsOf(partId, material) {
-  const ap = ARMY_PART_BY_ID && ARMY_PART_BY_ID[partId];
-  if (ap && ap.inputs) return ap.inputs;
+  const ap = ARMY_PART_BY_ID[partId];
+  if (ap) {
+    // v0.2.4：军事部件投料 = 固定辅料 + 所选材料 × 部件质量（材料本身也是原料）
+    const base = Object.assign({}, ap.inputs || {});
+    if (material) base[material] = (base[material] || 0) + (Number(ap.mass) || 0);
+    return base;
+  }
   if (!material) return {};
   const n = partAmountOf(partId);
   return n > 0 ? { [material]: n } : {};
@@ -648,6 +633,36 @@ export function addLine(inst, buildingId, recipeId, opts) {
   if (buildingId === 'farm') {
     return { ok: false, reason: '农田由农田工岗位驱动，不需要生产线' };
   }
+  // v0.2.0 军队组装线：无配方（recipeId=null），按 armyBlueprintId 建线。
+  //   v0.2.4：改由「军营」驱动（无工位、不占人力，每座军营提供固定建造人力）；
+  //   兼容自定义蓝图（opts.armyBlueprint 对象）与旧存档开在制造车间的线。
+  if (opts && (opts.armyBlueprintId || opts.armyBlueprint)) {
+    const abp = (opts.armyBlueprint && typeof opts.armyBlueprint === 'object')
+      ? opts.armyBlueprint
+      : ARMY_BP_BY_ID[opts.armyBlueprintId];
+    if (!abp) return { ok: false, reason: '找不到军队蓝图' };
+    if (buildingId !== 'barracks' && buildingId !== 'fabricator') {
+      return { ok: false, reason: '军队组装线只能开在军营' };
+    }
+    if (buildingCount(inst, buildingId) <= 0) {
+      return { ok: false, reason: buildingId === 'barracks' ? '尚未建成军营' : '尚未建成制造车间' };
+    }
+    const want = Math.max(0, Math.floor(Number(opts.workers) || 0));
+    if (buildingId === 'fabricator') {   // 旧存档兼容：车间线仍校验工位
+      const slot = lineSlotInfo(inst, buildingId);
+      if (want > slot.free) return { ok: false, reason: '工位不足，还剩 ' + slot.free + ' 个' };
+      const free = freeLaborOf(inst);
+      if (want > free) return { ok: false, reason: '可用人力不足，还剩 ' + free + ' 人' };
+    }
+    const aline = { id: genLineId(), buildingId, recipeId: null, armyBlueprintId: abp.id, workers: buildingId === 'barracks' ? 0 : want };
+    const wantId = opts.intensityId != null ? opts.intensityId : null;
+    if (wantId != null) {
+      const iv = getIntensity(wantId);
+      if (iv && iv.id === wantId) aline.intensityId = wantId;
+    }
+    inst.lines.push(aline);
+    return { ok: true, line: aline };
+  }
   ensureLines(inst);
   if (buildingCount(inst, buildingId) <= 0) {
     return { ok: false, reason: '尚未建成该建筑' };
@@ -748,7 +763,7 @@ function intensityMulOf(inst, line) {
 
 // 某建筑当前可选的生产内容（供人力面板「第二步」列出）
 //   静态配方 + 炉类家族配方 + 精细加工厂的 refine_<材料> + 自建材料 r_custom_<key> + 制造车间的部件配方
-export function recipesForBuilding(inst, buildingId) {
+export function recipesForBuilding(inst, buildingId, acc) {
   if (!inst || !buildingId) return [];
   // v0.0.91 需求 2：农田为「岗位驱动」固定配方，不进生产线，故没有任何可选生产线内容
   if (buildingId === 'farm') return [];
@@ -773,7 +788,7 @@ export function recipesForBuilding(inst, buildingId) {
   if (buildingId === 'custom_chem') {
     for (const cm of listCustomMaterials(inst)) push(cm.recipe);
   }
-  // 制造车间：部件（外壳 / 引擎 / 武器 / 船上设施 / 军事部件）
+  // 制造车间：部件（外壳 / 引擎 / 武器 / 船上设施）
   if (buildingId === 'fabricator') {
     for (const p of craftableParts()) {
       const r = partRecipe(p.partId);
@@ -783,16 +798,20 @@ export function recipesForBuilding(inst, buildingId) {
         push(r);
       }
     }
-    if (Array.isArray(ARMY_PARTS)) {
-      for (const ap of ARMY_PARTS) {
-        const r = partRecipe(ap.id);
-        if (r) {
-          const defaultMat = Object.keys(ap.inputs || {})[0] || '钢';
-          r.materials = [defaultMat];
-          r.defaultMaterial = defaultMat;
-          push(r);
-        }
+    // v0.2.4：军事部件按材料槽自选材料（复用舰船 MATERIAL_SLOTS），
+    //   投料 = 固定辅料 + 所选材料 × 部件质量（见 partInputsOf）；不同材料造出的部件数值不同。
+    const tset = new Set((acc && Array.isArray(acc.tech)) ? acc.tech : []);
+    for (const ap of craftableArmyParts(tset)) {
+      const r = partRecipe(ap.id);
+      if (!r) continue;
+      const slot = ap.slot || ARMY_SLOT_BY_CAT[ap.cat];
+      const mats = (slot && MATERIAL_SLOTS[slot]) ? MATERIAL_SLOTS[slot] : [];
+      if (mats.length) {
+        r.materials = mats.slice();
+        r.defaultMaterial = '铁';
+        r.choiceHint = '部件材料（军队数值不同）';
       }
+      push(r);
     }
   }
   // v0.0.7：设施配方的「可选材料」——光伏选板面建材（效率不同）、超大型燃机选燃料
@@ -835,58 +854,6 @@ function buildingCount(inst, buildingId) {
 }
 
 // ============================================================================
-// rev18：农田速率 —— 单一来源（tickProduction 与实际结算共用，杜绝「净增长」漏算）
-// ============================================================================
-// 背景（设计者报「物品栏存在重大 bug：开采时反而减少」）：
-//   农田由「农田工」岗位驱动，在 tickProduction 里**单独结算**（不走 inst.lines），
-//   于是 productionRates() 里完全没有它 —— 而 js/core/state.js#computeNetRates
-//   恰恰只用了「采集 + productionRates + 人口代谢」来算净增长。
-//   后果（已实测复现）：物品栏「净增长」列与实际结算不符 ——
-//     ① 农田产出（有机质）没算进去 → 净增长显示比真实低一大截；
-//     ② 农田投料（水）没算进去 → 净增长显示比真实高，**甚至出现「净增长为正（绿）
-//        而库存实际在减少」** —— 玩家看到的就是「我在采水，水反而越来越少」。
-//   现在把农田速率抽成这一个函数，tickProduction / computeNetRates / 详情弹窗共用。
-export const FARM_RECIPE_ID = 'r_farm_organic_water';
-
-// 农田当前「每秒批次数」。与 tickProduction 的算法完全一致：
-//   rate = 农田工有效人力 × 电力降速比 × 建筑座数效率 / 配方 work
-//   注意：**不乘** 殖民管理模式倍率 / 永久升级 / V012_LINE_RATE_MUL / mod 倍率
-//   —— 农田历来不走这条加成链，改动它会改变游戏节奏，故此处严格保持原口径。
-// 返回 { active, rate, inputs, outputs, ownedInputs }
-//   inputs / outputs  配方原样（供结算与展示）
-//   ownedInputs       其中**真正从物品栏扣的**那部分（气体走星球储量，不计入净增长）
-export function farmRates(inst, powerRatio) {
-  const out = { active: false, rate: 0, inputs: {}, outputs: {}, ownedInputs: {} };
-  if (!inst || !inst.pop) return out;
-  const labor = jobOutput(inst.pop, 'farm_worker');
-  if (!(labor > 0)) return out;
-  const ratio = Number(powerRatio);
-  if (!(ratio > 0)) return out;
-  const rec = resolveRecipe(inst, FARM_RECIPE_ID);
-  if (!rec) return out;
-  const work = Math.max(1, Number(rec.work) || 1);
-  const rate = (labor * ratio * efficiencyBonus(inst)) / work;
-  if (!(rate > 0)) return out;
-  out.active = true;
-  out.rate = rate;
-  out.inputs = Object.assign({}, rec.inputs || {});
-  out.outputs = Object.assign({}, rec.outputs || {});
-  for (const k in out.inputs) {
-    if (paidFromInventory(inst, k, true)) out.ownedInputs[k] = out.inputs[k];
-  }
-  return out;
-}
-
-// 农田本 tick 的「供给比」：0 = 断料停产，1 = 满速。
-//   tickProduction 每 tick 写入 inst._farmSupply（与生产线的 line._ratio 同款机制），
-//   净增长按它折算，保证「展示 = 实际结算」。
-export function farmSupplyOf(inst) {
-  const v = Number(inst && inst._farmSupply);
-  if (!Number.isFinite(v)) return 1;
-  return Math.max(0, Math.min(1, v));
-}
-
-// ============================================================================
 // 推进生产 dt 秒。powerRatio 由 power.js 的 computePower 给出（缺电全局降速）。
 // v0.0.7：改为**按生产线**结算 —— 每条线自带生产内容与人数，没人的线不运转。
 // 造船线（buildingId === 'dock'）由 shipyard 侧推进，这里跳过。
@@ -906,13 +873,14 @@ export function tickProduction(inst, dt, powerRatio, acc = null) {
   if (farmLabor > 0) {
     // v0.1.0：农田配方改走 resolveRecipe，配方调整后立即生效（不再硬编码常量）。
     //   找不到配方时安全兜底：跳过农田产出，不抛错。
-    // rev18：速率改由 farmRates() 统一给出（净增长与详情弹窗共用同一公式，杜绝两边各写一套）。
-    const farmRecipe = resolveRecipe(inst, FARM_RECIPE_ID);
+    const farmRecipe = resolveRecipe(inst, 'r_farm_organic_water');
     if (farmRecipe) {
+      const FARM_WORK = Number(farmRecipe.work) || 1;
       const FARM_CO2 = Number(farmRecipe.inputs['二氧化碳']) || 0;
       const FARM_WATER = Number(farmRecipe.inputs['水']) || 0;
       const FARM_ORGANIC = Number(farmRecipe.outputs['有机质']) || 0;
-      const farmRate = farmRates(inst, powerRatio).rate;   // 次/秒
+      // v0.1.1（需求 7）：与生产线同款乘「建筑数量效率」（效率加成对农田同样生效）
+      const farmRate = (farmLabor * powerRatio * efficiencyBonus(inst)) / FARM_WORK;   // 次/秒
       let farmStarved = false;
       // v0.1.2 R11：农田同款整数批次口径 —— 有料即满速，无料即停（与生产线一致，绝不「几乎不生产」）。
       // CO₂ 可用量含大气；水只算物品栏（需求 3 口径）
@@ -924,8 +892,6 @@ export function tickProduction(inst, dt, powerRatio, acc = null) {
         const perTime = FARM_WATER * farmRate * dt;
         if (!(perTime > 0) || Math.floor((ownedTotal(inst, '水') + 1e-9) / perTime) === 0) farmStarved = true;
       }
-      // rev18：把本 tick 的供给比记录下来，供 computeNetRates / 详情弹窗折算（与 line._ratio 同款机制）
-      inst._farmSupply = farmStarved ? 0 : 1;
       const farmActual = farmStarved ? 0 : farmRate;
       if (farmActual > 0 && FARM_ORGANIC > 0) {
         const co2Amt = FARM_CO2 * farmActual * dt;
@@ -942,7 +908,8 @@ export function tickProduction(inst, dt, powerRatio, acc = null) {
 
   const upg = upgradeMulsOf(acc);
   for (const line of inst.lines) {
-    if (!line || !line.buildingId || line.buildingId === 'dock') continue;
+    // v0.2.0：军队组装线（armyBlueprintId）与 dock 造船线一样由专用 tick 结算，这里跳过
+    if (!line || !line.buildingId || line.buildingId === 'dock' || line.armyBlueprintId) continue;
     const recipe = resolveRecipe(inst, line.recipeId);
     if (!recipe) continue;
     if (buildingCount(inst, line.buildingId) <= 0) continue;   // 建筑没了
@@ -954,7 +921,7 @@ export function tickProduction(inst, dt, powerRatio, acc = null) {
     if (!(labor > 0)) continue;
     // 产出速率 = 有效人力 × powerRatio / recipe.work（次/秒）
     // v0.1.2 R16：生产线（非农田）产出速率统一 ×5（V012_LINE_RATE_MUL）；农田不在此路径，不会叠加成 ×25。
-    const rate = (labor * powerRatio * V012_LINE_RATE_MUL * upg.refine * modEffects().lineRateMul) / Math.max(1, Number(recipe.work) || 1);   // v0.2.2：mod 倍率
+    const rate = (labor * powerRatio * V012_LINE_RATE_MUL * upg.refine) / Math.max(1, Number(recipe.work) || 1);
 
     // 投料：部件配方按线选定的材料折算；设施配方可能要投所选板面材料；其余用配方自带 inputs
     const inputs = recipe.producesPart
@@ -1088,7 +1055,7 @@ export function productionRates(inst, powerRatio, acc = null) {
   ensureLines(inst);
   for (const line of inst.lines) {
     const bid = line && line.buildingId;
-    if (!bid || bid === 'dock') continue;
+    if (!bid || bid === 'dock' || line.armyBlueprintId) continue;   // v0.2.0：军队组装线不在此结算
     const recipe = resolveRecipe(inst, line.recipeId);
     if (!recipe) continue;
     const labor = (Number(line.workers) || 0) * intensityMulOf(inst, line);
@@ -1100,13 +1067,13 @@ export function productionRates(inst, powerRatio, acc = null) {
       let eff = labor * efficiencyBonus(inst) * outputMulOf(inst) * upg.labor;
       const cached = Number(line._ratio);
       if (Number.isFinite(cached)) eff *= cached;
-      rate = (eff * powerRatio * upg.refine * V012_LINE_RATE_MUL * modEffects().lineRateMul) / Math.max(1, Number(recipe.work) || 1);   // v0.2.2：mod 倍率
+      rate = (eff * powerRatio * upg.refine * V012_LINE_RATE_MUL) / Math.max(1, Number(recipe.work) || 1);
     }
     let slot = out[bid];
     if (!slot) {
       slot = out[bid] = {
         recipe, lines: [], active: false, rate: 0,
-        outputs: {}, inputs: {}, ownedInputs: {}, effectiveLabor: 0, producesFacility: null,
+        outputs: {}, inputs: {}, effectiveLabor: 0, producesFacility: null,
       };
     }
     slot.lines.push({ line, recipe, rate });
@@ -1119,14 +1086,6 @@ export function productionRates(inst, powerRatio, acc = null) {
     }
     for (const mat in inputs) {
       slot.inputs[mat] = (slot.inputs[mat] || 0) + (Number(inputs[mat]) || 0) * rate;
-    }
-    // rev18：把「真正从物品栏扣掉」的那部分投入单独记一份，供 state.js#computeNetRates
-    //   与详情弹窗使用 —— 气体走 _consumeGas 扣的是星球储量/大气层，不碰 owned，
-    //   算进净增长就会凭空显示一笔负增长（与氧气呼吸同一条理由）。
-    const gasDualBid = GAS_DUAL_BUILDINGS.has(bid);
-    for (const mat in inputs) {
-      if (!paidFromInventory(inst, mat, gasDualBid)) continue;
-      slot.ownedInputs[mat] = (slot.ownedInputs[mat] || 0) + (Number(inputs[mat]) || 0) * rate;
     }
     // 设施配方：outputs 保持空（不编造材料名），UI 据此字段去 facilities.js 查显示名与产速
     if (recipe.producesFacility && !slot.producesFacility) slot.producesFacility = recipe.producesFacility;

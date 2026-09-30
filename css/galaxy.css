@@ -1,0 +1,149 @@
+/* 星际页样式（Astrix v0.2.1）—— 卡片网格 / 顶部状态栏 / 搜索栏
+ * 视觉风格吸收更优的玻璃拟态卡片网格，逻辑沿用真实云服务接口 */
+
+.galaxy-body {
+  padding: 14px 16px 28px;
+  max-width: var(--maxw, 1200px);
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.galaxy-status { font-size: 13px; color: var(--muted); padding: 8px 16px; }
+
+/* ===== 顶部状态栏（身份 / 防御 / 信箱 / 发布 / 退出） ===== */
+.gx-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  border-radius: var(--radius);
+}
+.gx-id { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.gx-callsign {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--cyan);
+}
+.gx-callsign .gx-tag {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 1px 6px;
+}
+.gx-email { font-size: 12px; color: var(--muted); }
+.gx-email.unbound { color: #ffc46b; }
+
+.gx-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.gx-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  padding: 4px 10px;
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border);
+}
+.gx-stat-k { font-size: 11px; color: var(--muted); }
+.gx-stat-v { font-size: 15px; font-weight: 600; color: var(--cyan); }
+
+/* 收件箱按钮带未读徽标 */
+.gx-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  margin-left: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #fff;
+  background: var(--danger);
+  border-radius: 9px;
+}
+
+/* ===== 搜索栏 ===== */
+.gx-search { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.gx-search input {
+  flex: 1;
+  min-width: 240px;
+  min-height: var(--tap);
+  font-size: 14px;
+}
+
+/* ===== 区块 ===== */
+.gx-section { display: flex; flex-direction: column; gap: 10px; }
+.gx-colony { display: flex; flex-direction: column; gap: 0; }
+
+/* ===== 其他玩家星球：卡片网格 ===== */
+.gx-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(290px, 1fr));
+  gap: 14px;
+}
+.gx-card {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 14px;
+  border-radius: var(--radius);
+  background: var(--panel);
+  border: 1px solid var(--border-strong);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+.gx-card-top { display: flex; flex-direction: column; gap: 6px; }
+.gx-card-line1 { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
+.gx-card-name { font-size: 15px; font-weight: 700; color: #f1f5f9; }
+.gx-card-code { font-size: 11px; color: var(--muted); margin-left: 4px; }
+.gx-faction {
+  font-size: 11px;
+  padding: 2px 7px;
+  border-radius: 4px;
+  white-space: nowrap;
+  color: var(--cyan);
+  background: rgba(124, 215, 255, 0.08);
+  border: 1px solid var(--border-strong);
+}
+.gx-card-info { font-size: 12px; color: var(--muted); line-height: 1.6; }
+.gx-card-info b { color: #dce9f2; font-weight: 600; }
+.gx-card-info .def-high { color: #f09595; }
+.gx-card-info .def-ok { color: #9FE1CB; }
+.gx-intel {
+  margin-top: 4px;
+  font-size: 12px;
+  color: #cbd5e1;
+  background: rgba(0, 0, 0, 0.28);
+  border-radius: 6px;
+  padding: 6px 8px;
+  line-height: 1.5;
+}
+.gx-card-self { font-size: 12px; color: var(--muted); text-align: center; padding: 8px; background: rgba(255, 255, 255, 0.03); border-radius: 6px; }
+.gx-card-actions { display: flex; gap: 8px; margin-top: 4px; }
+.gx-card-actions .btn { flex: 1; }
+
+/* ===== 收件箱事件卡片 ===== */
+.galaxy-incident {
+  padding: 12px 14px;
+  border-radius: var(--radius);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  margin-bottom: 10px;
+}
+.galaxy-incident-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+
+@media (max-width: 768px) {
+  .gx-header { flex-direction: column; align-items: stretch; }
+  .gx-actions { justify-content: space-between; }
+  .gx-grid { grid-template-columns: 1fr; }
+}

@@ -8,14 +8,13 @@ import {
   computePower, energyOf,
   installedFacilities, installFacility, uninstallFacility, facilityStockOf,
   panelEffOf, facilityFuelOf, buildingCountBonus,
-} from '../core/power.js?v=21.18';
-import { POWER_FACILITIES, POWER_FACILITY_BY_ID } from '../data/facilities.js?v=21.18';
-import { BUILDING_BY_ID } from '../data/buildings.js?v=21.18';
-import { RECIPES } from '../data/recipes.js?v=21.18';
-import { linesOf } from '../core/production.js?v=21.18';
-import { jobsOfBuilding, jobOutput, assignedToBuilding, buildingSlots } from '../core/population.js?v=21.18';
-import { fmtNum, fmtRate, fmtRateBody, richText } from '../core/format.js?v=21.18';
-import { playPing, playLaser, playShield } from '../core/sound.js?v=21.18';
+} from '../core/power.js?v=20.8';
+import { POWER_FACILITIES, POWER_FACILITY_BY_ID } from '../data/facilities.js?v=20.8';
+import { BUILDING_BY_ID } from '../data/buildings.js?v=20.8';
+import { RECIPES } from '../data/recipes.js?v=20.8';
+import { linesOf } from '../core/production.js?v=20.8';
+import { jobsOfBuilding, jobOutput, assignedToBuilding, buildingSlots } from '../core/population.js?v=20.8';
+import { fmtNum, fmtRate, fmtRateBody } from '../core/format.js?v=20.8';
 
 const CSS = `
   .pwr-panel { font-family: system-ui, sans-serif; color: #e8eef2; padding: 12px; box-sizing: border-box; }
@@ -44,14 +43,8 @@ const CSS = `
   .pwr-card .p-count { font-size: 12px; color: #9FE1CB; }
   .pwr-card button { min-height: 40px; min-width: 72px; border: none; border-radius: 8px; background: #2d5b7a; color: #fff; font-weight: 600; cursor: pointer; }
   .pwr-card button.uninstall { background: #3a2a2a; color: #ffd9d9; }
+  .pwr-card button[disabled] { background: #28323d; color: #7d8a97; cursor: not-allowed; }
   .pwr-hint2 { font-size: 12px; opacity: .6; padding: 4px 2px 12px; line-height: 1.6; }
-  .pwr-grid-hud { background: #16202b; border: 1px solid #38bdf835; border-radius: 10px; padding: 12px; margin-bottom: 12px; }
-  .pwr-hud-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; flex-wrap: wrap; gap: 8px; }
-  .pwr-hud-title { font-size: 13px; font-weight: bold; color: #7cd7ff; display: flex; align-items: center; gap: 6px; }
-  .pwr-hud-btn { min-height: 32px; padding: 4px 10px; font-size: 12px; border-radius: 6px; border: 1px solid #38bdf850; background: rgba(56,189,248,0.15); color: #7cd7ff; cursor: pointer; }
-  .pwr-charge-track { width: 100%; height: 8px; background: rgba(0,0,0,0.35); border-radius: 4px; overflow: hidden; margin-bottom: 8px; border: 1px solid #1e293b; }
-  .pwr-charge-fill { height: 100%; border-radius: 4px; transition: width 0.4s ease; }
-  .pwr-hud-telemetry { font-size: 11px; color: #94a3b8; font-family: monospace; }
 `;
 
 function el(tag, attrs = {}, children = []) {
@@ -272,28 +265,6 @@ export function renderPower(root, ctx) {
     });
     panel.appendChild(sourcesWrap);
 
-    // ---- 储电蓄能条 HUD（v0.2.3：删除假「调测微电网母线」按钮与伪造频率/相角文案，
-    //      只保留真实的储电蓄能率可视化，数字口径与下方概览一致）----
-    const gridHud = el('div', { class: 'pwr-grid-hud' });
-    const hudHead = el('div', { class: 'pwr-hud-head' });
-    const hudTitle = el('div', { class: 'pwr-hud-title' });
-    hudTitle.innerHTML = '<span>⚡ 电网储电蓄能</span><span style="font-size:11px;color:#94a3b8;font-weight:normal;">(实时蓄能率)</span>';
-    hudHead.append(hudTitle);
-
-    const chargePct = pw.storageMax > 0 ? Math.min(100, Math.max(0, Math.round((pw.storage / pw.storageMax) * 100))) : 0;
-    const chargeTrack = el('div', { class: 'pwr-charge-track' });
-    const chargeFill = el('div', {
-      class: 'pwr-charge-fill quantum-circuit',
-      style: `width:${chargePct}%;background:${chargePct > 20 ? 'linear-gradient(90deg, #10b981, #38bdf8)' : '#f09595'};`,
-    });
-    chargeTrack.appendChild(chargeFill);
-
-    const hudTelem = el('div', { class: 'pwr-hud-telemetry' });
-    hudTelem.textContent = `储电蓄能率: ${chargePct}%（${fmtNum(pw.storage)} / ${fmtNum(pw.storageMax)}） · 充放速率: ${fmtRate(pw.storageRate)}/s`;
-
-    gridHud.append(hudHead, chargeTrack, hudTelem);
-    panel.appendChild(gridHud);
-
     // ---- 顶部概览 ----
     const overview = el('div', { class: 'pwr-overview' });
     const ratioPct = Math.round(pw.ratio * 100);
@@ -370,7 +341,7 @@ export function renderPower(root, ctx) {
         head.querySelector('.p-name').addEventListener('click', () => openDetail(f, openModal));
         card.appendChild(head);
 
-        card.appendChild(el('div', { class: 'p-sub', html: richText(f.desc || '') }));
+        card.appendChild(el('div', { class: 'p-sub', text: f.desc || '' }));
         card.appendChild(el('div', { class: 'p-line', text: '造价 ' + costText(f.baseCost) + '　工作量 ' + fmtNum(f.work) }));
         card.appendChild(el('div', { class: 'p-line', text: '效果 ' + effectText(f) }));
         card.appendChild(el('div', { class: 'p-line', text: '已装 ' + fmtNum(cnt) + ' 座' }));
@@ -379,11 +350,7 @@ export function renderPower(root, ctx) {
         if (cnt > 0) {
           actions.appendChild(el('span', { class: 'p-count', text: '已装 ' + fmtNum(cnt) + ' 座' }));
           const unBtn = el('button', { class: 'uninstall', text: '拆除' });
-          unBtn.addEventListener('click', () => {
-            playLaser();
-            uninstallFacility(planet, f.id);
-            draw();
-          });
+          unBtn.addEventListener('click', () => { uninstallFacility(planet, f.id); draw(); });
           actions.appendChild(unBtn);
         }
         const insBtn = el('button', { class: 'install', text: '安装' });
@@ -396,12 +363,10 @@ export function renderPower(root, ctx) {
         insBtn.addEventListener('click', () => {
           const res = installFacility(planet, f.id, account);
           if (!res.ok) {
-            playLaser();
             if (openModal) openModal({ title: '无法安装：' + f.nameCn, body: '<p class="p-sub">' + res.reason + '</p>' });
             else window.alert && window.alert(res.reason);
             return;
           }
-          playShield();
           draw();
         });
         actions.appendChild(insBtn);
@@ -422,7 +387,7 @@ export function renderPower(root, ctx) {
   function openDetail(f, openModal) {
     const body =
       '<div class="pwr-panel">' +
-      '<p class="p-sub">' + richText(f.desc || '') + '</p>' +
+      '<p class="p-sub">' + (f.desc || '') + '</p>' +
       '<p class="p-line"><b>类型</b>：' + ({ storage: '储电', solar: '太阳能', wind: '风力', thermal: '火力' })[f.kind] + '（' + f.sizeLabel + '）</p>' +
       '<p class="p-line"><b>造价</b>：' + costText(f.baseCost) + '</p>' +
       '<p class="p-line"><b>工作量</b>：' + fmtNum(f.work) + '</p>' +

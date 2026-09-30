@@ -13,22 +13,23 @@
 // 3. **新增人数输入栏**：每行都有 −/输入框/＋/满员，方便大规模分配（人数很多时不用点几百次）。
 // 4. 顶部营养区改为 3 消耗（氧气/有机质/水）+ 3 产出（二氧化碳/甲烷/氨气）。
 
-import { fmtNum, fmtRate } from '../core/format.js?v=21.18';
-import { BUILDINGS, BUILDING_BY_ID } from '../data/buildings.js?v=21.18';
+import { fmtNum, fmtRate } from '../core/format.js?v=20.8';
+import { BUILDINGS, BUILDING_BY_ID } from '../data/buildings.js?v=20.8';
 import {
   createPopulation, assignWorkers, setJobIntensity, getIntensity,
   getTotalLabor, getAssigned, getAvailable, consumptionPerSec, metabolitePerSec,
   JOBS, JOBS_BY_BUILDING, WORK_INTENSITY,
   assignedToBuilding, freeSlots, jobCapacity, hiddenJobCount, getJobCount,
-} from '../core/population.js?v=21.18';
-import { getBuildingCounts, currentAccount } from '../core/state.js?v=21.18';
+} from '../core/population.js?v=20.8';
+import { getBuildingCounts, currentAccount } from '../core/state.js?v=20.8';
+import { ARMY_BP_BY_ID } from '../data/army_parts.js?v=20.8';   // v0.2.0 军队组装线命名
 // v0.1.1（需求 20）：殖民管理模式——判断本星球是否由电脑接管发展
-import { modeOf } from '../core/planetgen.js?v=21.18';
-// v0.1.4（需求 4）：殖民地报告历史区块（浮动提示条在 main.js 里启动）
-import { buildReportHistory } from './reports.js?v=21.18';
+import { modeOf } from '../core/planetgen.js?v=20.8';
+// v0.2.3（需求）：殖民地报告历史已从人力页移除 —— 报告只在「星球选择 / 星际」的
+//   每颗星球行内联展示（colony.js），不再在人力页保留历史副本。
 // v0.0.7：生产线接口（核心模块正在实现中）。用命名空间导入 + 函数存在性守卫，
 //   若接口尚未落地（addLine 等不是函数），本文件不会报错，也不渲染生产线区块。
-import * as PR from '../core/production.js?v=21.18';
+import * as PR from '../core/production.js?v=20.8';
 
 // 取/建星球上的人口对象（挂在 planet.pop，首次访问惰性创建）
 function ensurePop(planet) {
@@ -151,15 +152,7 @@ export function renderPopulation(root, planet) {
     ]));
   }
 
-  // v0.1.4（需求 4）：殖民地报告历史 —— 托管殖民地每 30 秒产生一条（发展变化 + 本期上缴，
-  //   含装备与舰船）。浮动提示条负责即时通知，这里保留最近若干条供回看。
-  try {
-    const hist = buildReportHistory(currentAccount(), 12);
-    panel.appendChild(el('div', { class: 'pop-card' }, [
-      el('div', {}, [el('span', { class: 'k', text: '殖民地报告（最近 12 条）' })]),
-      hist,
-    ]));
-  } catch (e) { /* 报告数据缺失不该影响人力面板其它内容 */ }
+  // （v0.2.3：殖民地报告历史区块已移除 —— 报告内联在各星球行，见 colony.js）
 
   // ---- 营养代谢：3 消耗 + 3 产出 ----
   const cons = consumptionPerSec(pop);
@@ -339,11 +332,16 @@ function resolveBlueprintName(bpId) {
 
 // 生产线的一行文本：建筑类型 · 生产内容（含数量）
 function lineContentLabel(planet, line) {
+  // v0.2.0 军队组装线：无配方，按蓝图命名
+  if (line.armyBlueprintId) {
+    const ab = ARMY_BP_BY_ID[line.armyBlueprintId];
+    return (ab ? ab.nameCn : line.armyBlueprintId) + '（组装军队）';
+  }
   if (line.blueprintId) {
     const name = resolveBlueprintName(line.blueprintId);
     return (name ? name : line.blueprintId) + '（造船）';
   }
-  const recs = PR.recipesForBuilding(planet, line.buildingId);
+  const recs = PR.recipesForBuilding(planet, line.buildingId, currentAccount());
   const rec = recs.find((r) => r.id === line.recipeId) || null;
   const base = rec ? rec.nameCn : (line.recipeId || '未知内容');
   return base + (rec ? (' ' + recipeQuantityText(rec)) : '');
@@ -383,7 +381,7 @@ function renderProductionBlock(panel, root, planet) {
     // 第一步：选建筑（已建成≥1 且可选项非空），并显示该建筑工位占用
     const builtOptions = BUILDINGS.filter((b) => {
       const n = buildingCountOf(planet, b.id);
-      return n > 0 && PR.recipesForBuilding(planet, b.id).length > 0;
+      return n > 0 && PR.recipesForBuilding(planet, b.id, currentAccount()).length > 0;
     });
     const bSel = el('select', { class: 'pop-sel', title: '第一步：选择建筑' });
     bSel.appendChild(el('option', { value: '', text: '① 选择建筑…' }));
@@ -423,7 +421,7 @@ function renderProductionBlock(panel, root, planet) {
         confirmBtn.disabled = true;
         return;
       }
-      for (const r of PR.recipesForBuilding(planet, bid)) {
+      for (const r of PR.recipesForBuilding(planet, bid, currentAccount())) {
         rSel.appendChild(el('option', { value: r.id, text: r.nameCn + '　' + recipeQuantityText(r) }));
       }
       rSel.disabled = false;
@@ -439,7 +437,7 @@ function renderProductionBlock(panel, root, planet) {
       mSel.style.display = 'none';
       mSel.innerHTML = '';
       if (!rid) return;
-      const rec = PR.recipesForBuilding(planet, draft.buildingId).find((r) => r.id === rid);
+      const rec = PR.recipesForBuilding(planet, draft.buildingId, currentAccount()).find((r) => r.id === rid);
       if (rec && Array.isArray(rec.materials) && rec.materials.length) {
         const def = rec.defaultMaterial || rec.materials[0];
         for (const m of rec.materials) {
@@ -491,155 +489,6 @@ function renderProductionBlock(panel, root, planet) {
     form.appendChild(row3);
     form.appendChild(reason);
     return form;
-  }
-
-  // ---- 自定义化工厂：新建自定义材料配方（v0.2.2，接通 makeCustomMaterial 的 UI 入口）----
-  // 展开状态与草稿放在本闭包里，rebuild() 重建节点后仍能恢复。
-  const cmState = {
-    open: false,
-    name: '',
-    rows: [ { mat: '', amt: 8 }, { mat: '', amt: 8 } ],   // 起步两行原料
-  };
-
-  function cmCandidates() {
-    // 候选原料 = 已知材料表（含自定义材料）∪ 物品栏出现过的材料名，按中文排序
-    const set = new Set();
-    try {
-      const lookup = PR.materialLookup(planet);
-      for (const k in lookup) set.add(k);
-    } catch (e) { /* 忽略 */ }
-    for (const e of (planet.inventory || [])) if (e && e.mat) set.add(e.mat);
-    return Array.from(set).sort((a, b) => a.localeCompare(b, 'zh'));
-  }
-
-  function cmPartsFromState() {
-    return cmState.rows
-      .map((r) => ({ mat: String(r.mat || '').trim(), amt: Math.floor(Number(r.amt) || 0) }))
-      .filter((p) => p.mat && p.amt >= 1);
-  }
-
-  function buildCustomMaterialCard() {
-    if (buildingCountOf(planet, 'custom_chem') <= 0) return null;   // 没建厂不显示
-    if (typeof PR.makeCustomMaterial !== 'function') return null;   // 核心接口缺失不显示
-
-    const wrap = el('div', { class: 'pop-cm' });
-    const toggle = el('button', { class: 'btn', text: (cmState.open ? '收起自定义材料' : '＋ 新建自定义材料配方'),
-      title: '自定义化工厂：自选原料与比例，合成一种数值按配比推算的新材料' });
-    toggle.style.marginTop = '8px';
-    wrap.appendChild(toggle);
-
-    if (!cmState.open) { wrap.appendChild(el('div', { class: 'pop-newline-reason', text: '' })); return wrap; }
-
-    const card = el('div', { class: 'fac-group', style: 'margin-top:8px;padding:10px;border:1px solid rgba(124,215,255,0.25);border-radius:8px;' });
-    card.appendChild(el('div', { class: 'pop-prod-title', text: '新建自定义材料' }));
-    card.appendChild(el('div', { class: 'pop-prod-sub',
-      text: '为自定义化工厂定义一种新配方：选 2 种以上原料与各自份数（总量 ' + PR.CUSTOM_AMT_MIN + '～' + PR.CUSTOM_AMT_MAX + '），'
-        + '新材料的强度/耐久/密度等按配比自动推算，之后即可在生产内容里选用它。' }));
-
-    // 材料名
-    const nameInp = el('input', { class: 'pop-wcnt', type: 'text', value: cmState.name,
-      placeholder: '新材料名称（2~12 字，仅文字/字母）', style: 'flex:1;min-height:36px;' });
-    nameInp.addEventListener('change', () => { cmState.name = nameInp.value; });
-    const nameRow = el('div', { class: 'pop-newline-row' }, [el('span', { class: 'pop-wlabel', text: '名称' }), nameInp]);
-    card.appendChild(nameRow);
-
-    // 原料行
-    const cands = cmCandidates();
-    const rowsBox = el('div');
-    const reasonEl = el('div', { class: 'pop-newline-reason', style: 'min-height:16px;' });
-    const previewEl = el('div', { class: 'pop-prod-sub', style: 'color:#9FE1CB;' });
-
-    function refreshPreview() {
-      const parts = cmPartsFromState();
-      const total = parts.reduce((s, p) => s + p.amt, 0);
-      let txt = '原料总量：' + total + '（' + PR.CUSTOM_AMT_MIN + '～' + PR.CUSTOM_AMT_MAX + '）';
-      if (parts.length >= 2 && total >= PR.CUSTOM_AMT_MIN && total <= PR.CUSTOM_AMT_MAX) {
-        try {
-          const st = PR.derivedStatsOf(parts, PR.materialLookup(planet));
-          txt += ' · 预览：强度 ' + st.strength + ' / 耐久 ' + st.durability + ' / 密度 ' + st.density
-            + ' / 精细度 ' + st.fineness;
-        } catch (e) { /* 预览失败不打断 */ }
-      }
-      previewEl.textContent = txt;
-    }
-
-    function rebuildRows() {
-      rowsBox.innerHTML = '';
-      cmState.rows.forEach((r, i) => {
-        const sel = el('select', { class: 'pop-sel', style: 'flex:2;min-height:36px;' });
-        sel.appendChild(el('option', { value: '', text: '选择原料…' }));
-        for (const m of cands) {
-          const o = el('option', { value: m, text: m });
-          if (m === r.mat) o.setAttribute('selected', 'selected');
-          sel.appendChild(o);
-        }
-        sel.addEventListener('change', () => { r.mat = sel.value; refreshPreview(); });
-        const amt = el('input', { class: 'pop-wcnt', type: 'number', min: '1', step: '1', inputmode: 'numeric',
-          value: String(r.amt || 1), style: 'flex:1;min-height:36px;' });
-        amt.addEventListener('change', () => { r.amt = Math.floor(Number(amt.value) || 0); refreshPreview(); });
-        const delRow = el('button', { class: 'pop-line-del', text: '移除', title: '移除这行原料' });
-        delRow.addEventListener('click', () => {
-          if (cmState.rows.length <= 2) { reasonEl.textContent = '至少保留 2 行原料。'; return; }
-          cmState.rows.splice(i, 1);
-          rebuildRows(); refreshPreview();
-        });
-        rowsBox.appendChild(el('div', { class: 'pop-newline-row' }, [sel, amt, delRow]));
-      });
-      const addRow = el('button', { class: 'btn', text: '＋ 添加原料行', style: 'min-height:36px;margin-top:6px;' });
-      addRow.addEventListener('click', () => {
-        if (cmState.rows.length >= 6) { reasonEl.textContent = '最多 6 种原料（协同加成上限）。'; return; }
-        cmState.rows.push({ mat: '', amt: 4 });
-        rebuildRows(); refreshPreview();
-      });
-      rowsBox.appendChild(addRow);
-    }
-    rebuildRows();
-    refreshPreview();
-
-    const submit = el('button', { class: 'btn btn-primary', text: '合成这种材料', style: 'min-height:40px;margin-top:6px;' });
-    submit.addEventListener('click', () => {
-      reasonEl.textContent = '';
-      cmState.name = nameInp.value;
-      const res = PR.makeCustomMaterial(planet, cmState.name, cmPartsFromState());
-      if (!res || !res.ok) { reasonEl.textContent = (res && res.reason) || '合成失败。'; return; }
-      // 成功：重置草稿并收起
-      cmState.open = false;
-      cmState.name = '';
-      cmState.rows = [ { mat: '', amt: 8 }, { mat: '', amt: 8 } ];
-      reasonEl.textContent = '';
-      rebuild();
-    });
-
-    card.appendChild(rowsBox);
-    card.appendChild(previewEl);
-    card.appendChild(submit);
-    card.appendChild(reasonEl);
-
-    // 已建自定义材料管理（可删除；删除会同时清掉引用它的已选工作内容）
-    const existing = (typeof PR.listCustomMaterials === 'function') ? PR.listCustomMaterials(planet) : [];
-    if (existing.length) {
-      card.appendChild(el('div', { class: 'pop-prod-title', text: '已建自定义材料（' + existing.length + '）', style: 'margin-top:8px;' }));
-      for (const cm of existing) {
-        const rowEl = el('div', { class: 'pop-newline-row' });
-        rowEl.appendChild(el('span', { class: 'fac-line1', style: 'flex:1;',
-          text: cm.material.nameCn + '　' + recipeQuantityText(cm.recipe) }));
-        const delBtn = el('button', { class: 'pop-line-del', text: '删除', title: '删除这种自定义材料及其配方' });
-        delBtn.addEventListener('click', () => {
-          const ok = PR.removeCustomMaterial(planet, cm.key);
-          if (ok) rebuild();
-        });
-        rowEl.appendChild(delBtn);
-        card.appendChild(rowEl);
-      }
-    }
-
-    toggle.addEventListener('click', () => {
-      cmState.open = !cmState.open;
-      rebuild();
-    });
-
-    wrap.appendChild(card);
-    return wrap;
   }
 
   // ---- 单条生产线行 ----
@@ -720,9 +569,6 @@ function renderProductionBlock(panel, root, planet) {
     refs = { overviews: [], lineRows: [] };
 
     linesWrap.appendChild(buildNewLineForm());
-    // v0.2.2：自定义化工厂已建成时，追加「新建自定义材料配方」卡片
-    const cmCard = buildCustomMaterialCard();
-    if (cmCard) linesWrap.appendChild(cmCard);
 
     const lines = PR.linesOf(planet);
     const lineBids = new Set(lines.map((l) => l.buildingId));
@@ -731,7 +577,7 @@ function renderProductionBlock(panel, root, planet) {
     const ovBids = new Set(lineBids);
     for (const b of BUILDINGS) {
       const n = buildingCountOf(planet, b.id);
-      if (n > 0 && PR.recipesForBuilding(planet, b.id).length) ovBids.add(b.id);
+      if (n > 0 && PR.recipesForBuilding(planet, b.id, currentAccount()).length) ovBids.add(b.id);
     }
     for (const bid of ovBids) {
       const info = PR.lineSlotInfo(planet, bid);

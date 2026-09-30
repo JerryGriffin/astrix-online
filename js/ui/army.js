@@ -1,410 +1,549 @@
-// 军队系统用户界面（Astrix v0.2.0）
-// 纯原生 ES 模块，深空玻璃拟态风格，移动端与 PC 端自适应（点击区 >= 44px）
+// 军队页（Astrix v0.2.4）
+// 「单兵武器 t_m1」研究前军队 tab 也会显示（v0.2.4：按钮常驻，页内提示需解锁的科技）：
+//   * 子导航「我的军队 | 设计与建造」（UI 与舰队页同构，fleet-subnav 样式复用）；
+//   * 三张默认蓝图（游骑兵 / 铁壁 / 雷霆）随军事科技逐级解锁；「设计与建造」可像
+//     钢铁雄心的编制设计器一样自组兵种（选框架/机动/武器/装甲/支援 + 材料，编制点校验）；
+//   * 部件在制造车间按生产线生产（可自选材料，不同材料造出的军队数值不同）；
+//   * 组装线由「军营」驱动（无工位、不占人力，每座军营 60 点固定建造人力）；
+//     **装备未齐不能开线**（v0.2.4 取消「先挂着」）；
+//   * 「训练场」建成后可在建制军队里训练：损耗 2 件装备 → +2 攻/+2 防 + 15 经验；
+//   * 每支军队人数在 100 人上下（由框架数决定），列内展示。
+// 本页由 planet.js 的 showPanel 动态接入，异常只影响本 tab。
 
-import { currentAccount, getPlanetInstance } from '../core/state.js?v=21.18';
 import {
-  ARMY_BLUEPRINTS, ARMY_BP_BY_ID, ARMY_PART_BY_ID, armyBpPartNeeds, armyBpMaterialNeeds
-} from '../data/army_parts.js?v=21.18';
+  ARMY_BLUEPRINTS, ARMY_PART_BY_ID, ARMY_SLOT_BY_CAT, ARMY_PART_COST,
+  armyCapOf, armyBpPartNeeds, armyBpMaterialNeeds,
+} from '../data/army_parts.js?v=20.8';
 import {
-  listArmies, ensureArmies, armyStatsOf, stationedArmyPower, toggleStationed, disbandArmy,
-  getArmyPartStock, canAssembleArmy, startArmyAssemble, cancelArmyAssemble
-} from '../core/army.js?v=21.18';
-import { fmtNum, richText } from '../core/format.js?v=21.18';
-import { playPing, playShield, playLaser, playVictory } from '../core/sound.js?v=21.18';
-import { openBattleView } from './combat.js?v=21.18';
+  armyStatsOfBp, armyPowerOf, armyPowerOfInstance, armyBuildCheck, listArmies, disbandArmy,
+  getArmyBp, armyEffStats, armyPartMaterialOptions, trainArmy, cancelTraining, ARMY_LABOR_PER_BARRACKS,
+} from '../core/army.js?v=20.8';
+import { addLine, removeLine } from '../core/production.js?v=20.8';
+import { fmtNum, fmtTime } from '../core/format.js?v=20.8';
+import { currentAccount, getBuildingCounts } from '../core/state.js?v=20.8';
+import { TECH_BY_ID } from '../data/techs.js?v=20.8';
 
-function escapeHtml(s) {
-  return String(s ?? '').replace(/[&<>"']/g, (c) => (
-    { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
-  ));
+const ARMY_TECH = 't_m1';
+const ARMY_CATS = ['frame', 'mobility', 'weapon', 'armor', 'support'];
+const ARMY_CAT_NAMES = { frame: '框架', mobility: '机动', weapon: '武器', armor: '装甲', support: '支援' };
+
+function techNameCn(id) {
+  const t = TECH_BY_ID[id];
+  return (t && t.nameCn) || id;
 }
 
-export function renderArmy(root, ctx) {
-  const { openModal, closeModal, planetCode } = ctx;
-  const acc = currentAccount();
-  const inst = getPlanetInstance(planetCode || (acc && acc.homePlanetCode) || 'syl');
+function el(tag, cls, text) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text != null) e.textContent = String(text);
+  return e;
+}
 
-  if (!acc || !inst) {
-    root.innerHTML = '<div class="glass" style="padding:24px;text-align:center;">星球或账号数据缺失。</div>';
+function countPartsOwned(inst, partId) {
+  if (!inst || !inst.equipment) return 0;
+  let n = 0;
+  for (const key in inst.equipment) {
+    const e = inst.equipment[key];
+    if (e && e.partId === partId) n += Number(e.count) || 0;
+  }
+  return n;
+}
+
+/** 蓝图是否已可用：默认蓝图看 tech 字段；自定义蓝图看全部部件的科技是否研究齐 */
+function bpUnlockedOf(bp, techSet) {
+  if (!bp) return false;
+  if (bp.tech) return techSet.has(bp.tech);
+  for (const it of (bp.parts || [])) {
+    const p = ARMY_PART_BY_ID[it.id];
+    if (p && p.tech && !techSet.has(p.tech)) return false;
+  }
+  return (bp.parts || []).length > 0;
+}
+
+/** 自定义蓝图组装工作量 = Σ部件工作量 ×1.25 + 500（与默认蓝图的口径同量级） */
+function customBuildWork(parts) {
+  let sum = 0;
+  for (const it of (parts || [])) {
+    const p = ARMY_PART_BY_ID[it.id];
+    if (p) sum += (Number(p.work) || 0) * (Number(it.count) || 0);
+  }
+  return Math.round(sum * 1.25) + 500;
+}
+
+export function renderArmyPage(root, ctx) {
+  ctx = ctx || {};
+  const acc = ctx.account || currentAccount();
+  const inst = ctx.planet || null;
+  root.innerHTML = '';
+  root.appendChild(el('div', 'page-title', '军队'));
+
+  const techSet = new Set((acc && Array.isArray(acc.tech)) ? acc.tech : []);
+
+  // —— 门禁：单兵武器科技。v0.2.4：军队 tab 恒显示，未解锁只提示（不再藏按钮）——
+  if (!techSet.has(ARMY_TECH)) {
+    const tip = el('div', 'muted');
+    tip.style.padding = '14px 4px';
+    tip.textContent = '军队系统尚未解锁：在科研「军事」分支研究「单兵武器 M1」即可列装基础步兵'
+      + '（军事部件在制造车间按生产线生产，进装备栏；后续研究 军用装甲 M2 / 机动平台 M3 / 火炮重武 M4 解锁更重型的兵种与部件）。';
+    root.appendChild(tip);
     return;
   }
 
-  ensureArmies(acc);
-  let activeTab = 'blueprints'; // 'blueprints' | 'units'
-
-  function refresh() {
-    renderView();
-  }
-
-  function renderView() {
-    root.innerHTML = '';
-    const container = document.createElement('div');
-    container.className = 'army-container';
-    container.style.cssText = 'padding:14px;max-width:960px;margin:0 auto;color:#c8d4e0;';
-
-    // 1. 顶部战力与驻防概况
-    const totalPower = stationedArmyPower(acc, inst.code || planetCode);
-    const armies = listArmies(acc);
-    const stationedCount = armies.filter((a) => a.stationed !== false && !a.embarkFleet).length;
-    const embarkedCount = armies.filter((a) => a.embarkFleet).length;
-    const hasCommandTech = Array.isArray(acc.tech) && acc.tech.includes('t_m5');
-
-    const header = document.createElement('div');
-    header.className = 'glass';
-    header.style.cssText = 'padding:16px;border-radius:8px;margin-bottom:14px;display:flex;flex-wrap:wrap;gap:16px;justify-content:space-between;align-items:center;';
-
-    const left = document.createElement('div');
-    left.innerHTML = `
-      <div style="font-size:17px;font-weight:bold;color:#7cd7ff;display:flex;align-items:center;gap:8px;">
-        <span>🪖 行星防卫与陆战部队</span>
-      </div>
-      <div style="font-size:12px;color:#94a3b8;margin-top:6px;line-height:1.5;">
-        现役编成：<b style="color:#f1f5f9;">${armies.length}</b> 个营（驻防中 <b style="color:#9FE1CB;">${stationedCount}</b> 个${embarkedCount > 0 ? ` · 随舰队出征 <b style="color:#7cd7ff;">${embarkedCount}</b> 个` : ''}）
-        <span style="margin:0 6px;">·</span>
-        地面要塞防卫战力：<b style="color:#9FE1CB;font-size:14px;">+${fmtNum(totalPower)}</b>
-      </div>
-    `;
-
-    const nav = document.createElement('div');
-    nav.style.cssText = 'display:flex;gap:8px;';
-
-    const btnBp = document.createElement('button');
-    btnBp.className = 'btn-action' + (activeTab === 'blueprints' ? ' active' : '');
-    btnBp.style.cssText = `padding:8px 16px;min-height:44px;border:1px solid #345;border-radius:6px;background:${activeTab === 'blueprints' ? 'rgba(124,215,255,0.2)' : 'rgba(255,255,255,0.04)'};color:#c8d4e0;cursor:pointer;font-size:13px;font-weight:bold;`;
-    btnBp.textContent = '📋 编制蓝图与整编';
-    btnBp.onclick = () => { activeTab = 'blueprints'; refresh(); };
-
-    const btnUnits = document.createElement('button');
-    btnUnits.className = 'btn-action' + (activeTab === 'units' ? ' active' : '');
-    btnUnits.style.cssText = `padding:8px 16px;min-height:44px;border:1px solid #345;border-radius:6px;background:${activeTab === 'units' ? 'rgba(124,215,255,0.2)' : 'rgba(255,255,255,0.04)'};color:#c8d4e0;cursor:pointer;font-size:13px;font-weight:bold;`;
-    btnUnits.textContent = `🎖️ 现役部队 (${armies.length})`;
-    btnUnits.onclick = () => { activeTab = 'units'; refresh(); };
-
-    nav.appendChild(btnBp);
-    nav.appendChild(btnUnits);
-
-    header.appendChild(left);
-    header.appendChild(nav);
-    container.appendChild(header);
-
-    // 科技未就绪警示
-    if (!hasCommandTech) {
-      const tip = document.createElement('div');
-      tip.style.cssText = 'padding:10px 14px;border-radius:6px;background:rgba(255,196,107,0.12);border:1px solid #ffc46b50;color:#ffc46b;font-size:12px;margin-bottom:14px;display:flex;align-items:center;gap:8px;';
-      tip.innerHTML = '⚠️ <b>战略提示</b>：军事科技「军队指挥」尚未解锁。军事部件已可在制造车间批量试制，但成建制组装成军需要先在科研面板研发「军队指挥」。';
-      container.appendChild(tip);
-    }
-
-    // 2. 正在推进的组装线（如果存在）
-    const buildLines = acc.armyBuildLines || [];
-    if (buildLines.length > 0) {
-      const linesCard = document.createElement('div');
-      linesCard.className = 'glass';
-      linesCard.style.cssText = 'padding:14px;border-radius:8px;margin-bottom:14px;border:1px solid rgba(124,215,255,0.25);';
-      linesCard.innerHTML = '<div style="font-weight:bold;font-size:14px;color:#7cd7ff;margin-bottom:10px;">⚙️ 部队整编产线</div>';
-
-      for (const line of buildLines) {
-        const row = document.createElement('div');
-        row.style.cssText = 'display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;padding:10px;background:rgba(0,0,0,0.3);border:1px solid #22354c;border-radius:6px;margin-bottom:8px;';
-        const pct = Math.min(100, Math.floor((line.progress || 0) * 100));
-
-        let stageText = '🪖 兵员动员与体格检定';
-        if (pct >= 90) stageText = '🚩 战地动员集结与授旗';
-        else if (pct >= 60) stageText = '🛡️ 装甲车辆火控并网';
-        else if (pct >= 25) stageText = '⚙️ 单兵外骨骼与火线列装';
-
-        row.innerHTML = `
-          <div style="flex:1;min-width:220px;">
-            <div style="font-size:14px;font-weight:bold;color:#f1f5f9;display:flex;align-items:center;gap:6px;">
-              <span>${escapeHtml(line.nameCn)}</span>
-              <span class="assembly-spark" style="font-size:11px;color:#38bdf8;">⚡ 军备整编中</span>
-            </div>
-            <div style="font-size:11px;color:#94a3b8;margin-top:2px;">
-              指派组装工人：${line.workers} 人 · 进度 ${pct}% · <span style="color:#7cd7ff;">${stageText}</span>
-            </div>
-            <div style="width:100%;height:8px;background:#1e293b;border-radius:4px;margin-top:6px;overflow:hidden;position:relative;border:1px solid #334155;">
-              <div class="quantum-circuit" style="width:${pct}%;height:100%;transition:width 0.3s;"></div>
-            </div>
-          </div>
-        `;
-
-        const btnCancel = document.createElement('button');
-        btnCancel.style.cssText = 'min-height:44px;padding:6px 14px;border:1px solid #f0959550;background:rgba(240,149,149,0.12);color:#f09595;border-radius:6px;cursor:pointer;font-size:12px;';
-        btnCancel.textContent = '取消退件';
-        btnCancel.onclick = () => {
-          playLaser();
-          const res = cancelArmyAssemble(acc, inst, line.id);
-          if (res.ok) {
-            refresh();
-          } else {
-            alert(res.reason || '取消失败');
-          }
-        };
-        row.appendChild(btnCancel);
-        linesCard.appendChild(row);
-      }
-      container.appendChild(linesCard);
-    }
-
-    // 3. 内容区：蓝图与现役列表分发
-    if (activeTab === 'blueprints') {
-      renderBlueprints(container);
+  // —— 子导航（与舰队页同构）：容器上记 _armySub，跨重绘保留 ——
+  const subNav = el('div', 'fleet-subnav');
+  const subContent = el('div', 'fleet-subcontent');
+  root.appendChild(subNav);
+  root.appendChild(subContent);
+  const defs = [{ key: 'troops', label: '我的军队' }, { key: 'design', label: '设计与建造' }];
+  const btns = {};
+  defs.forEach((d) => {
+    const b = el('button', 'fleet-subnav-btn', d.label);
+    b.addEventListener('click', () => {
+      root._armySub = d.key;
+      selectSub(d.key);
+    });
+    btns[d.key] = b;
+    subNav.appendChild(b);
+  });
+  function selectSub(k) {
+    Object.entries(btns).forEach(([kk, b]) => b.classList.toggle('active', kk === k));
+    subContent.innerHTML = '';
+    if (k === 'design') {
+      renderArmyDesigner(subContent, root, ctx, techSet);
     } else {
-      renderUnits(container);
+      renderTroops(subContent, root, ctx, techSet);
     }
-
-    root.appendChild(container);
   }
+  selectSub(root._armySub === 'design' ? 'design' : 'troops');
 
-  // --------------------------------------------------------------------------
-  // 蓝图列表与整编
-  // --------------------------------------------------------------------------
-  function renderBlueprints(parent) {
-    const grid = document.createElement('div');
-    grid.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fill, minmax(290px, 1fr));gap:14px;';
-
-    for (const bp of ARMY_BLUEPRINTS) {
-      const card = document.createElement('div');
-      card.className = 'glass';
-      card.style.cssText = 'padding:14px;border-radius:8px;display:flex;flex-direction:column;justify-content:space-between;border:1px solid rgba(124,215,255,0.15);';
-
-      const stats = armyStatsOf(bp.id);
-      const needs = armyBpPartNeeds(bp.id);
-      const canDo = canAssembleArmy(acc, inst, bp.id);
-
-      // 部件满足状态统计
-      const partStatusList = [];
-      for (const pid in needs) {
-        const p = ARMY_PART_BY_ID[pid];
-        const needCount = needs[pid];
-        const haveCount = getArmyPartStock(inst, pid);
-        const ok = haveCount >= needCount;
-        partStatusList.push({
-          name: p ? p.nameCn : pid,
-          need: needCount,
-          have: haveCount,
-          ok,
-        });
-      }
-
-      const top = document.createElement('div');
-      top.innerHTML = `
-        <div style="font-size:16px;font-weight:bold;color:#f1f5f9;margin-bottom:4px;">${escapeHtml(bp.nameCn)}</div>
-        <div style="font-size:12px;color:#94a3b8;line-height:1.4;margin-bottom:8px;">${richText(bp.desc)}</div>
-        <div style="background:rgba(0,0,0,0.3);padding:8px;border-radius:6px;font-size:12px;margin-bottom:8px;line-height:1.6;">
-          <div style="display:flex;justify-content:space-between;">
-            <span>⚔️ 火力: <b style="color:#f09595">${stats.atk}</b></span>
-            <span>🛡️ 防护: <b style="color:#7cd7ff">${stats.def}</b></span>
-            <span>⚡ 机动: <b style="color:#ffc46b">${stats.speed}</b></span>
-          </div>
-          <div style="margin-top:4px;border-top:1px dashed #334155;padding-top:4px;display:flex;justify-content:space-between;">
-            <span>综合战力: <b style="color:#9FE1CB;font-size:13px;">${fmtNum(stats.power)}</b></span>
-            <span style="color:#94a3b8;">工作量: ${fmtNum(bp.buildWork)}</span>
-          </div>
-        </div>
-        <div style="font-size:12px;margin-bottom:10px;">
-          <div style="color:#94a3b8;margin-bottom:4px;">所需军事装备部件：</div>
-          <div style="display:flex;flex-wrap:wrap;gap:4px;">
-            ${partStatusList.map((it) => (
-              `<span style="padding:2px 6px;border-radius:4px;font-size:11px;background:${it.ok ? 'rgba(159,225,203,0.1)' : 'rgba(240,149,149,0.12)'};border:1px solid ${it.ok ? '#9FE1CB40' : '#f0959540'};color:${it.ok ? '#9FE1CB' : '#f09595'};">
-                ${escapeHtml(it.name)} ×${it.need} (${it.have})
-              </span>`
-            )).join('')}
-          </div>
-        </div>
-      `;
-
-      const btnAssemble = document.createElement('button');
-      btnAssemble.className = 'btn-action';
-      btnAssemble.style.cssText = `width:100%;min-height:44px;border-radius:6px;font-size:13px;font-weight:bold;cursor:${canDo.ok ? 'pointer' : 'not-allowed'};border:1px solid ${canDo.ok ? '#7cd7ff50' : '#334155'};background:${canDo.ok ? 'rgba(124,215,255,0.18)' : 'rgba(255,255,255,0.04)'};color:${canDo.ok ? '#7cd7ff' : '#64748b'};`;
-      btnAssemble.textContent = canDo.ok ? '🔨 开启整编产线' : (canDo.reason || '条件不足');
-      btnAssemble.disabled = !canDo.ok;
-      btnAssemble.onclick = () => {
-        if (canDo.ok) openAssembleModal(bp);
-      };
-
-      card.appendChild(top);
-      card.appendChild(btnAssemble);
-      grid.appendChild(card);
-    }
-
-    parent.appendChild(grid);
-  }
-
-  // --------------------------------------------------------------------------
-  // 现役部队管理
-  // --------------------------------------------------------------------------
-  function renderUnits(parent) {
-    const armies = listArmies(acc);
-    if (armies.length === 0) {
-      parent.innerHTML = `
-        <div class="glass" style="padding:32px;text-align:center;color:#64748b;">
-          当前尚无现役地面部队编制。<br>
-          可在制造车间生产武器装甲后，进入「编制蓝图」进行组建整编。
-        </div>
-      `;
-      return;
-    }
-
-    const list = document.createElement('div');
-    list.style.cssText = 'display:flex;flex-direction:column;gap:10px;';
-
-    for (const a of armies) {
-      const card = document.createElement('div');
-      card.className = 'glass';
-      card.style.cssText = 'padding:14px;border-radius:8px;display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:12px;border:1px solid rgba(124,215,255,0.15);';
-
-      const stats = a.stats || {};
-      const isStationed = a.stationed !== false;
-      const isEmbarked = !!a.embarkFleet;   // v0.2.2：随舰队出征中
-
-      const info = document.createElement('div');
-      info.style.cssText = 'flex:1;min-width:240px;';
-      info.innerHTML = `
-        <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
-          <span style="font-size:15px;font-weight:bold;color:#f1f5f9;">${escapeHtml(a.nameCn)}</span>
-          <span style="font-size:11px;padding:2px 6px;border-radius:4px;background:${isEmbarked ? 'rgba(124,215,255,0.15)' : isStationed ? 'rgba(159,225,203,0.15)' : 'rgba(255,255,255,0.06)'};color:${isEmbarked ? '#7cd7ff' : isStationed ? '#9FE1CB' : '#94a3b8'};border:1px solid ${isEmbarked ? '#7cd7ff50' : isStationed ? '#9FE1CB50' : '#475569'};">
-            ${isEmbarked ? '🚀 随舰队出征中' : isStationed ? '🛡️ 驻防本星' : '⚡ 机动备勤'}
-          </span>
-        </div>
-        <div style="font-size:12px;color:#94a3b8;display:flex;gap:14px;margin-top:4px;">
-          <span>火力: <b style="color:#f09595">${stats.atk || 0}</b></span>
-          <span>防护: <b style="color:#7cd7ff">${stats.def || 0}</b></span>
-          <span>机动: <b style="color:#ffc46b">${stats.speed || 0}</b></span>
-          <span>综合战力: <b style="color:#9FE1CB">${fmtNum(stats.power || 0)}</b></span>
-        </div>
-        ${isEmbarked ? '<div style="font-size:11px;color:#7cd7ff;margin-top:4px;">该营已登舰，由舰队面板的「登陆」任务统一指挥；出征期间不计入星球地面防卫。</div>' : ''}
-      `;
-
-      const actions = document.createElement('div');
-      actions.style.cssText = 'display:flex;gap:8px;align-items:center;';
-
-      // 驻防状态切换（出征中锁定）
-      const btnToggle = document.createElement('button');
-      btnToggle.className = 'btn-action';
-      btnToggle.style.cssText = `padding:6px 12px;min-height:44px;border-radius:6px;font-size:12px;cursor:${isEmbarked ? 'not-allowed' : 'pointer'};border:1px solid ${isEmbarked ? '#334155' : isStationed ? '#7cd7ff50' : '#9FE1CB50'};background:${isEmbarked ? 'rgba(255,255,255,0.04)' : isStationed ? 'rgba(124,215,255,0.1)' : 'rgba(159,225,203,0.12)'};color:${isEmbarked ? '#64748b' : isStationed ? '#7cd7ff' : '#9FE1CB'};`;
-      btnToggle.textContent = isEmbarked ? '出征中…' : isStationed ? '转入机动备勤' : '驻防本星防线';
-      btnToggle.disabled = isEmbarked;
-      btnToggle.title = isEmbarked ? '部队正随舰队出征，任务结束（或取消）后归建' : '';
-      btnToggle.onclick = () => {
-        if (isEmbarked) return;
-        playPing();
-        toggleStationed(acc, a.id);
-        refresh();
-      };
-
-      // 解散编制（出征中锁定）
-      const btnDisband = document.createElement('button');
-      btnDisband.className = 'btn-action';
-      btnDisband.style.cssText = 'padding:6px 12px;min-height:44px;border:1px solid #f0959540;background:rgba(240,149,149,0.08);color:#f09595;border-radius:6px;cursor:pointer;font-size:12px;';
-      btnDisband.textContent = '解散编制';
-      btnDisband.disabled = isEmbarked;
-      btnDisband.style.opacity = isEmbarked ? '0.45' : '1';
-      btnDisband.style.cursor = isEmbarked ? 'not-allowed' : 'pointer';
-      btnDisband.onclick = () => {
-        if (isEmbarked) return;
-        if (confirm(`确定要解散部队「${a.nameCn}」吗？部分部件将返还归入装备库。`)) {
-          playLaser();
-          disbandArmy(acc, inst, a.id);
-          refresh();
-        }
-      };
-
-      // 战术对抗演练 (钢铁雄心式部队检验)
-      const btnDrill = document.createElement('button');
-      btnDrill.className = 'btn-action';
-      btnDrill.style.cssText = 'padding:6px 12px;min-height:44px;border-radius:6px;font-size:12px;cursor:pointer;border:1px solid #eab30850;background:rgba(234,179,8,0.12);color:#fde047;';
-      btnDrill.textContent = '⚔️ 战役推演';
-      btnDrill.onclick = () => {
-        playLaser();
-        const pUnits = [{
-          name: a.nameCn,
-          dryMass: Math.max(300, (stats.def || 10) * 15),
-          thrust: Math.max(250, (stats.speed || 10) * 16),
-          role: (stats.atk > 40) ? 'battleship' : (stats.speed > 18) ? 'interceptor' : 'cruiser',
-        }];
-        openBattleView({ openModal, closeModal, onBattleEnd: () => refresh() }, {
-          title: `地面陆战与战区战役推演：${a.nameCn}`,
-          playerShips: pUnits,
-          enemyShips: [
-            { name: '假想敌突击连队', dryMass: 320, thrust: 300, role: 'interceptor' },
-            { name: '假想敌重装装甲班', dryMass: 550, thrust: 240, role: 'cruiser' },
-          ],
-        });
-      };
-
-      actions.appendChild(btnToggle);
-      actions.appendChild(btnDrill);
-      actions.appendChild(btnDisband);
-
-      card.appendChild(info);
-      card.appendChild(actions);
-      list.appendChild(card);
-    }
-
-    parent.appendChild(list);
-  }
-
-  // --------------------------------------------------------------------------
-  // 组建整编弹窗
-  // --------------------------------------------------------------------------
-  function openAssembleModal(bp) {
-    const div = document.createElement('div');
-    div.innerHTML = `
-      <p style="color:#94a3b8;font-size:13px;line-height:1.5;margin-bottom:12px;">
-        为「${escapeHtml(bp.nameCn)}」建立整编产线。系统将从母星装备库扣齐相应军事部件并投入组装人力。
-      </p>
-      <div style="margin-bottom:12px;">
-        <label style="font-size:12px;color:#94a3b8;display:block;margin-bottom:4px;">指派组装工人（默认 10 人）：</label>
-        <input type="number" id="army-workers-inp" min="1" max="500" value="10"
-               style="width:100%;min-height:44px;box-sizing:border-box;background:#0b101c;border:1px solid #22354c;color:#c8d4e0;border-radius:6px;padding:8px 12px;font-size:14px;">
-      </div>
-      <div id="army-assemble-err" style="color:#ff6b81;font-size:12px;margin-bottom:10px;"></div>
-      <button id="btn-confirm-assemble" style="width:100%;min-height:44px;background:#7cd7ff;color:#0b101c;font-weight:bold;border:none;border-radius:6px;cursor:pointer;">确认下达整编指令</button>
-    `;
-
-    openModal({ title: `整编部队：${bp.nameCn}`, body: div });
-
-    setTimeout(() => {
-      const inp = document.getElementById('army-workers-inp');
-      const err = document.getElementById('army-assemble-err');
-      const btn = document.getElementById('btn-confirm-assemble');
-
-      if (btn && inp) {
-        btn.onclick = () => {
-          const w = parseInt(inp.value, 10) || 10;
-          const res = startArmyAssemble(acc, inst, bp.id, w);
-          if (!res.ok) {
-            playLaser();
-            err.textContent = res.reason || '组建失败';
-          } else {
-            playShield();
-            closeModal();
-            refresh();
-          }
-        };
-      }
-    }, 50);
-  }
-
-  refresh();
-
-  // 定时刷新进度条（当有部队整编产线时）
+  // 每秒轻刷新（进度条与缺件状态）。守卫不能用 root.isConnected ——
+  // planet.js 切 tab 复用同一个 contentInner，isConnected 恒 true，
+  // 旧定时器会把军队页重绘回去盖掉新 tab（v0.2.0 冒烟抓到）。改为检查本页标记。
+  // v0.2.4：设计子页不自动重绘（避免清掉正在编辑的编制）。
+  // v0.2.6：先清旧定时器再建新，避免每次重绘叠加无限增长的定时器（此前泄漏）。
   if (root._armyTimer) { clearInterval(root._armyTimer); root._armyTimer = null; }
-  let prevHadLines = (acc.armyBuildLines || []).length > 0;
   root._armyTimer = setInterval(() => {
-    if (!root.isConnected && !(typeof document !== 'undefined' && document.body && document.body.contains(root))) {
-      clearInterval(root._armyTimer);
-      root._armyTimer = null;
-      return;
-    }
-    const ae = (typeof document !== 'undefined' && document.activeElement) || null;
-    if (ae && typeof root.contains === 'function' && root.contains(ae)) return; // 正在操作输入框，避免打断
-    const lines = acc.armyBuildLines || [];
-    const had = lines.length > 0;
-    if (had || prevHadLines) {
-      prevHadLines = had;
-      refresh();
-    }
+    const title = root.querySelector && root.querySelector('.page-title');
+    if (!title || title.textContent !== '军队') { clearInterval(root._armyTimer); root._armyTimer = null; return; }
+    if (root._armySub === 'design') return;
+    const accNow = ctx.account || currentAccount();
+    const instNow = ctx.planet || null;
+    if (!instNow) return;
+    const active = document.activeElement;
+    if (active && root.contains(active) && (active.tagName === 'INPUT' || active.tagName === 'SELECT')) return;
+    renderArmyPage(root, Object.assign({}, ctx, { account: accNow }));
   }, 1000);
+}
+
+// ============================================================================
+// 我的军队：组装线（军营驱动）+ 蓝图开线 + 建制军队（训练）
+// ============================================================================
+function renderTroops(sec, root, ctx, techSet) {
+  const acc = ctx.account || currentAccount();
+  const inst = ctx.planet || null;
+  const counts = getBuildingCounts(inst);
+  const barracks = Number(counts.barracks) || 0;
+  const training = Number(counts.training_ground) || 0;
+  const armies = listArmies(acc);
+  const totalPower = armies.reduce((n, a) => n + armyPowerOfInstance(a), 0);
+  const lines = (inst.lines || []).filter((l) => l && l.armyBlueprintId);
+
+  // ---- 顶部概况卡（借鉴卡片式军队界面：一屏看全兵力/产能） ----
+  const header = el('div', 'army-header');
+  const hLeft = el('div');
+  hLeft.appendChild(el('div', 't', '🪖 行星防卫与陆战部队'));
+  const hSub = el('div', 's');
+  hSub.innerHTML = '现役编成 <b>' + armies.length + '</b> 支 · 总战力 <b class="ok">'
+    + fmtNum(totalPower) + '</b> · 组装线 <b>' + lines.length + '</b> 条'
+    + '　·　军营 <b class="' + (barracks > 0 ? 'ok' : 'warn') + '">' + barracks + '</b> 座（建造人力 '
+    + fmtNum(barracks * ARMY_LABOR_PER_BARRACKS) + '）'
+    + (training > 0 ? '　·　训练场 <b class="ok">' + training + '</b> 座' : '');
+  hLeft.appendChild(hSub);
+  header.appendChild(hLeft);
+  sec.appendChild(header);
+
+  // ---- 组装生产线 ----
+  const secLine = el('div', 'panel-section');
+  secLine.appendChild(el('div', 'section-title', '军队组装生产线'));
+  if (!lines.length) {
+    secLine.appendChild(el('div', 'muted', '还没有组装线 —— 在下方选择一张蓝图开设生产线，装备齐全才能开工。'));
+  }
+  for (const line of lines) {
+    const bp = getArmyBp(acc, line.armyBlueprintId);
+    const row = el('div', 'army-line-row');
+    const prog = Math.min(0.999999, Number((inst.armyProgress || {})[line.armyBlueprintId]) || 0);
+    const chk = armyBuildCheck(inst, bp || line.armyBlueprintId);
+    const stuck = !chk.ok && prog > 0.98;
+    const head = el('div', 'army-line-head');
+    head.appendChild(el('b', null, bp ? bp.nameCn : line.armyBlueprintId));
+    head.appendChild(el('span', 'muted', '　军营驱动 · ' + fmtNum(barracks * ARMY_LABOR_PER_BARRACKS) + ' 建造人力'));
+    row.appendChild(head);
+    const bar = el('div', 'army-progress');
+    const fill = el('div', 'army-progress-fill');
+    fill.style.width = (prog * 100).toFixed(1) + '%';
+    bar.appendChild(fill);
+    row.appendChild(bar);
+    const stat = el('div', 'army-line-stat');
+    if (stuck) {
+      const missTxt = chk.missing.map((m) => {
+        const p = ARMY_PART_BY_ID[m.partId];
+        return (p ? p.nameCn : m.partId) + ' ' + m.have + '/' + m.need;
+      }).join('、');
+      stat.appendChild(el('span', 'army-miss', '缺件：' + missTxt));
+    } else {
+      stat.appendChild(el('span', 'muted', '进度 ' + (prog * 100).toFixed(1) + '%'));
+    }
+    const cancelBtn = el('button', 'btn btn-sm', '取消');
+    cancelBtn.addEventListener('click', () => {
+      removeLine(inst, line.id);
+      renderArmyPage(root, ctx);
+    });
+    stat.appendChild(cancelBtn);
+    row.appendChild(stat);
+    secLine.appendChild(row);
+  }
+  sec.appendChild(secLine);
+
+  // ---- 蓝图与开线（卡片网格） ----
+  const customs = (acc && Array.isArray(acc.armyBlueprints)) ? acc.armyBlueprints : [];
+  const secBp = el('div', 'panel-section');
+  secBp.appendChild(el('div', 'section-title',
+    '编制蓝图（默认 ' + ARMY_BLUEPRINTS.length + ' 张 + 自定义 ' + customs.length + ' 张）'));
+  const grid = el('div', 'army-bp-grid');
+  for (const bp of ARMY_BLUEPRINTS.concat(customs)) {
+    grid.appendChild(buildBpCard(bp, root, ctx, techSet, barracks));
+  }
+  secBp.appendChild(grid);
+  sec.appendChild(secBp);
+
+  // ---- 建制军队（含训练）----
+  const secArmies = el('div', 'panel-section');
+  secArmies.appendChild(el('div', 'section-title', '现役部队（' + armies.length + ' 支）'));
+  if (!armies.length) {
+    secArmies.appendChild(el('div', 'muted', '还没有成军建制 —— 在上方蓝图卡点「开设组装线」，部件齐、进度满即成军。'));
+  } else if (!(training > 0)) {
+    secArmies.appendChild(el('div', 'muted',
+      '建成「训练场」（t_m2）后可在这里训练军队：每次训练损耗 2 件军事装备，'
+      + '该军队永久 +2 攻 / +2 防并获得 15 点经验。'));
+  }
+  for (const a of armies) {
+    secArmies.appendChild(buildArmyRow(a, root, ctx, training));
+  }
+  sec.appendChild(secArmies);
+}
+
+// ---- 蓝图卡（数值面板 / 部件胶囊 / 全宽开线按钮） ----
+function buildBpCard(bp, root, ctx, techSet, barracks) {
+  const acc = ctx.account || currentAccount();
+  const inst = ctx.planet || null;
+  const card = el('div', 'army-bp-card');
+  const isCustom = !bp.tech;
+  const unlocked = bpUnlockedOf(bp, techSet);
+  const title = el('div', 'army-bp-title');
+  title.appendChild(el('b', null, bp.nameCn + (isCustom ? '（自定义）' : '')));
+  if (!unlocked) title.appendChild(el('span', 'army-bp-lock', '　🔒'));
+  card.appendChild(title);
+  if (bp.desc) card.appendChild(el('div', 'army-bp-desc muted', bp.desc));
+
+  // 数值面板：火力红 / 防护青 / 机动琥珀 + 战力绿
+  const stats = armyStatsOfBp(bp);
+  const box = el('div', 'army-stat-box');
+  box.innerHTML =
+    '<span>⚔ 火力 <b class="atk">' + stats.atk + '</b></span>'
+    + '<span>🛡 防护 <b class="def">' + stats.def + '</b></span>'
+    + '<span>⚡ 机动 <b class="spd">' + stats.speed + '</b></span>'
+    + '<span>👥 人数 <b>' + stats.men + '</b></span>'
+    + '<span class="row2"><span>综合战力 <b class="pwr">' + armyPowerOf(stats) + '</b></span>'
+    + '<span class="muted">工作量 ' + fmtNum(bp.buildWork) + '</span></span>';
+  card.appendChild(box);
+
+  // 部件胶囊（够 = 绿 / 缺 = 红，含自选材料标注）
+  const need = armyBpPartNeeds(bp);
+  const chips = el('div', 'army-chips');
+  let allEnough = true;
+  let missCount = 0;
+  for (const partId in need) {
+    const p = ARMY_PART_BY_ID[partId];
+    const owned = countPartsOwned(inst, partId);
+    const enough = owned >= need[partId];
+    if (!enough) { allEnough = false; missCount += need[partId] - owned; }
+    const matNote = (bp.parts || []).filter((it) => it.id === partId)
+      .map((it) => it.material && it.material !== '铁' ? '@' + it.material : '').join('');
+    const chip = el('span', 'army-chip ' + (enough ? 'ok' : 'lack'),
+      (p ? p.nameCn : partId) + matNote + ' ×' + need[partId] + '（有 ' + owned + '）');
+    chips.appendChild(chip);
+  }
+  card.appendChild(chips);
+
+  // 材料预算（部件的生产用料）
+  const mats = armyBpMaterialNeeds(bp);
+  const matTxt = Object.keys(mats).map((m) => m + ' ' + mats[m]).join(' · ');
+  card.appendChild(el('div', 'muted army-bp-mats', '材料预算：' + matTxt));
+
+  // 未解锁提示（琥珀条）
+  if (!unlocked) {
+    const needTech = bp.tech
+      ? '需研究「' + techNameCn(bp.tech) + '」后解锁此兵种'
+      : '部件科技未研究齐，解锁对应军事科技后可组装';
+    card.appendChild(el('div', 'army-bp-locked muted', '⚠ ' + needTech));
+  }
+
+  // 全宽开线按钮：不可开工时直接显示原因
+  const goBtn = el('button', 'army-go',
+    !unlocked ? '未解锁'
+    : (!(barracks > 0)) ? '需建军营'
+    : (!allEnough ? '装备未齐，不能开工' : '开设组装线'));
+  goBtn.disabled = !unlocked || !allEnough || !(barracks > 0);
+  if (!unlocked && bp.tech) goBtn.title = '需研究「' + techNameCn(bp.tech) + '」';
+  if (!allEnough && missCount > 0) goBtn.title = '还差 ' + missCount + ' 件军事装备';
+  const msg = el('span', 'army-form-msg muted');
+  goBtn.addEventListener('click', () => {
+    const res = addLine(inst, 'barracks', null, {
+      armyBlueprintId: isCustom ? null : bp.id,
+      armyBlueprint: isCustom ? bp : undefined,
+      workers: 0,
+    });
+    if (res && res.ok) {
+      msg.textContent = '已开设组装线（军营驱动）';
+      renderArmyPage(root, ctx);
+    } else {
+      msg.textContent = (res && res.reason) || '开线失败';
+    }
+  });
+  card.appendChild(goBtn);
+  card.appendChild(msg);
+  return card;
+}
+
+// ---- 现役部队卡（徽标 / 彩色数值 / 训练） ----
+function buildArmyRow(a, root, ctx, trainingCount) {
+  const acc = ctx.account || currentAccount();
+  const inst = ctx.planet || null;
+  const row = el('div', 'army-unit-row');
+  const info = el('div', 'army-unit-info');
+  const nameLine = el('div');
+  nameLine.appendChild(el('b', null, a.nameCn || a.id));
+  const exp = Number(a.exp) || 0;
+  if (exp > 0) {
+    const badge = el('span', 'army-badge exp', '🎖 经验 ' + exp);
+    nameLine.appendChild(badge);
+  }
+  info.appendChild(nameLine);
+  const st = armyEffStats(a);
+  const men = Number(a.men) || st.men || 0;
+  const bA = Number(a.bonusAtk) || 0;
+  const bD = Number(a.bonusDef) || 0;
+  const statLine = el('div', 's muted');
+  statLine.innerHTML = '👥 ' + men + ' 人 · ⚔ 火力 <b style="color:#f09595">' + st.atk + '</b>'
+    + ' · 🛡 防护 <b style="color:var(--cyan)">' + st.def + '</b>'
+    + ' · ⚡ 机动 <b style="color:#ffc46b">' + st.speed + '</b>'
+    + ' · 综合战力 <b style="color:#9FE1CB">' + armyPowerOfInstance(a) + '</b>'
+    + ((bA || bD) ? ' · <span style="color:#9FE1CB">训练加成 +' + bA + '/+' + bD + '</span>' : '');
+  info.appendChild(statLine);
+  row.appendChild(info);
+
+  // v0.2.6：训练中显示进度条 + 取消；否则显示训练按钮（需训练场）
+  const task = (inst.trainingTasks || []).find((t) => t.armyId === a.id);
+  if (task) {
+    const prog = Math.min(1, Number(task.progress) / Number(task.duration));
+    const bar = el('div', 'army-train-bar');
+    const fill = el('div', 'army-train-fill');
+    fill.style.width = (prog * 100).toFixed(1) + '%';
+    bar.appendChild(fill);
+    const remain = Math.max(0, Number(task.duration) - Number(task.progress));
+    const pct = el('span', 'muted army-train-pct', '训练中 ' + Math.floor(prog * 100) + '% · 剩 ' + fmtTime(remain));
+    row.appendChild(bar);
+    row.appendChild(pct);
+    const cancel = el('button', 'btn btn-sm btn-danger', '取消训练');
+    cancel.addEventListener('click', () => { cancelTraining(inst, a.id); renderArmyPage(root, ctx); });
+    row.appendChild(cancel);
+  } else {
+    const trainBtn = el('button', 'btn btn-sm', '训练');
+    if (!(trainingCount > 0)) {
+      trainBtn.setAttribute('disabled', 'disabled');
+      trainBtn.title = '需要先建成「训练场」（t_m2）';
+    } else {
+      trainBtn.addEventListener('click', () => {
+        const r = trainArmy(acc, a.id, inst);
+        if (r && r.ok) {
+          renderArmyPage(root, ctx);
+        } else {
+          trainBtn.title = (r && r.reason) || '训练失败';
+          trainBtn.textContent = '!';
+        }
+      });
+    }
+    row.appendChild(trainBtn);
+  }
+
+  const disb = el('button', 'btn btn-sm btn-danger', '解散');
+  disb.addEventListener('click', () => {
+    disbandArmy(acc, a.id);
+    renderArmyPage(root, ctx);
+  });
+  row.appendChild(disb);
+  return row;
+}
+
+// ============================================================================
+// 设计与建造：钢铁雄心式编制设计器（UI 与舰队设计页同构）
+// ============================================================================
+function renderArmyDesigner(sec, root, ctx, techSet) {
+  const acc = ctx.account || currentAccount();
+  // 草稿挂 root 上，跨重绘保留
+  if (!root._armyDraft) {
+    root._armyDraft = {
+      nameCn: '自定义军队',
+      parts: [
+        { id: 'ap_frame_light', count: 2, material: '铁' },
+        { id: 'ap_wpn_rifle', count: 2, material: '铁' },
+      ],
+    };
+  }
+  const draft = root._armyDraft;
+
+  const wrap = el('div', 'design-wrap');
+  const head = el('div', 'res-head glass');
+  head.innerHTML = '<div class="res-head-item"><span class="res-k">编制点</span>'
+    + '<span class="res-v cyan" data-dsn-cap>—</span></div>'
+    + '<div class="res-head-item res-note muted">框架提供编制点，其余部件占用；'
+    + '≥1 框架 + ≥1 武器且不超编才能保存。部件材料不同，军队数值不同。</div>';
+  wrap.appendChild(head);
+
+  // 名称
+  const nameRow = el('div', 'bp-row');
+  nameRow.appendChild(el('span', 'bp-label', '名称'));
+  const nameInput = document.createElement('input');
+  nameInput.type = 'text';
+  nameInput.className = 'bp-input bp-input-wide';
+  nameInput.value = draft.nameCn;
+  nameInput.addEventListener('change', () => { draft.nameCn = nameInput.value.trim() || '自定义军队'; });
+  nameRow.appendChild(nameInput);
+  wrap.appendChild(nameRow);
+
+  // 分类别部件区：加件下拉 + 已加列表（材料自选 + 数量 + 移除）
+  const partsWrap = el('div', 'dsn-army-parts');
+  wrap.appendChild(partsWrap);
+  function renderParts() {
+    partsWrap.innerHTML = '';
+    for (const cat of ARMY_CATS) {
+      const unlockedParts = Object.values(ARMY_PART_BY_ID).filter(
+        (p) => p.cat === cat && (!p.tech || techSet.has(p.tech)));
+      const sub = el('div', 'bp-sub', ARMY_CAT_NAMES[cat]
+        + '（每件占编制点 ' + (ARMY_PART_COST[cat] || 0) + '）');
+      partsWrap.appendChild(sub);
+      if (cat === 'frame') {
+        const fr = draft.parts.filter((it) => (ARMY_PART_BY_ID[it.id] || {}).cat === 'frame');
+        sub.textContent += ' · 当前 ' + fr.reduce((n, it) => n + (Number(it.count) || 0), 0) + ' 架';
+      }
+      // 已加的部件行
+      draft.parts.forEach((it, i) => {
+        const p = ARMY_PART_BY_ID[it.id];
+        if (!p || p.cat !== cat) return;
+        const row = el('div', 'bp-row');
+        row.appendChild(el('span', 'bp-label', p.nameCn));
+        // 材料自选
+        const matOpts = armyPartMaterialOptions(it.id);
+        if (matOpts.length) {
+          const sel = document.createElement('select');
+          sel.className = 'bp-select';
+          for (const m of matOpts) {
+            const o = document.createElement('option');
+            o.value = m; o.textContent = m;
+            if ((it.material || '铁') === m) o.setAttribute('selected', 'selected');
+            sel.appendChild(o);
+          }
+          sel.addEventListener('change', () => { it.material = sel.value; refreshEval(); });
+          row.appendChild(sel);
+        }
+        // 数量
+        const cnt = document.createElement('input');
+        cnt.type = 'number'; cnt.min = '1'; cnt.className = 'bp-input';
+        cnt.value = String(Number(it.count) || 1);
+        cnt.addEventListener('change', () => {
+          it.count = Math.max(1, Math.floor(Number(cnt.value) || 1));
+          refreshEval();
+        });
+        row.appendChild(cnt);
+        const rm = el('button', 'btn btn-sm btn-danger bp-remove', '移除');
+        rm.addEventListener('click', () => {
+          draft.parts.splice(draft.parts.indexOf(it), 1);
+          renderParts(); refreshEval();
+        });
+        row.appendChild(rm);
+        partsWrap.appendChild(row);
+      });
+      // 加件下拉
+      if (unlockedParts.length) {
+        const addRow = el('div', 'bp-row');
+        const sel = document.createElement('select');
+        sel.className = 'bp-select';
+        for (const p of unlockedParts) {
+          const o = document.createElement('option');
+          o.value = p.id; o.textContent = p.nameCn + '（编制 ' + (ARMY_PART_COST[cat] || 0) + '）';
+          sel.appendChild(o);
+        }
+        const addBtn = el('button', 'btn btn-sm bp-add', '+ 加一件');
+        addBtn.addEventListener('click', () => {
+          draft.parts.push({ id: sel.value, count: 1, material: '铁' });
+          renderParts(); refreshEval();
+        });
+        addRow.appendChild(sel);
+        addRow.appendChild(addBtn);
+        partsWrap.appendChild(addRow);
+      } else {
+        partsWrap.appendChild(el('p', 'bp-tip muted',
+          '尚未解锁该类部件 —— 研究军事科技后开放（框架/武器 t_m1、装甲/重型框架 t_m2、机动 t_m3、火炮/支援 t_m4）。'));
+      }
+    }
+  }
+  renderParts();
+
+  // 实时数值 + 编制 + 保存
+  const evalBox = el('div', 'bp-eval-grid');
+  wrap.appendChild(evalBox);
+  const capEl = head.querySelector('[data-dsn-cap]');
+  const saveMsg = el('div', 'muted');
+  function refreshEval() {
+    const stats = armyStatsOfBp(draft);
+    const cap = armyCapOf(draft.parts);
+    if (capEl) capEl.textContent = cap.used + ' / ' + cap.cap
+      + (cap.ok ? ' ✓' : (cap.frames < 1 ? '（至少 1 架框架）' : cap.weapons < 1 ? '（至少 1 件武器）' : '（超编）'));
+    evalBox.innerHTML = '';
+    const rows = [
+      ['攻击', fmtNum(stats.atk)], ['防御', fmtNum(stats.def)], ['机动', fmtNum(stats.speed)],
+      ['人数', stats.men + ' 人'], ['总质量', fmtNum(stats.mass)],
+      ['组装工作量', fmtNum(customBuildWork(draft.parts)) + ' 人·秒'],
+      ['战力', armyPowerOf(stats)],
+    ];
+    for (const [k, v] of rows) {
+      const cell = el('div', 'bp-eval-cell');
+      cell.innerHTML = '<span class="bp-eval-k muted">' + k + '</span><span class="bp-eval-v">' + v + '</span>';
+      evalBox.appendChild(cell);
+    }
+    saveBtn.disabled = !cap.ok;
+    saveBtn.title = cap.ok ? '' : '编制不合法：至少 1 架框架、1 件武器，且不超编制点';
+  }
+  const actions = el('div', 'bp-actions');
+  const saveBtn = el('button', 'btn btn-primary', '保存蓝图');
+  saveBtn.addEventListener('click', () => {
+    if (!Array.isArray(acc.armyBlueprints)) acc.armyBlueprints = [];
+    const bp = {
+      id: 'abc_' + Date.now().toString(36),
+      nameCn: draft.nameCn || '自定义军队',
+      tech: null,
+      buildWork: customBuildWork(draft.parts),
+      parts: draft.parts.map((it) => ({ id: it.id, count: Math.max(1, Math.floor(Number(it.count) || 1)), material: it.material || '铁' })),
+    };
+    acc.armyBlueprints.push(bp);
+    root._armyDraft = null;   // 下次进入给新草稿
+    saveMsg.textContent = '已保存「' + bp.nameCn + '」——到「我的军队」页开线组装。';
+    refreshEval();
+  });
+  actions.appendChild(saveBtn);
+  wrap.appendChild(actions);
+  wrap.appendChild(saveMsg);
+
+  sec.appendChild(wrap);
+  refreshEval();
 }

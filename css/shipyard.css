@@ -194,6 +194,16 @@
 .design-wrap { display: flex; flex-direction: column; gap: 14px; }
 .dsn-saved { display: flex; flex-direction: column; gap: 8px; }
 .dsn-group { display: flex; flex-direction: column; gap: 4px; }
+/* v0.2.1：已保存蓝图的紧凑数值卡片（不罗列具体设施 / 材料） */
+.dsn-saved-card { display: flex; flex-direction: column; gap: 10px; padding: 14px; margin-bottom: 10px; }
+.dsn-saved-hint { font-size: 12px; line-height: 1.5; margin-bottom: 2px; }
+.dsn-saved-card .bp-eval-grid { margin-top: 2px; }
+
+/* v0.2.2：已保存蓝图右侧直接建造（配员 + 建造按钮 + 行内结果） */
+.dsn-build-row { display: flex; justify-content: flex-end; align-items: center; gap: 8px; flex-wrap: wrap; }
+.dsn-build-row .bp-input { width: 84px; text-align: center; }
+.dsn-build-msg { font-size: 12px; max-width: 100%; }
+.dsn-build-msg.err { color: #f09595; }
 /* 移动端点击区 ≥ 44px（仅对设计面板内的控件生效，不动既有 .bp-select/.bp-input 全局值） */
 .design-wrap .bp-select,
 .design-wrap .bp-input { min-height: 44px; }

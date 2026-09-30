@@ -230,3 +230,48 @@
 .res-card-bot.ok { color: #9FE1CB; }
 .fac-lock.fac-done { color: #9FE1CB; }
 .ok-green { color: #9FE1CB; }
+
+/* ===== v0.2.6 商店星：星际股市网格 ===== */
+.shop-market-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 8px;
+  margin: 6px 0 4px;
+  max-height: 360px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+.shop-mk-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-areas: "name act" "price act";
+  align-items: center;
+  gap: 2px 8px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+.shop-mk-name { grid-area: name; font-weight: 600; font-size: 13px; color: var(--text); }
+.shop-mk-price { grid-area: price; font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.shop-mk-stock { grid-area: price; align-self: end; font-size: 11px; color: var(--muted); margin-top: 2px; }
+.shop-mk-act { grid-area: act; display: flex; align-items: center; gap: 6px; }
+
+/* ===== v0.2.6 拍卖行 ===== */
+.shop-auc-form {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px;
+  background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
+  padding: 10px; margin: 6px 0;
+}
+.shop-auc-label { font-size: 12px; color: var(--muted); }
+.shop-auc-list { display: flex; flex-direction: column; gap: 6px; margin: 6px 0; }
+.shop-auc-item { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
+.shop-auc-log { display: flex; flex-direction: column; gap: 4px; }
+.shop-auc-logitem { font-size: 12px; color: var(--muted); }
+.auc-mine { font-size: 11px; color: #9FE1CB; border: 1px solid rgba(159,225,203,0.4); border-radius: 10px; padding: 2px 8px; }
+
+@media (max-width: 560px) {
+  .shop-market-grid { grid-template-columns: 1fr; max-height: 300px; }
+  .shop-mk-act .btn { flex: 1; }
+}
+

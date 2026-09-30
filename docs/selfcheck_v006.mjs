@@ -21,17 +21,20 @@ globalThis.localStorage = {
   clear: () => _ls.clear(),
 };
 
-const S = await import('../js/core/state.js?v=21.18');
-const V = await import('../js/version.js?v=21.18');
-const P = await import('../js/core/power.js?v=21.18');
-const PR = await import('../js/core/production.js?v=21.18');
-const RC = await import('../js/data/recipes.js?v=21.18');
-const F = await import('../js/data/facilities.js?v=21.18');
-const PL = await import('../js/data/planets.js?v=21.18');
+const S = await import('../js/core/state.js?v=20.8');
+const V = await import('../js/version.js?v=20.8');
+const P = await import('../js/core/power.js?v=20.8');
+const PR = await import('../js/core/production.js?v=20.8');
+const RC = await import('../js/data/recipes.js?v=20.8');
+const F = await import('../js/data/facilities.js?v=20.8');
+const PL = await import('../js/data/planets.js?v=20.8');
+const SHOP = await import('../js/core/shop.js?v=20.8');
+const AUC = await import('../js/core/auction.js?v=20.8');
+const MAT = await import('../js/data/materials.js?v=20.8');
 
 // ----- 计数器 -----
 let pass = 0, fail = 0;
-const groups = { A: [0, 0], B: [0, 0], C: [0, 0], D: [0, 0], E: [0, 0], F: [0, 0], G: [0, 0], H: [0, 0] };
+const groups = { A: [0, 0], B: [0, 0], C: [0, 0], D: [0, 0], E: [0, 0], F: [0, 0], G: [0, 0], H: [0, 0], I: [0, 0], J: [0, 0], K: [0, 0] };
 function ok(cond, label, g) {
   if (cond) { pass++; if (g) groups[g][0]++; console.log('  ✓ ' + label); }
   else { fail++; if (g) groups[g][1]++; console.log('  ✗ ' + label); }
@@ -495,7 +498,7 @@ function feedPop(inst) {
 //   任意数目的原料，任意比例合成一种新材料，你根据比例和材料推算新材料数值，
 //   精细加工厂可以选择任一种固体材料进行二合一。」
 console.log('\n===== E. 复合资源 / 自定义材料 / 通用精炼 =====');
-const MT = await import('../js/data/materials.js?v=21.18');
+const MT = await import('../js/data/materials.js?v=20.8');
 const MAT_BY_NAME = Object.fromEntries(MT.MATERIALS.map((m) => [m.nameCn, m]));
 const GASES = new Set(['氮气', '氧气', '氨气', '甲烷', '二氧化碳', '氢气']);
 
@@ -713,7 +716,7 @@ for (const c of COMPOSITES) {
 //   ② 四位小数会把小于 5e-5 的值四舍五入成 0.0000，显示成「+0/s」
 //      （粗金这类丰度 1e-7 的资源就落在这一档）。
 console.log('\n===== F. 速率显示精度 =====');
-const FMT = await import('../js/core/format.js?v=21.18');
+const FMT = await import('../js/core/format.js?v=20.8');
 {
   const cases = [
     [0.0523, '+0.0523', '普通小数保留 4 位'],
@@ -766,7 +769,7 @@ const FMT = await import('../js/core/format.js?v=21.18');
 // 3) 开局不给氧气，氧气直接扣星球储量
 // 4) 科研里取消舰船 MKI~MKIII 与 a/b/c/d（已在 selfcheck_v005 第六节覆盖）
 console.log('\n===== G. v0.0.61（跨层储量 / 净增长 / 氧气）=====');
-const POP = await import('../js/core/population.js?v=21.18');
+const POP = await import('../js/core/population.js?v=20.8');
 {
   // ---- G1：同名资源跨层各自成条，储量分开 ----
   // v0.0.91：原「地下」拆成「浅层(underground)」与「深层(deep)」两条，故石头现在是
@@ -843,26 +846,19 @@ const POP = await import('../js/core/population.js?v=21.18');
   S.tick(1);
   ok(inst4.netRates['木头'] === undefined,
     '装好熔炉但未选工作内容时，不应出现「木头」的净增长（R16 的未选不运转）', 'G');
-  // 差分断言：选了配方之后，「有机质」投料（2，走物品栏）应把它的净增长拉低；
-  //   r_furnace_wood 的「氧气」投料（1）则走**星球气体储量/大气层**——熔炉属 gasDual 建筑，
-  //   经 _consumeGas 扣 e.remaining + atmosphere，**不碰 owned**，所以氧气**不得**出现在物品栏净增长里
-  //   （与 G3「呼吸耗氧不进净增长」同一口径：净增长只统计真正从物品栏扣掉的量）。
-  //   氧气确实被消耗了，但体现在星球 remaining 上 → 改断言 remaining 下降。
+  // 差分断言：选了配方之后，投料（有机质 2）与耗氧（氧气 1）应把这两项的净增长拉低。
   // 注意不能直接断言「有机质为负」——地表有机质丰度 2、露天采集工还在采，
-  //   采集带来的正增长远大于熔炉投料，净增长本来就是正的。
+  // 采集带来的正增长远大于熔炉投料，净增长本来就是正的。
   const omBefore = Number(inst4.netRates['有机质']) || 0;
-  const o2Entry = inst4.inventory.find((e) => e && e.mat === '氧气' && e.layer === 'gas');
-  const o2RemBefore = o2Entry ? Number(o2Entry.remaining) || 0 : 0;
+  const o2Before = Number(inst4.netRates['氧气']) || 0;
   mkLine(inst4, 'furnace', 'r_furnace_wood', 8);   // v0.0.9：工位减半，人数按实际工位夹取
   S.tick(1);
   ok(Number(inst4.netRates['木头']) > 0,
     `选了配方后「木头」应有正净增长，实际 ${inst4.netRates['木头']}`, 'G');
   ok(Number(inst4.netRates['有机质']) < omBefore,
     `熔炉投料应把「有机质」的净增长拉低（${omBefore} → ${inst4.netRates['有机质']}）`, 'G');
-  ok(inst4.netRates['氧气'] === undefined || Number(inst4.netRates['氧气']) === 0,
-    `熔炉的氧气投料走星球储量、不碰物品栏，故氧气不得出现在净增长里，实际 ${inst4.netRates['氧气']}`, 'G');
-  ok(!!o2Entry && (Number(o2Entry.remaining) || 0) < o2RemBefore,
-    `熔炉耗氧应体现在星球气体储量上（${o2RemBefore} → ${o2Entry && o2Entry.remaining}）`, 'G');
+  ok(Number(inst4.netRates['氧气']) < o2Before,
+    `熔炉耗氧也应体现在「氧气」的净增长里（${o2Before} → ${inst4.netRates['氧气']}）`, 'G');
 }
 
 // =====================================================================
@@ -913,10 +909,228 @@ console.log('\n===== H. 缓存版本串（v0.0.62 防回归）=====');
 }
 
 // =====================================================================
+// I. 交战结算（v0.2.2：钢铁雄心式多回合会战）
+// =====================================================================
+// 验收点：同 seed 确定性、组织度打空撤出、战斗宽度、回合上限进攻方撤退、
+//   战损比落在 0~1、掠夺只在胜利时非零、旧数字签名兼容。
+console.log('\n===== I. 钢铁雄心式交战（v0.2.2）=====');
+{
+  const ARMY = await import('../js/core/army.js?v=20.8');
+  const seed = 123456789;
+  // 单位契约与 galaxy.js 发送的一致：{ nameCn, power, stats:{atk, def} }
+  const mk = (nameCn, atk, def, power) => ({ nameCn, power, stats: { atk, def } });
+  const weakDef = [mk('游骑兵·轻型突击队 No.1', 56, 30, 80)];
+  const strongAtk = [
+    mk('铁壁·重装步兵班 No.1', 96, 186, 250),
+    mk('铁壁·重装步兵班 No.2', 96, 186, 250),
+    mk('游骑兵·轻型突击队 No.1', 56, 30, 80),
+    mk('游骑兵·轻型突击队 No.2', 56, 30, 80),
+  ];
+
+  // 1. 确定性：同 seed 两次结算完全一致
+  const r1 = ARMY.resolveBattle(seed, strongAtk, weakDef);
+  const r2 = ARMY.resolveBattle(seed, strongAtk, weakDef);
+  ok(r1.attackerWin === r2.attackerWin
+    && r1.atkLossRatio === r2.atkLossRatio
+    && r1.defLossRatio === r2.defLossRatio
+    && r1.rounds === r2.rounds
+    && r1.plunderRatio === r2.plunderRatio,
+    '同 seed 两次结算结果完全一致（异步邮箱契约）', 'I');
+
+  // 2. 强攻弱守 → 进攻方胜，守方战损 ≥ 攻方，胜利时掠夺非零
+  ok(r1.attackerWin === true, '4 支强军攻 1 支弱军应获胜', 'I');
+  ok(r1.defLossRatio >= r1.atkLossRatio,
+    `守方战损 ${r1.defLossRatio.toFixed(3)} 应 ≥ 攻方 ${r1.atkLossRatio.toFixed(3)}`, 'I');
+  ok(r1.plunderRatio >= 0.10 && r1.plunderRatio <= 0.25,
+    `胜利掠夺比 ${r1.plunderRatio.toFixed(3)} 应在 10%~25%`, 'I');
+  ok(r1.rounds >= 1 && r1.rounds < 24 && r1.logLines.length > 0,
+    `强攻弱守应在 ${r1.rounds} 回合内分出胜负（有逐回合日志）`, 'I');
+
+  // 3. 战斗宽度：5 支攻军第 1 回合只有 3 支接战
+  const five = [...strongAtk, mk('游骑兵·轻型突击队 No.3', 56, 30, 80)];
+  const r3 = ARMY.resolveBattle(777, five, weakDef);
+  ok(r3.logLines[0] && r3.logLines[0].includes('攻方 3 支接战'),
+    '战斗宽度 3：5 支攻军第 1 回合只有 3 支接战（其余为预备队）', 'I');
+
+  // 4. 回合上限 → 进攻方撤退（守方胜），无掠夺。
+  //    注：完全同属性的军队不是平局 —— 守方每回合先手，攻方会先被耗光（守方优势，
+  //    HOI4 惯例）；真正打满 24 回合要用「高防低攻」谁都啃不动的堡垒对峙。
+  const fortress = () => [mk('堡垒营 A', 20, 500, 300), mk('堡垒营 B', 20, 500, 300), mk('堡垒营 C', 20, 500, 300)];
+  const r4 = ARMY.resolveBattle(42, fortress(), fortress());
+  ok(r4.attackerWin === false, '攻不下 → 进攻方撤退（守方守住）', 'I');
+  ok(r4.plunderRatio === 0, '进攻失败不得掠夺', 'I');
+  ok(r4.rounds === 24, `回合上限应为 24，实际 ${r4.rounds}`, 'I');
+
+  // 4b. 同属性对称军 → 守方先手优势获胜（HOI4 防御方优势口径）
+  const even = [mk('铁壁·重装步兵班 No.1', 96, 186, 250), mk('铁壁·重装步兵班 No.2', 96, 186, 250), mk('铁壁·重装步兵班 No.3', 96, 186, 250)];
+  const r4b = ARMY.resolveBattle(42, even, even.map((u) => ({ ...u })));
+  ok(r4b.attackerWin === false && r4b.defLossRatio <= r4b.atkLossRatio,
+    '对称军队 → 守方先手优势获胜（守方战损 ≤ 攻方）', 'I');
+
+  // 5. 战损比都在 0~1 区间
+  for (const [tag, res] of [['r1', r1], ['r3', r3], ['r4', r4]]) {
+    ok(res.atkLossRatio >= 0 && res.atkLossRatio <= 1
+      && res.defLossRatio >= 0 && res.defLossRatio <= 1,
+      `${tag} 战损比均在 0~1（攻 ${res.atkLossRatio.toFixed(3)} / 守 ${res.defLossRatio.toFixed(3)}）`, 'I');
+  }
+
+  // 6. 旧数字签名兼容（老收件箱事件无 atkArmies 快照时仍可结算）
+  const r5 = ARMY.resolveBattle(9, 500, 200);
+  ok(typeof r5.attackerWin === 'boolean' && r5.logLines.length > 0,
+    '旧签名 resolveBattle(seed, 数字, 数字) 兼容可用', 'I');
+
+  // 7. armyToUnit：power 快照兜底按蓝图重算
+  const u = ARMY.armyToUnit({ nameCn: '测试营', blueprintId: 'ab_ranger', stats: { atk: 56, def: 30 } });
+  ok(u && u.org === 100 && u.hpMax > 0 && u.atk === 56,
+    'armyToUnit：组织度 100、power 缺失时按蓝图重算', 'I');
+}
+
+// =====================================================================
+// J. 军队 v0.2.4：部件材料实装 / 编制点 / 训练 / 军营速率
+// =====================================================================
+console.log('\n===== J. 军队材料/编制/训练（v0.2.4）=====');
+{
+  const ARMY = await import('../js/core/army.js?v=20.8');
+  const AP = await import('../js/data/army_parts.js?v=20.8');
+
+  // 1. 材料实装：武器用钛合金（强）应比铁攻更高；机动底盘用重材减速、轻材加速
+  const rifleIron = ARMY.resolveArmyPart('ap_wpn_rifle', '铁');
+  const rifleTi = ARMY.resolveArmyPart('ap_wpn_rifle', '钛合金');
+  ok(rifleTi.atk > rifleIron.atk,
+    `武器材料影响攻：突击步枪 铁${rifleIron.atk} < 钛合金${rifleTi.atk}`, 'J');
+  const hoverIron = ARMY.resolveArmyPart('ap_mob_hover', '铁');
+  const hoverTung = ARMY.resolveArmyPart('ap_mob_hover', '钨');
+  ok(hoverTung.speed < hoverIron.speed,
+    `机动材料影响速度：钨${hoverTung.speed} < 铁${hoverIron.speed}`, 'J');
+  const frameTi = ARMY.resolveArmyPart('ap_frame_light', '钛合金');
+  ok(frameTi.def > rifleIron.atk * 0 && frameTi.def > ARMY.resolveArmyPart('ap_frame_light', '铁').def,
+    '框架材料影响防：钛合金框架防御更高', 'J');
+
+  // 2. 蓝图人数：游骑兵（3 架框架）= 105 人，在 100 人上下
+  const ranger = AP.ARMY_BP_BY_ID['ab_ranger'];
+  const st = ARMY.armyStatsOfBp(ranger);
+  ok(st.men >= 90 && st.men <= 120, `军队人数应在 100 上下（游骑兵 ${st.men} 人）`, 'J');
+
+  // 3. 编制点：游骑兵合法；去掉框架/武器不合法；超编不合法
+  ok(AP.armyCapOf(ranger.parts).ok, '游骑兵蓝图编制合法', 'J');
+  ok(!AP.armyCapOf([{ id: 'ap_wpn_rifle', count: 4 }]).ok, '无框架不合法', 'J');
+  ok(!AP.armyCapOf([{ id: 'ap_frame_light', count: 1 }]).ok, '无武器不合法', 'J');
+  ok(!AP.armyCapOf([{ id: 'ap_frame_light', count: 1 }, { id: 'ap_wpn_howitzer', count: 9 }]).ok,
+    '超编制点不合法（1 架轻框架装不下 9 门楷弹炮）', 'J');
+
+  // 4. 训练（v0.2.6 改为计时任务）：trainArmy 立即扣装备并开进度；advanceTraining 推进到 100% 才结算加成
+  const acc = { armies: [], tech: [] };
+  const inst = { buildings: { training_ground: 1 }, equipment: { 'ap_wpn_rifle@铁': { partId: 'ap_wpn_rifle', count: 5 } }, trainingTasks: [] };
+  const army = { id: 'am_t', nameCn: '测试营', blueprintId: 'ab_ranger', power: ARMY.armyPowerOf(st), stats: st, exp: 0, bonusAtk: 0, bonusDef: 0 };
+  acc.armies.push(army);
+  const bad = ARMY.trainArmy(acc, 'am_none', inst);
+  ok(!bad.ok, '训练不存在的军队应失败', 'J');
+  const poor = { armies: acc.armies, tech: [] };
+  const poorInst = { buildings: { training_ground: 1 }, equipment: {}, trainingTasks: [] };
+  ok(!ARMY.trainArmy(poor, 'am_t', poorInst).ok, '无装备时训练失败且不白扣', 'J');
+  const r = ARMY.trainArmy(acc, 'am_t', inst);
+  ok(r.ok && r.duration > 0 && inst.trainingTasks.length === 1, '点训练开一条计时任务（立即扣装备）', 'J');
+  ok((inst.equipment['ap_wpn_rifle@铁'].count) === 3, '训练损耗 2 件装备（5→3）', 'J');
+  ok(army.exp === 0 && army.bonusAtk === 0, '训练未结束尚未结算加成', 'J');
+  // 推进 60 秒（> 45s 时长）到完成
+  ARMY.advanceTraining(inst, 60, acc);
+  ok(army.exp === 15 && army.bonusAtk === 2 && army.bonusDef === 2, '训练完成：+2攻/+2防 +15经验', 'J');
+  ok(army.power > ARMY.armyPowerOf(st), '训练后战力重算且更高', 'J');
+  // 补足装备再训练 2 次 → 经验 45 跨 1 个 30 里程碑 → 额外 +1/+1（共 3 次 → +7/+7）
+  inst.equipment['ap_wpn_rifle@铁'].count += 4;
+  ARMY.trainArmy(acc, 'am_t', inst); ARMY.advanceTraining(inst, 60, acc);
+  ARMY.trainArmy(acc, 'am_t', inst); ARMY.advanceTraining(inst, 60, acc);
+  ok(army.exp === 45 && army.bonusAtk === 7 && army.bonusDef === 7,
+    `经验里程碑：45 经验跨 1 个 30 里程碑额外 +1（当前 +${army.bonusAtk}/+${army.bonusDef}）`, 'J');
+}
+
+// =====================================================================
+// K. 商店星股市 + 拍卖行（v0.2.6）
+// =====================================================================
+console.log('\n===== K. 股市 / 拍卖（v0.2.6）=====');
+{
+  function freshAcc() { return { id: 'k_' + Math.random().toString(36).slice(2), name: '测试', ascoin: 1e7, ships: [] }; }
+  function freshInst() { return { code: 'syl', inventory: [{ mat: '铁', layer: 'refined', owned: 1000 }], equipment: {} }; }
+
+  const acc = freshAcc();
+  SHOP.shopStateOf(acc);
+
+  // 1. 低级资源极度贬值：natural 基准价远低于 composite
+  const natural = MAT.MATERIALS.find((m) => m.category === 'natural');
+  const composite = MAT.MATERIALS.find((m) => m.category === 'composite');
+  const pn = SHOP.priceOf(acc, natural.nameCn);
+  const pc = SHOP.priceOf(acc, composite.nameCn);
+  ok(pn > 0 && pn < pc && pn <= 12, '低级资源「' + natural.nameCn + '」基准价极低(' + pn + ') 远低于复合资源(' + pc + ')', 'K');
+
+  // 2. 金恒价不受影响
+  ok(SHOP.priceOf(acc, '金') === 1048576, '金恒价 1048576 不受影响', 'K');
+
+  // 3. 商店仓库已初始化且为正
+  ok(SHOP.warehouseOf(acc, '铁') > 0, '商店仓库初始化为正库存', 'K');
+
+  // 4. 股市即时买：扣 ascoin、入库星球、减仓库、买涨
+  const inst = freshInst();
+  const bal0 = acc.ascoin;
+  const wh0 = SHOP.warehouseOf(acc, '铁');
+  const r = SHOP.marketBuy(acc, '铁', 10, inst);
+  ok(r.ok && r.qty === 10, 'marketBuy 成功买入 10', 'K');
+  ok(acc.ascoin < bal0, 'marketBuy 扣除 ascoin', 'K');
+  ok(S.ownedOf(inst, '铁') === 1010, 'marketBuy 入库到星球（铁 1000→1010）', 'K');
+  ok(SHOP.warehouseOf(acc, '铁') < wh0, 'marketBuy 减少商店仓库库存', 'K');
+
+  // 5. 股市即时卖：加 ascoin、扣星球、进仓库、卖跌
+  const bal1 = acc.ascoin, own1 = S.ownedOf(inst, '铁');
+  const r2 = SHOP.marketSell(acc, '铁', 5, inst);
+  ok(r2.ok && r2.qty === 5, 'marketSell 成功卖出 5', 'K');
+  ok(acc.ascoin > bal1, 'marketSell 增加 ascoin（扣佣金后）', 'K');
+  ok(S.ownedOf(inst, '铁') === own1 - 5, 'marketSell 从星球扣货', 'K');
+
+  // 6. 仓库为 0 时拒绝买入（缺货）
+  acc.shopWarehouse['铁'] = 0;
+  const r3 = SHOP.marketBuy(acc, '铁', 1, inst);
+  ok(!r3.ok, '仓库为 0 时 marketBuy 拒绝（缺货）', 'K');
+  acc.shopWarehouse['铁'] = wh0;   // 还原，避免影响后续
+
+  // 7. 拍卖：开拍托管资源 → NPC 兜底出价 → 到期成交（用可推进假时钟模拟 15s 窗口）
+  const realNow = Date.now;
+  let clk = realNow();
+  Date.now = () => clk;
+  try {
+    const accA = freshAcc(); const instA = freshInst();
+    const rA = AUC.createAuction(accA, instA, { type: 'resource', key: '铁', qty: 20, minBid: 100, planetCode: 'syl' });
+    ok(rA.ok, '开拍资源拍卖成功', 'K');
+    ok(S.ownedOf(instA, '铁') === 980, '开拍托管资源（铁 1000→980）', 'K');
+    for (let i = 0; i < 16; i++) { clk += 1000; AUC.tickAuctions(accA, 1, { getInst: () => instA }); }
+    ok(accA.shopAuctions.length === 0, '拍卖到期后从活跃列表移除', 'K');
+    ok(accA.shopAuctionLog.length > 0 && accA.shopAuctionLog[0].type === 'sold', 'NPC 兜底出价 → 成交并记录', 'K');
+    ok(accA.ascoin > 1e7, '卖家获得成交额（扣除佣金后）', 'K');
+  } finally { Date.now = realNow; }
+
+  // 8. 出价规则：不能拍自己的；第三方出价生效；低于最高价被拒
+  const accB = freshAcc(); const instB = freshInst();
+  const rB = AUC.createAuction(accB, instB, { type: 'resource', key: '铁', qty: 10, minBid: 50, planetCode: 'syl' });
+  const idB = rB.auction.id;
+  ok(!AUC.placeBid(accB, idB, 100, accB.id, accB.name).ok, '不能竞拍自己的拍卖', 'K');
+  ok(AUC.placeBid(accB, idB, 200, 'other', '某人').ok, '第三方出价生效', 'K');
+  ok(AUC.activeAuctions(accB).find((a) => a.id === idB).topBid === 200, '最高价更新为 200', 'K');
+  ok(!AUC.placeBid(accB, idB, 10, 'other2', '某人2').ok, '低于当前最高价的出价被拒', 'K');
+
+  // 9. 装备 / 飞船拍卖托管
+  const accC = freshAcc(); const instC = freshInst();
+  instC.equipment['ap_wpn_rifle@铁'] = { partId: 'ap_wpn_rifle', material: '铁', count: 5 };
+  const rC = AUC.createAuction(accC, instC, { type: 'equipment', key: 'ap_wpn_rifle@铁', qty: 3, minBid: 100, planetCode: 'syl' });
+  ok(rC.ok && instC.equipment['ap_wpn_rifle@铁'].count === 2, '开拍装备拍卖托管（5→2）', 'K');
+  const accD = freshAcc(); const instD = freshInst();
+  accD.ships = [{ id: 'ship_x', name: '测试舰', className: '运输船' }];
+  const rD = AUC.createAuction(accD, instD, { type: 'ship', key: 'ship_x', qty: 1, minBid: 500, planetCode: 'syl' });
+  ok(rD.ok && accD.ships.length === 0, '开拍飞船拍卖托管（移出账号）', 'K');
+}
+
+// =====================================================================
 // 汇总
 // =====================================================================
 console.log('\n===== 各组通过/失败 =====');
-for (const g of ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H']) {
+for (const g of ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K']) {
   console.log(`  ${g} 组：通过 ${groups[g][0]} 项，失败 ${groups[g][1]} 项`);
 }
 console.log(`\n通过 ${pass} 项，失败 ${fail} 项`);

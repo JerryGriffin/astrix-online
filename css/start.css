@@ -6,9 +6,10 @@
   align-items: center;
   justify-content: center;
   padding: 32px 20px calc(32px + env(safe-area-inset-bottom));
-  background: radial-gradient(circle at 20% 30%, #161b33 0%, #0b0f19 50%, #030712 100%);
+  background-image: url('../assets/background/deepspace.jpg');
   background-size: cover;
   background-position: center;
+  background-attachment: fixed;
 }
 /* 半透明暗色遮罩，保证文字可读 */
 .screen-start::before {
@@ -160,193 +161,11 @@
 .cl-list, .tip-list { padding-left: 20px; }
 .cl-list li, .tip-list li { margin-bottom: 8px; color: var(--text); }
 
-.stat-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 14px; }
-.stat-card { padding: 12px 8px; text-align: center; }
-.stat-val { font-size: 1.2rem; font-weight: 700; color: var(--cyan); }
-.stat-key { font-size: 0.76rem; margin-top: 4px; }
-
-/* ===== 指挥官军衔荣誉 HUD ===== */
-.rank-hud {
-  padding: 16px;
-  margin-bottom: 16px;
-  background: linear-gradient(135deg, rgba(20, 28, 46, 0.75), rgba(124, 215, 255, 0.08));
-  border: 1px solid rgba(124, 215, 255, 0.35);
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
-}
-.rank-top-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 10px;
-}
-.rank-title-wrap {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-.rank-icon-big {
-  font-size: 2.2rem;
-  line-height: 1;
-  filter: drop-shadow(0 0 10px rgba(124, 215, 255, 0.6));
-}
-.rank-honor-label {
-  font-size: 0.72rem;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-}
-.rank-name-text {
-  font-size: 1.25rem;
-  font-weight: 700;
-  color: var(--cyan);
-  text-shadow: 0 0 12px rgba(124, 215, 255, 0.4);
-}
-.rank-score-badge {
-  background: rgba(10, 15, 28, 0.6);
-  border: 1px solid var(--border);
-  padding: 6px 12px;
-  border-radius: var(--radius-sm);
-  font-size: 0.85rem;
-}
-.rank-score-badge strong {
-  color: #ffd479;
-  font-size: 1.05rem;
-  margin-left: 4px;
-}
-.rank-desc-text {
-  font-size: 0.82rem;
-  color: var(--text);
-  opacity: 0.9;
-  line-height: 1.45;
-  margin-bottom: 10px;
-}
-.rank-bar-wrap {
-  height: 8px;
-  background: rgba(5, 9, 18, 0.7);
-  border-radius: 999px;
-  overflow: hidden;
-  border: 1px solid var(--border);
-  margin-bottom: 6px;
-}
-.rank-progress-bar {
-  height: 100%;
-  background: linear-gradient(90deg, var(--cyan), var(--purple));
-  box-shadow: 0 0 10px rgba(124, 215, 255, 0.6);
-  transition: width 0.3s ease;
-}
-.rank-next-tip {
-  font-size: 0.76rem;
-  text-align: right;
-}
-
-/* ===== 成就勋章殿堂 ===== */
-.ach-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 12px;
-  padding-bottom: 6px;
-  border-bottom: 1px solid var(--border);
-}
-.ach-header-title {
-  font-size: 1rem;
-  font-weight: 600;
-  color: var(--text);
-}
-.ach-header-rate {
-  font-size: 0.8rem;
-}
-.ach-cards-grid {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 10px;
-  max-height: 320px;
-  overflow-y: auto;
-  padding-right: 4px;
-}
-.ach-card {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  padding: 10px 12px;
-  border-radius: var(--radius-sm);
-  transition: transform 0.15s ease, border-color 0.15s ease;
-}
-.ach-card.ach-unlocked {
-  border-color: rgba(107, 227, 160, 0.45);
-  background: rgba(107, 227, 160, 0.06);
-}
-.ach-card.ach-locked {
-  border-color: rgba(124, 215, 255, 0.15);
-  opacity: 0.75;
-}
-.ach-badge {
-  font-size: 1.8rem;
-  line-height: 1;
-  flex-shrink: 0;
-  margin-top: 2px;
-}
-.ach-content {
-  flex: 1;
-  min-width: 0;
-}
-.ach-card-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 6px;
-  margin-bottom: 3px;
-}
-.ach-title {
-  font-size: 0.88rem;
-  font-weight: 600;
-  color: var(--text);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.ach-status-tag {
-  font-size: 0.7rem;
-  padding: 2px 6px;
-  border-radius: 4px;
-  white-space: nowrap;
-}
-.tag-unlocked {
-  background: rgba(107, 227, 160, 0.2);
-  color: var(--ok);
-  border: 1px solid rgba(107, 227, 160, 0.4);
-}
-.tag-locked {
-  background: rgba(138, 160, 192, 0.15);
-  color: var(--muted);
-  border: 1px solid var(--border);
-}
-.ach-desc {
-  font-size: 0.74rem;
-  line-height: 1.35;
-  margin-bottom: 6px;
-}
-.ach-prog-box {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.ach-prog-track {
-  flex: 1;
-  height: 5px;
-  background: rgba(5, 9, 18, 0.6);
-  border-radius: 999px;
-  overflow: hidden;
-  border: 1px solid var(--border);
-}
-.ach-prog-fill {
-  height: 100%;
-  background: linear-gradient(90deg, var(--cyan), var(--ok));
-}
-.ach-prog-hint {
-  font-size: 0.68rem;
-  white-space: nowrap;
-}
+.stat-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 14px; }
+.stat-card { padding: 16px 10px; text-align: center; }
+.stat-val { font-size: 1.3rem; font-weight: 700; color: var(--cyan); }
+.stat-key { font-size: 0.78rem; margin-top: 4px; }
+.ach-tip { text-align: center; letter-spacing: 0.1em; }
 
 .set-row {
   display: flex;

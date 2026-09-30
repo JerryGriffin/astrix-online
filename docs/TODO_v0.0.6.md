@@ -322,5 +322,5 @@ export function removeCustomMaterial(inst, key)  // → boolean
 - `node docs/selfcheck_materials.mjs` → 自检通过
 - `node docs/selfcheck_render.mjs` → 运行时异常 0
 - 新增章节：电力结算、配方生产、能量池、工作强度、大气排放
-- 发布：`sites_deploy`，目录 `C:\Users\11603\Astrix\2026-09-16-20-56-32`，
+- 发布：`workbuddy_sites_deploy`，目录 `C:\Users\11603\WorkBuddy\2026-09-16-20-56-32`，
   `updateExistingApp: true`

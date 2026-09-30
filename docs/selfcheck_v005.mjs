@@ -13,18 +13,18 @@ function ok(cond, label) {
 }
 function section(t) { console.log('\n== ' + t + ' =='); }
 
-const B = await import('../js/data/buildings.js?v=21.18');
-const T = await import('../js/data/techs.js?v=21.18');
-const U = await import('../js/data/upgrades.js?v=21.18');
-const M = await import('../js/data/materials.js?v=21.18');
-const P = await import('../js/data/planets.js?v=21.18');
-const F = await import('../js/data/fuels.js?v=21.18');
-const SP = await import('../js/data/ship_parts.js?v=21.18');
-const Y = await import('../js/core/shipyard.js?v=21.18');
-const C = await import('../js/core/construction.js?v=21.18');
-const POP = await import('../js/core/population.js?v=21.18');
-const CUR = await import('../js/core/currency.js?v=21.18');
-const V = await import('../js/version.js?v=21.18');
+const B = await import('../js/data/buildings.js?v=20.8');
+const T = await import('../js/data/techs.js?v=20.8');
+const U = await import('../js/data/upgrades.js?v=20.8');
+const M = await import('../js/data/materials.js?v=20.8');
+const P = await import('../js/data/planets.js?v=20.8');
+const F = await import('../js/data/fuels.js?v=20.8');
+const SP = await import('../js/data/ship_parts.js?v=20.8');
+const Y = await import('../js/core/shipyard.js?v=20.8');
+const C = await import('../js/core/construction.js?v=20.8');
+const POP = await import('../js/core/population.js?v=20.8');
+const CUR = await import('../js/core/currency.js?v=20.8');
+const V = await import('../js/version.js?v=20.8');
 
 const MAT_NAMES = new Set(M.MATERIALS.map((m) => m.nameCn));
 const BUILDING_IDS = new Set(B.BUILDINGS.map((b) => b.id));
@@ -33,8 +33,8 @@ const techById = Object.fromEntries(T.TECHS.map((t) => [t.id, t]));
 
 // ---------------------------------------------------------------------------
 section('一、建筑表');
-// v0.0.6：新增「储电站」（storage_plant），22 → 23；v0.2.1-rev9：新增重工军械总厂与军事指挥学院，23 → 25
-ok(B.BUILDINGS.length === 25, `建筑数应为 25（v0.2.1 新增重工军械总厂与军事指挥学院），实际 ${B.BUILDINGS.length}`);
+// v0.0.6：新增「储电站」（storage_plant），22 → 23
+ok(B.BUILDINGS.length === 25, `建筑数应为 25（v0.2.4 新增军营与训练场），实际 ${B.BUILDINGS.length}`);
 ok(new Set(B.BUILDINGS.map((b) => b.id)).size === B.BUILDINGS.length, '建筑 id 无重复');
 for (const b of B.BUILDINGS) {
   ok(b.unlockTech === null || TECH_IDS.has(b.unlockTech), `${b.id} 的 unlockTech 非法：${b.unlockTech}`);
@@ -43,10 +43,12 @@ for (const b of B.BUILDINGS) {
   ok(Number.isFinite(b.work) && b.work > 0, `${b.id} work 非法`);
   ok(Number.isFinite(b.jobs) && b.jobs >= 0, `${b.id} jobs 非法`);
   // 只有「房屋」（提供庇护）、「储电站」（无人值守的单纯电池，v0.0.91 起不再提供设施槽）
-  // 与「火力/清洁发电厂」（v0.1.1 无人工厂，按座数发电）允许 0 工位
+  // 「火力/清洁发电厂」（v0.1.1 无人工厂）与「军营/训练场」（v0.2.4 被动效果建筑：
+  // 提供军队建造速率 / 训练能力，均不占人力）允许 0 工位
   ok(b.jobs > 0 || b.id === 'house' || b.id === 'storage_plant'
-    || b.id === 'thermal_plant' || b.id === 'clean_plant',
-    `${b.id} 工位数为 0，但只有房屋 / 储电站 / 无人工厂允许这样`);
+    || b.id === 'thermal_plant' || b.id === 'clean_plant'
+    || b.id === 'barracks' || b.id === 'training_ground',
+    `${b.id} 工位数为 0，但只有房屋 / 储电站 / 无人工厂 / 军营 / 训练场允许这样`);
   ok(Number.isFinite(b.powerDraw) && b.powerDraw >= 0, `${b.id} powerDraw 非法`);
   ok(typeof b.desc === 'string' && b.desc.length > 10, `${b.id} desc 缺失`);
 }
@@ -111,7 +113,7 @@ section('二·b、建筑造价可达性（v0.1.3 新增：抓「造 X 得先有 
 //   ② 反复扫描：某建筑造价已全部 ⊆ 已可得 → 该建筑可建 → 把它产出的材料并入可得集；
 //   ③ 收敛后仍不可建的建筑即为死锁，必须报错。
 {
-  const R = await import('../js/data/recipes.js?v=21.18');
+  const R = await import('../js/data/recipes.js?v=20.8');
   // 炉类家族共配方（熔炉 / 高炉 / 火力发电厂），生产侧视为同一族
   const FURNACE_FAMILY = new Set(['furnace', 'blast_furnace', 'thermal_plant']);
   const canProduce = (bid, rid) => bid === rid || (FURNACE_FAMILY.has(bid) && FURNACE_FAMILY.has(rid));
@@ -177,13 +179,12 @@ section('三、科技树');
 //   设计者：“科研里面舰船 mki-iii 去掉，无实际意义；科研里面的 abcd 也去掉”。
 //   舰船部件改由「研究出船坞（t_e3）」直接解锁。
 // v0.0.7：新增 12 个「设施」解锁节点（电力设施 4 类 × 3 档），科技数 20 → 32
-// v0.2.0：新增 5 个「军事」分支节点，科技数 32 → 37
-ok(T.TECHS.length === 37, `科技数应为 37（v0.2.0：32 + 5 个军事节点），实际 ${T.TECHS.length}`);
-ok(typeof T.facilityTechs === 'function' && T.facilityTechs().length === 12,
-  `v0.0.7 起「设施」分区应有 12 个解锁节点（电力设施），实际 ${typeof T.facilityTechs === 'function' ? T.facilityTechs().length : '未导出'}`);
-ok(T.TECHS.filter((t) => t.section === 'facility').every((t) => t.id.startsWith('t_fac_')),
-  '「设施」分区的节点应全部是 t_fac_* 解锁节点');
-ok(T.TECHS.filter((t) => t.section === 'facility').length === 12, '「设施」分区应有 12 个电力设施解锁节点（v0.0.7）');
+ok(T.TECHS.length === 36, `科技数应为 36（v0.0.7：20 + 12 设施节点；v0.2.0 +5 军事；v0.2.5 移除无用 t_m5），实际 ${T.TECHS.length}`);
+ok(typeof T.facilityTechs === 'function' && T.facilityTechs().length === 16,
+  `v0.0.7 起「设施」分区应有 16 个解锁节点（12 电力设施 + 4 军事装备，v0.2.6 军事科技移入设施），实际 ${typeof T.facilityTechs === 'function' ? T.facilityTechs().length : '未导出'}`);
+ok(T.TECHS.filter((t) => t.section === 'facility').every((t) => t.id.startsWith('t_fac_') || (t.branch === 'military' && t.id.startsWith('t_m'))),
+  '「设施」分区的节点应全部是 t_fac_* 电力设施 或 t_m* 军事装备节点（v0.2.6）');
+ok(T.TECHS.filter((t) => t.section === 'facility' && t.id.startsWith('t_fac_')).length === 12, '「设施」分区应有 12 个电力设施解锁节点（v0.0.7）');
 ok(T.TECHS.filter((t) => t.branch === 'ship').length === 0, '不应再有 branch:\'ship\' 的科技节点');
 // v0.0.61：舰船节点的 6 个 id 及 a/b/c/d / MK2 / MK3 编号必须彻底清干净
 for (const gone of ['t_ship_hull', 't_ship_engine', 't_ship_weapon', 't_ship_facility', 't_ship_mk2', 't_ship_mk3']) {
@@ -509,7 +510,7 @@ section('十、状态与存档往返（模拟刷新）');
       key: (i) => [...m.keys()][i],
     };
   })();
-  const S = await import('../js/core/state.js?v=21.18');
+  const S = await import('../js/core/state.js?v=20.8');
   S.loadState();
   const acc = S.newGame('自检员');
   const inst = S.getPlanetInstance(acc.homePlanetCode);
@@ -605,9 +606,7 @@ ok(h2o && h2o.owned > 0 && h2o.owned < START_FOOD, `水应被消耗（开局 ${S
 
 // ---------------------------------------------------------------------------
 section('十一、版本号单一来源');
-// v0.2.2：版本号不再硬编码断言（否则每次发版都要改这里）——
-//   只校验「VERSION 形如 vX.Y.Z」「与 VERSIONS 首项一致」等结构不变量。
-ok(/^v\d+\.\d+\.\d+$/.test(V.VERSION), `VERSION 应形如 vX.Y.Z，实际 ${V.VERSION}`);
+ok(V.VERSION === 'v0.2.5', `VERSION 应为 v0.2.3，实际 ${V.VERSION}`);
 ok(V.VERSIONS[0][0] === V.VERSION, 'VERSIONS 首项版本号应与 VERSION 一致');
 ok(V.VERSIONS.length >= 5, '更新日志应至少含 5 个版本');
 const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
@@ -623,7 +622,7 @@ ok(html.includes('js/main.js?v=' + V.CACHE_TAG),
   ok(cssTags.length > 0 && bad.length === 0,
     `index.html 的 ${cssTags.length} 个 css 链接都应带 ?v=${V.CACHE_TAG}，缺少的：${bad.join('、') || '无'}`);
 }
-const startSrc = readFileSync(new URL('../js/ui/start.js?v=21.18', import.meta.url), 'utf8');
+const startSrc = readFileSync(new URL('../js/ui/start.js?v=20.8', import.meta.url), 'utf8');
 ok(!/['"`]v0\.\d/.test(startSrc), 'start.js 不应硬编码版本号字符串（注释里的版本标记不算）');
 ok(startSrc.includes("from '../version.js?v="), 'start.js 应从 version.js 取版本号（带缓存版本串，v0.0.62）');
 
@@ -780,7 +779,7 @@ section('十五、v0.0.5 采集扣星球储藏 && 建筑建造');
       key: (i) => [...m.keys()][i],
     };
   })();
-  const S = await import('../js/core/state.js?v=21.18');
+  const S = await import('../js/core/state.js?v=20.8');
   S.loadState();
   const acc = S.newGame('v005 自检员');
   const inst = S.getPlanetInstance(acc.homePlanetCode);
@@ -867,8 +866,8 @@ section('十五、v0.0.5 采集扣星球储藏 && 建筑建造');
 // ---------------------------------------------------------------------------
 section('十六、v0.0.5 船坞工门槛（舰队接入人力）');
 {
-  const SY = await import('../js/ui/shipyard.js?v=21.18');
-  const S = await import('../js/core/state.js?v=21.18');
+  const SY = await import('../js/ui/shipyard.js?v=20.8');
+  const S = await import('../js/core/state.js?v=20.8');
   S.loadState();
   const acc = S.newGame('船坞自检员');
   const inst = S.getPlanetInstance(acc.homePlanetCode);
@@ -923,7 +922,7 @@ section('十七、v0.0.51 房屋与庇护');
     return { getItem: (k) => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, String(v)),
              removeItem: (k) => m.delete(k), get length() { return m.size; }, key: (i) => [...m.keys()][i] };
   })();
-  const S = await import('../js/core/state.js?v=21.18');
+  const S = await import('../js/core/state.js?v=20.8');
   S.loadState();
   const acc = S.newGame('庇护自检员');
   const inst = S.getPlanetInstance(acc.homePlanetCode);
@@ -990,7 +989,7 @@ section('十九、v0.0.51 删除存档（不再失效、不再串档）');
     return { getItem: (k) => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, String(v)),
              removeItem: (k) => m.delete(k), get length() { return m.size; }, key: (i) => [...m.keys()][i] };
   })();
-  const S = await import('../js/core/state.js?v=21.18');
+  const S = await import('../js/core/state.js?v=20.8');
   S.loadState();
 
   // 建两个存档，各自推进不同时长，做出可区分的进度
@@ -1038,14 +1037,14 @@ section('十九、v0.0.51 删除存档（不再失效、不再串档）');
 // ---------------------------------------------------------------------------
 section('二十、v0.0.51 离线模式文案');
 {
-  const src = readFileSync(new URL('../js/ui/start.js?v=21.18', import.meta.url), 'utf8');
+  const src = readFileSync(new URL('../js/ui/start.js?v=20.8', import.meta.url), 'utf8');
   ok(src.includes("'与电脑对抗'"), '离线模式副文案应为「与电脑对抗」');
   ok(!src.includes("'全部是人机'"), '旧的「全部是人机」文案应已移除');
   // 删除后不能再走 enterOffline（那会触发 ensureAccount 自动建号，观感就是「删不掉」）
   // 注意：注释里也会提到 enterOffline，所以只精确匹配那一行代码
   ok(!/if \(STATE\.accounts\.length === 0\) ctx\.enterOffline\(\);/.test(src),
     '删除存档后不应再走 enterOffline（那会触发 ensureAccount 自动建号，观感就是删不掉）');
-  ok(/renderAccountList\(body, ctx\);/.test(src), '删完应重绘存档列表（留在选择界面，可直接新建）');
+  ok(/renderAccountList\(body, ctx(, pool)?\);/.test(src), '删完应重绘存档列表（留在选择界面，可直接新建）');
 }
 
 // ---------------------------------------------------------------------------
@@ -1056,7 +1055,7 @@ section('二十一、v0.0.52 研究真正扣点');
     return { getItem: (k) => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, String(v)),
              removeItem: (k) => m.delete(k), get length() { return m.size; }, key: (i) => [...m.keys()][i] };
   })();
-  const S = await import('../js/core/state.js?v=21.18');
+  const S = await import('../js/core/state.js?v=20.8');
   S.loadState();
   const acc = S.newGame('科研自检员');
   const T = techById;
@@ -1094,7 +1093,7 @@ section('二十一、v0.0.52 研究真正扣点');
 
   // 永久升级也消耗研究点
   acc.researchPoints = 1e9;
-  const U = (await import('../js/data/upgrades.js?v=21.18')).UPGRADES[0];
+  const U = (await import('../js/data/upgrades.js?v=20.8')).UPGRADES[0];
   const p0 = acc.researchPoints;
   const up = S.buyUpgrade(U.id);
   ok(up.ok === true, `应能购买升级，实际「${up.reason}」`);
@@ -1120,7 +1119,7 @@ section('二十二、v0.0.52 开局采集速率（不再是 0）');
     return { getItem: (k) => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, String(v)),
              removeItem: (k) => m.delete(k), get length() { return m.size; }, key: (i) => [...m.keys()][i] };
   })();
-  const S = await import('../js/core/state.js?v=21.18');
+  const S = await import('../js/core/state.js?v=20.8');
   S.loadState();
   const acc = S.newGame('采集自检员');
   const inst = S.getPlanetInstance(acc.homePlanetCode);
@@ -1207,6 +1206,30 @@ section('二十四、v0.0.52 休息消耗改小');
   console.log('     1000 人 + 1e5 氧气可撑:', hours.toFixed(1), '小时');
   // v0.0.8：人均消耗翻倍后，同一份口粮的续航自然缩短到 ~7 小时（设计预期）
   ok(hours > 6, `启动口粮应能撑 > 6 小时，实际 ${hours.toFixed(1)} 小时`);
+}
+
+// ---------------------------------------------------------------------------
+section('二十五、v0.2.5 在线/离线存档池隔离（永久升级不串池）');
+{
+  // 离线档买满升级 → 切在线池新建档 → 升级必须为 0；切回离线档不丢
+  const S = await import('../js/core/state.js?v=20.8');
+  // 离线档买满升级 → 切在线池新建档 → 升级必须为 0；切回离线档不丢
+  S.switchPool('offline');
+  const off = S.createAccount('池探针·离线');
+  off.upgrades['upg_collect'] = 5;
+  off.researchPoints = 50000;
+  S.saveState();
+  S.STATE.onlinePoolId = 'uid_selfcheck';
+  S.switchPool('online');
+  const on = S.createAccount('池探针·在线');
+  ok((on.upgrades['upg_collect'] || 0) === 0, '在线新档不应继承离线的永久升级');
+  ok(S.currentAccount().id !== off.id, '在线当前档不应是离线档');
+  S.switchPool('offline');
+  ok(S.currentAccount().upgrades['upg_collect'] === 5, '切回离线档升级不丢');
+  // 清理探针档，避免污染后续断言
+  S.deleteAccount(on.id);
+  S.deleteAccount(off.id);
+  S.switchPool('offline');
 }
 
 // ---------------------------------------------------------------------------

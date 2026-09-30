@@ -1,0 +1,34 @@
+// 视觉冒烟：军队页新版式截图（离线流程 + 注入军营/装备）
+import http from 'node:http';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const PORT = 8771;
+const MIME = { '.html':'text/html;charset=utf-8', '.js':'text/javascript;charset=utf-8', '.css':'text/css;charset=utf-8' };
+const server = http.createServer((req,res)=>{ let p=decodeURIComponent(req.url.split('?')[0]); if(p==='/')p='/index.html';
+  const f=path.join(ROOT,p); if(!f.startsWith(ROOT)||!fs.existsSync(f)||fs.statSync(f).isDirectory()){res.writeHead(404);res.end();return;}
+  res.writeHead(200,{'Content-Type':MIME[path.extname(f)]||'application/octet-stream'}); fs.createReadStream(f).pipe(res); });
+await new Promise(r=>server.listen(PORT,'127.0.0.1',r));
+const { createRequire } = await import('node:module');
+const require = createRequire('C:/Users/11603/.workbuddy/binaries/node/workspace/package.json');
+const { chromium } = require('playwright-core');
+const browser = await chromium.launch({ executablePath:'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe', headless:true });
+const page = await browser.newPage({ viewport:{ width:1280, height:1000 } });
+await page.goto(`http://127.0.0.1:${PORT}/index.html`,{waitUntil:'load'});
+await page.waitForTimeout(1000);
+const click = async t => { await page.evaluate(k=>{const b=[...document.querySelectorAll('button')].find(x=>x.textContent.trim().includes(k)); if(b)b.click();},t); await page.waitForTimeout(700); };
+await click('离线模式'); await click('新建存档');
+await page.evaluate(async ()=>{ const S=await import('/js/core/state.js?v=20.8'); const Y=await import('/js/core/shipyard.js?v=20.8');
+  const a=S.currentAccount(); a.tech=['t_e1','t_e2','t_e3','t_e4','t_m1','t_m2','t_m3','t_m4'];
+  const inst=S.getPlanetInstance('syl'); inst.buildings={dock:1,fabricator:1,barracks:1,training_ground:1};
+  Y.addEquipment(inst,'ap_frame_light','铁',6); Y.addEquipment(inst,'ap_wpn_rifle','铁',8);
+  S.saveState(); });
+await click('返回主界面'); await click('离线模式');
+await page.evaluate(()=>{ const b=[...document.querySelectorAll('#modal-root button')].find(x=>x.textContent.trim()==='进入'); if(b)b.click(); });
+await page.waitForTimeout(800);
+await page.evaluate(()=>{ const b=[...document.querySelectorAll('.tab-btn')].find(x=>x.textContent.trim()==='军队'); if(b)b.click(); });
+await page.waitForTimeout(800);
+await page.screenshot({ path:'docs/army_ui.png', fullPage:false });
+console.log('截图完成 docs/army_ui.png');
+await browser.close(); server.close(); process.exit(0);

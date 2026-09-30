@@ -1,10 +1,9 @@
 // 应用入口：路由、全局模态层与启动（Astrix）
-import { STATE, loadState, createAccount, currentAccount, saveState, tick, settleOffline, OFFLINE_RATIO, setStorageMode } from './core/state.js?v=21.18';
-import { renderStart } from './ui/start.js?v=21.18';
-import { renderPlanet } from './ui/planet.js?v=21.18';
-import { renderGalaxy } from './ui/galaxy.js?v=21.18';
-import { startReportToasts } from './ui/reports.js?v=21.18';
-import { syncOnlineServer } from './core/cloud.js?v=21.18';
+import { STATE, loadState, createAccount, currentAccount, saveState, tick, settleOffline, OFFLINE_RATIO } from './core/state.js?v=20.8';
+import { renderStart, openAccountPicker } from './ui/start.js?v=20.8';
+import { renderPlanet } from './ui/planet.js?v=20.8';
+// v0.2.1：在线模式前置 —— 进入游戏前必须先绑定邮箱（验证码登录 / 注册）
+import { sendEmailOtp, verifyEmailOtp, cloudUser, signInWithPassword, ensureReady } from './core/cloud.js?v=20.8';
 
 const root = document.getElementById('app');
 const modalRoot = document.getElementById('modal-root');
@@ -137,38 +136,100 @@ const nav = {
       onEnterPlanet: (c) => nav.showPlanet(c),
     });
   },
-  showGalaxy() {
-    ensureAccount();
-    renderGalaxy(root, {
-      openModal,
-      closeModal,
-      onBack: nav.showStart,
-    });
-  },
 };
 
 function onOffline() {
   // v0.0.61（rev2）：进入星球前必须关掉还开着的「选择存档」弹窗。
+  //   此前从弹窗里点「+ 新建存档」或某行「进入」→ enterOffline() 直接切视图，
+  //   弹窗却留在屏幕上盖住星球界面，玩家得手动点 ×（或点弹窗外）才能看到游戏。
   closeModal();
-  setStorageMode('offline');
   ensureAccount();
   STATE.mode = 'offline';
   nav.showPlanet();
 }
 
-function onOnline(acc) {
+// v0.2.1：在线模式前置 —— 必须先绑定邮箱（验证码登录 / 注册）才能开始游玩。
+//   v0.2.5：先 ensureReady() 恢复会话 —— 已登录过邮箱的玩家**下次直接进入**，不再重复登录；
+//   在线存档选择界面按邮箱（云账号 uid）分池。
+async function onOnline() {
   closeModal();
-  if (acc && acc.id) {
-    STATE.currentAccountId = acc.id;
-  }
-  ensureAccount();
+  openModal({ title: '连接云服务', body: '正在恢复登录状态…' });
+  const ok = await ensureReady();
+  closeModal();
+  if (ok && cloudUser()) { openOnlinePicker(); return; }
+  openOnlineBindModal(() => openOnlinePicker());
+}
+
+function openOnlinePicker() {
+  const u = cloudUser();
+  // v0.2.5：在线池按邮箱（uid）分开 —— 必须先定池再载入
+  STATE.onlinePoolId = (u && (u.id || u.email)) || null;
+  openAccountPicker(
+    { openModal, closeModal, enterOnlineGame: onEnterOnlineGame },
+    'online',
+    u ? (u.email || u.id) : '未登录',
+  );
+}
+
+// 在线池「进入 / 新建」后的进游戏回调（绑定已完成，直接进星球）
+function onEnterOnlineGame() {
+  closeModal();
   STATE.mode = 'online';
-  // 在线模式进入母星主界面（带在线状态和星际大厅入口），同时首发心跳同步
-  const current = currentAccount();
-  if (current) {
-    syncOnlineServer(current).catch(() => {});
-  }
+  ensureAccount();
   nav.showPlanet();
+}
+
+// 邮箱绑定模态：验证码登录 / 注册（复用 cloud.js 的 sendEmailOtp / verifyEmailOtp）。
+// 成功后回调 onBound（进入在线模式）。
+function openOnlineBindModal(onBound) {
+  const wrap = document.createElement('div');
+  wrap.appendChild(el('p', 'modal-tip',
+    '在线模式需先绑定邮箱（验证码登录 / 注册）。绑定后身份与云端关联，可跨端同步、浏览其他玩家星球并发起贸易 / 进攻。'));
+
+  const f = document.createElement('div');
+  f.className = 'galaxy-form';
+  const email = document.createElement('input');
+  email.type = 'email'; email.placeholder = '邮箱';
+  const code = document.createElement('input');
+  code.type = 'text'; code.placeholder = '验证码'; code.style.display = 'none';
+  const pw = document.createElement('input');
+  pw.type = 'password'; pw.placeholder = '设置密码（新账号必填）'; pw.style.display = 'none';
+  const btnSend = el('button', 'btn', '获取验证码');
+  const btnGo = el('button', 'btn btn-primary', '提交并进入');
+  btnGo.style.display = 'none';
+  const msg = el('div', 'muted');
+  f.append(email, btnSend, code, pw, btnGo);
+  wrap.appendChild(f);
+  wrap.appendChild(msg);
+
+  btnSend.addEventListener('click', async () => {
+    msg.textContent = '发送中…';
+    const r = await sendEmailOtp(email.value);
+    if (!r.ok) { msg.textContent = r.reason || '发送失败'; return; }
+    msg.textContent = r.isExistingUser
+      ? '验证码已发送，请查收邮箱后填写并提交。'
+      : '新账号：验证码已发送，请设置密码后提交。';
+    code.style.display = ''; btnGo.style.display = '';
+    if (!r.isExistingUser) pw.style.display = '';
+    btnSend.disabled = true;
+  });
+  btnGo.addEventListener('click', async () => {
+    msg.textContent = '提交中…';
+    const r = await verifyEmailOtp(code.value, pw.value);
+    if (!r.ok) { msg.textContent = r.reason || '验证失败'; return; }
+    closeModal();
+    onBound && onBound();
+  });
+
+  openModal({ title: '在线模式 · 绑定邮箱', body: wrap, sheet: true });
+}
+
+// 小工具：建元素（与 ui 模块同款，避免为 main 单独 import）
+function el(tag, cls, text) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text != null) e.textContent = String(text);
+  return e;
 }
 
 // ===== 全局游戏心跳（v0.0.2）=====
@@ -176,7 +237,6 @@ function onOnline(acc) {
 // 进度也从不落盘。这里统一用 1 秒心跳推进，任何界面下资源都在增长；
 // state.js 的 tick 内置自动存档（每 AUTOSAVE_INTERVAL 秒写一次）。
 let _heartbeat = null;
-let _onlineSyncTicks = 0;
 function startLoop() {
   if (_heartbeat) return;
   _heartbeat = setInterval(() => {
@@ -184,15 +244,6 @@ function startLoop() {
     if (!acc) return;
     acc.stats.playTimeSec = (acc.stats.playTimeSec || 0) + 1;
     tick(1);
-
-    // 在线模式每 10 秒自动向全服网络广播一次心跳快照与防御战力
-    if (STATE.mode === 'online') {
-      _onlineSyncTicks++;
-      if (_onlineSyncTicks >= 10) {
-        _onlineSyncTicks = 0;
-        syncOnlineServer(acc).catch(() => {});
-      }
-    }
   }, 1000);
 }
 
@@ -203,9 +254,8 @@ window.addEventListener('beforeunload', () => { try { saveState(); } catch (e) {
 loadState();
 nav.showStart();
 startLoop();
-// v0.1.4（需求 4）：殖民地报告浮动提示条 —— 托管殖民地每 30 秒产生一条报告，
-//   这里每秒轮询新条目，用右下角提示条淡入淡出，不打断操作（历史可在「人力」页翻）。
-startReportToasts(currentAccount);
+// v0.2.1：殖民地报告改为内联（每颗星球行内直接显示），不再弹右下角浮动提示条。
+//   （历史仍可在「人力」页回看，见 population.js 的 buildReportHistory。）
 // v0.0.8：离线结算。放在 showStart 之后——结算会跑很多 tick，弹面板前确保 UI 已渲染。
 showOfflineSettlement();
 

@@ -1,22 +1,6 @@
-node_modules/
-*.log
-.DS_Store
-Thumbs.db
-*.exe
-当前联机网址.txt
-launch.mjs
-
-# .github 下仅 workflows 需入库（HuggingFace 自动同步依赖 sync_to_hf.yml）；
-# 其余本地杂项忽略。注意：切勿写成 `.github/`——那会连同 workflows 一起忽略，
-# 导致该文件一旦被删除重加就再也提交不上，HF 同步静默失效。
-.github/*
-!.github/workflows/
-
+# 工作区内部数据与临时文件，不入库
 .workbuddy/
-
-# 全服状态快照（运行时产物，不进仓库；HF 部署下走数据集仓库，见 server.mjs）
-data/
-online-state.json
-
-# 一次性调试脚本（不进仓库，见项目约定）
-docs/_dbg_*.mjs
+.ref/
+probe_out.txt
+*.genie
+node_modules/

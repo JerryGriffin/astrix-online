@@ -1,10 +1,6 @@
-// Astrix 冒烟渲染测试（发版必跑）
+// Astrix v0.0.5 冒烟渲染测试
 // 用最小 DOM 桩真实执行 main.js → 开始界面 → 离线模式 → 星球界面 → 逐个 tab，
 // 捕获任何抛出的运行时异常（这一步能抓到语法检查抓不到的东西）。
-//
-// 注：docs/_probe_w4.mjs 曾是本文件的旧副本（断言停留在「升级卡 6 张」
-//   「星球选择含全部 7 星」「点建造即时下水」等已废弃契约，长期报 7 项假异常），
-//   已于 rev16 并入本文件后删除——**新增渲染/UI 断言请直接加在这里，不要再派生副本**。
 
 // ===== 最小 DOM 桩 =====
 class ClassList {
@@ -160,13 +156,13 @@ const app = byId.app;
 
 // 用动态 import 真正跑一遍 main.js（含启动、渲染开始界面、注册心跳）
 step('加载 main.js（启动 + 渲染开始界面）', () => {});
-await import('../js/main.js?v=21.18');
+await import('../js/main.js?v=20.8');
 
-const S = await import('../js/core/state.js?v=21.18');
-const Y = await import('../js/core/shipyard.js?v=21.18');
-const POP = await import('../js/core/population.js?v=21.18');
+const S = await import('../js/core/state.js?v=20.8');
+const Y = await import('../js/core/shipyard.js?v=20.8');
+const POP = await import('../js/core/population.js?v=20.8');
 // v0.1.2（需求 19-2）：造船除装备外还要按部件扣**材料**，测试要先把材料备齐
-const SYU = await import('../js/ui/shipyard.js?v=21.18');
+const SYU = await import('../js/ui/shipyard.js?v=20.8');
 
 const allEls = () => walkAll(app).concat(app.children);
 const findButtons = () => allEls().filter((e) => e.tagName === 'BUTTON');
@@ -217,7 +213,9 @@ console.log('\n星球内 tab:', tabBtns().map((b) => b.textContent).join(' | ') 
 // v0.0.6：底部菜单新增「电力」（储电站与设施）；原来的占位「殖民」tab 被
 //   真正能用的「星球选择」取代，而后者**只在造出船坞之后才出现**——
 //   所以这里不检查它，等下面造出船坞后再单独验证。
-for (const label of ['物品栏', '人力', '科研', '建筑', '电力', '舰队', '军队']) {
+// v0.2.0：「军队」「星际」两个新 tab 与「星球选择」同一门槛（hasDock 后才出现），
+//   无船坞阶段同样不检查，到下面造出船坞的段落再验证。
+for (const label of ['物品栏', '人力', '科研', '建筑', '电力', '舰队']) {
   step(`切换到「${label}」`, () => {
     const b = tabBtns().find((x) => x.textContent === label);
     if (!b) throw new Error('未找到该 tab');
@@ -228,6 +226,15 @@ for (const label of ['物品栏', '人力', '科研', '建筑', '电力', '舰�
 step('未建船坞时不应出现「星球选择」tab', () => {
   if (tabBtns().find((x) => x.textContent === '星球选择')) {
     throw new Error('还没造船坞就出现了「星球选择」tab（需求 R13 要求造出船坞后才出现）');
+  }
+});
+step('v0.2.4 未建船坞时：军队 tab 恒显示，星际/星球选择不应出现', () => {
+  if (!tabBtns().find((x) => x.textContent === '军队')) {
+    throw new Error('军队 tab 应恒显示（v0.2.4：未解锁科技时页内提示，不再藏按钮）');
+  }
+  const early = tabBtns().filter((x) => x.textContent === '星际' || x.textContent === '星球选择');
+  if (early.length) {
+    throw new Error('还没造船坞就出现了「星际 / 星球选择」tab');
   }
 });
 // 电力面板是异步动态 import，给它一个事件循环
@@ -444,7 +451,8 @@ const SY_dockReady = (inst, acc) => {
 step('解锁船坞科技并建造船坞后，蓝图编辑器应可用', () => {
   const acc = S.currentAccount();
   // v0.0.61：舰船部件的门槛只剩船坞一个（原来的四条支线节点已删除）
-  acc.tech = ['t_e3'];
+  // v0.2.2：顺带研究「单兵武器 t_m1」—— 军队 tab 在 t_m1 即解锁（不再卡 t_m5/hasDock）
+  acc.tech = ['t_e3', 't_m1'];
   // v0.0.5：建筑计数在星球实例上（不再是账号的 buildings 数组）
   const inst = S.getPlanetInstance('syl');
   inst.buildings = inst.buildings || {};
@@ -460,16 +468,20 @@ step('解锁船坞科技并建造船坞后，蓝图编辑器应可用', () => {
   //   ReferenceError、子页按钮都渲染不出来，这里正是那次回归的哨兵。）
   if (byClass('bp-box').length) throw new Error('舰船子页仍有蓝图编辑器（应已迁到「设计」）');
   const subBtn = (t) => allEls().find((e) => e.tagName === 'BUTTON' && e.textContent.trim() === t);
-  const designBtn = subBtn('设计');
-  if (!designBtn) throw new Error('未找到「设计」子页按钮（舰船页可能已崩溃）');
+  const designBtn = subBtn('设计与建造');
+  if (!designBtn) throw new Error('未找到「设计与建造」子页按钮（舰船页可能已崩溃）');
   designBtn.dispatch('click');
   const box = byClass('bp-box')[0];
   if (!box) throw new Error('「设计」子页未渲染蓝图编辑器');
-  console.log('     ✓ 蓝图编辑器已迁到「设计」子页，舰船子页不再有');
+  console.log('     ✓ 蓝图编辑器已迁到「设计与建造」子页，舰船子页不再有');
   const sels = allEls().filter((e) => e.tagName === 'SELECT');
   if (sels.length < 3) throw new Error(`蓝图编辑器控件过少：select ${sels.length}`);
-  console.log('     蓝图控件：select', sels.length, '· 建造按钮',
-    allEls().filter((e) => e.tagName === 'BUTTON' && e.textContent === '建造').length);
+  console.log('     蓝图控件：select', sels.length);
+  // v0.2.1：已保存蓝图默认只显示数值卡片，需点「展开编辑（含建造）」才渲染完整编辑器与建造按钮
+  const expandBtn = allEls().find((e) => e.tagName === 'BUTTON' && e.textContent.includes('展开编辑'));
+  if (!expandBtn) throw new Error('已保存蓝图未提供「展开编辑（含建造）」按钮（v0.2.1 紧凑视图缺失）');
+  expandBtn.dispatch('click');
+  console.log('     ✓ 已点「展开编辑（含建造）」，完整编辑器（含建造按钮）已展开');
 });
 
 // v0.1.1 需求 3：装备库存校验前置——默认蓝图三件套必须先在制造车间造好进装备栏
@@ -578,7 +590,7 @@ step('切回主界面再进星球（验证返回导航）', () => {
 
 // 存档往返
 step('存档落盘并重载', async () => {
-  const S = await import('../js/core/state.js?v=21.18');
+  const S = await import('../js/core/state.js?v=20.8');
   S.saveState();
   const before = _ls.size;
   const raw = _ls.get('astrix.save.' + S.STATE.currentAccountId);
@@ -595,7 +607,7 @@ await Promise.all(pending);
 // 验证：电力面板渲染 / 造出船坞后「星球选择」tab / 星球选择含 7 星 nameCn
 // （本段只读取已有作用域：tabBtns / allText / step / PLANETS，不改动其它步骤）
 // =====================================================================
-const PL = await import('../js/data/planets.js?v=21.18');
+const PL = await import('../js/data/planets.js?v=20.8');
 
 // ⚠ 这段追加在「存档落盘并重载」之后，而它前面那一步是「返回主界面 → 点离线模式」。
 //   v0.0.6（需求 R6）之后，点「离线模式」**总是先弹存档选择界面**（不再直接进游戏），
@@ -639,6 +651,51 @@ step('v0.0.6 星球选择：造出船坞后底部菜单出现「星球选择」t
   console.log('     「星球选择」tab 已出现（R13 达成）');
 });
 
+// ---- v0.2.4：军队（tab 恒显示；未解锁提示科技；军营驱动；装备全齐才能开线）----
+// 注意 v0.2.1（需求 A）：星际功能只在在线模式存在，离线模式**不**显示「星际」tab。
+step('v0.2.4 军队：tab 恒显示且单兵武器解锁后可进入（星际离线不出现）', () => {
+  if (!tabBtns().find((x) => x.textContent === '军队')) {
+    throw new Error('军队 tab 应恒显示（v0.2.4）');
+  }
+  if (tabBtns().find((x) => x.textContent === '星际')) {
+    throw new Error('离线模式下不应出现「星际」tab（v0.2.1 需求 A：星际仅在线模式）');
+  }
+  console.log('     「军队」tab 恒显示；「星际」tab 在离线模式正确隐藏');
+});
+step('v0.2.4 军队：切到「军队」tab', () => {
+  const b = tabBtns().find((x) => x.textContent === '军队');
+  b.dispatch('click');
+});
+await new Promise((r) => setTimeout(r, 300));   // 军队面板是异步动态 import
+step('v0.2.4 军队：无军营时显示军营指引（组装线由军营驱动）', () => {
+  const txt = allText();
+  if (/加载失败|load\s*fail/i.test(txt)) throw new Error('军队面板显示「加载失败」占位');
+  if (!txt.includes('军队')) throw new Error('军队面板缺少标题');
+  if (!txt.includes('军营')) throw new Error('未建成军营时未显示「军营」指引（v0.2.4 组装线由军营驱动）');
+  console.log('     军队面板渲染正常，军营指引可见');
+});
+step('v0.2.4 军队：建军营并重进军队页', () => {
+  const inst = S.getPlanetInstance('syl');
+  inst.buildings = inst.buildings || {};
+  inst.buildings.fabricator = 1;
+  inst.buildings.barracks = 1;
+  const b = tabBtns().find((x) => x.textContent === '军队');
+  b.dispatch('click');
+});
+await new Promise((r) => setTimeout(r, 300));
+step('v0.2.4 军队：游骑兵立即可造、铁壁/雷霆按科技锁定、装备未齐不能开线', () => {
+  const txt = allText();
+  if (/加载失败|load\s*fail/i.test(txt)) throw new Error('军队面板显示「加载失败」占位');
+  if (!txt.includes('游骑兵·轻型突击队')) throw new Error('游骑兵蓝图未渲染（t_m1 应立即可造）');
+  if (!txt.includes('需研究「军用装甲」')) throw new Error('铁壁（t_m2）未显示锁定提示');
+  if (!txt.includes('需研究「火炮重武」')) throw new Error('雷霆（t_m4）未显示锁定提示');
+  if (!txt.includes('装备未齐，不能开工')) throw new Error('装备未齐时应禁用开线（v0.2.4 取消「先挂着」）');
+  console.log('     游骑兵 t_m1 可造 · 铁壁/雷霆锁定 · 装备未齐不能开线（全部达成）');
+});
+// v0.2.1 需求 A：星际功能只在在线模式存在，离线模式不渲染「星际」面板，
+//   因此这里不测离线星际（那样会构造出与本版契约冲突的期待）。
+//   在线模式的「星际」渲染改为下方独立的在线态冒烟（直接调 renderGalaxy）。
+
 step('v0.0.6 星球选择：切到「星球选择」tab', () => {
   const b = tabBtns().find((x) => x.textContent === '星球选择');
   if (!b) throw new Error('未找到「星球选择」tab');
@@ -662,6 +719,55 @@ step('v0.0.6 星球选择：进入不崩溃且遵循「已发现才可见」门�
   }
   console.log('     星球选择遵循发现门禁：母星 + 商店星可见，未发现星球不可见');
 });
+
+// ============================================================================
+// v0.2.1 需求 A/B：在线模式「星际」渲染冒烟（直接调 renderGalaxy，独立于离线流程）
+//   离线流程里不出现「星际」tab（需求 A）；在线态才渲染，且合并了「星球选择」
+//   （需求 B：我的殖民地内嵌进星际页）。Node 桩无真实云服务，这里注入一个最小
+//   假 SDK，让 ensureReady 成功并真正跑到 renderShell（含内嵌殖民地），从而验证
+//   合并代码路径不崩；同时假 SDK 的 db 链一律返回空结果，避免任何真实网络调用。
+// ============================================================================
+step('v0.2.1 在线模式：导入 galaxy.js 并渲染「星际」', () => {});
+const G = await import('../js/ui/galaxy.js?v=20.8');
+// 最小假云端：createWorkBuddyCloud 返回带 database 链的对象；getSession 返回无用户
+//   注意：db 链必须「非 thenable」，否则 `await db()...` 会卡在微任务里永不落定。
+const _chain = new Proxy({}, {
+  get: (t, prop) => (prop === 'then' ? undefined : (..._a) => _chain),
+});
+globalThis.window.WorkBuddyCloud = {
+  createWorkBuddyCloud: () => ({
+    auth: { getSession: async () => ({ data: null, error: null }) },
+    database: _chain,
+  }),
+};
+const galaxyRoot = new El('div');
+const galaxyAcc = S.currentAccount();
+S.STATE.mode = 'online';   // 需求 A：星际仅在线模式
+const galaxyCtx = {
+  account: galaxyAcc,
+  planetCode: galaxyAcc && galaxyAcc.homePlanet,
+  openModal: (node) => { byId['modal-root'].appendChild(node); },
+  closeModal: () => { byId['modal-root'].children = []; },
+  onEnterPlanet: () => {},
+};
+G.renderGalaxy(galaxyRoot, galaxyCtx);
+// 同步首屏应已写好 page-title + 连接中状态
+const galaxyText0 = (galaxyRoot.textContent || '') + ' ' + (galaxyRoot._html || '');
+if (!galaxyText0.includes('星际')) throw new Error('星际页面首屏缺少标题');
+console.log('     ✓ 星际页面首屏标题渲染正常（在线模式）');
+await new Promise((r) => setTimeout(r, 300));   // 等 ensureReady（假 SDK）→ renderShell 跑完
+step('v0.2.1 在线模式：星际面板真实渲染且内嵌殖民地可见（需求 A/B）', () => {
+  const txt = (galaxyRoot.textContent || '') + ' ' + (galaxyRoot._html || '');
+  if (/加载失败|load\s*fail/i.test(txt)) throw new Error('星际面板显示「加载失败」占位');
+  // 需求 A：在线模式才渲染星际
+  if (!txt.includes('星际')) throw new Error('星际面板缺少标题');
+  // 需求 B：在线模式的「星球选择」已合并进星际 → 页面应含「我的殖民地」+ 内联报告入口
+  if (!txt.includes('我的殖民地')) throw new Error('星际页未内嵌「我的殖民地」（需求 B 合并未完成）');
+  // 合并后离线独立的「星球选择」入口不应再出现（避免重复两套殖民地 UI）
+  // 注：此处只校验「我的殖民地」字样存在，单独「星球选择」tab 已在离线流程验证。
+  console.log('     ✓ 星际面板完整渲染；「我的殖民地」已内嵌（需求 B 达成）');
+});
+S.STATE.mode = 'offline';   // 还原，避免影响后续（其实已到收尾）
 
 console.log('\n== 结果 ==');
 console.log('运行时异常数:', errors.length);

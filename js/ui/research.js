@@ -9,15 +9,14 @@
 // 「船上设施」已从科技树移到「设施」子分类，科技树里只保留解锁它们的节点。
 //
 // 研究点存放在账号对象上（acc.researchPoints / acc.tech / acc.upgrades）。
-import { TECHS, TECH_BY_ID, BRANCHES, techsByTier, canResearch, missingPrereqs, facilityTechs } from '../data/techs.js?v=21.18';
-import { researchTech, buyUpgrade, currentAccount, getPlanetInstance, RESEARCH_UNIT } from '../core/state.js?v=21.18';
-import { UPGRADES, upgradeCost, upgradeMul, upgradeFactorAt } from '../data/upgrades.js?v=21.18';
-import { BUILDING_BY_ID } from '../data/buildings.js?v=21.18';
-import { FACILITIES, MATERIAL_SLOTS, DEFAULT_MATERIAL, isPartUnlocked } from '../data/ship_parts.js?v=21.18';
-import { materialMul, resolvePart } from '../core/shipyard.js?v=21.18';
-import { fmtNum, fmtTime, fmtRate, richText } from '../core/format.js?v=21.18';
-import { jobsOfBuilding, jobOutput } from '../core/population.js?v=21.18';
-import { playPing, playVictory, playLaser } from '../core/sound.js?v=21.18';
+import { TECHS, TECH_BY_ID, BRANCHES, techsByTier, canResearch, missingPrereqs, missingBuilding, facilityTechs } from '../data/techs.js?v=20.8';
+import { researchTech, buyUpgrade, currentAccount, getPlanetInstance, RESEARCH_UNIT } from '../core/state.js?v=20.8';
+import { UPGRADES, upgradeCost, upgradeMul, upgradeFactorAt } from '../data/upgrades.js?v=20.8';
+import { BUILDING_BY_ID } from '../data/buildings.js?v=20.8';
+import { FACILITIES, MATERIAL_SLOTS, DEFAULT_MATERIAL, isPartUnlocked } from '../data/ship_parts.js?v=20.8';
+import { materialMul, resolvePart } from '../core/shipyard.js?v=20.8';
+import { fmtNum, fmtTime, fmtRate } from '../core/format.js?v=20.8';
+import { jobsOfBuilding, jobOutput } from '../core/population.js?v=20.8';
 
 function esc(s) {
   return String(s).replace(/[&<>"']/g, (c) => (
@@ -36,6 +35,21 @@ function el(tag, cls, text) {
 function facTierNum(id) {
   const m = String(id).match(/_(\d+)$/);
   return m ? parseInt(m[1], 10) : 0;
+}
+
+// 设施类科技（含建筑前置 reqBuilding）的状态文案：已解锁 / 需 X / 可研究 / 研究点不足。
+// v0.2.6：建筑前置（如「军营」）与科技前置合并显示，缺建筑时明确提示「（建筑）」。
+function facTechState(t, techSetNow, builtSet, affordable) {
+  const researched = techSetNow.has(t.id);
+  if (researched) return { researched: true, ready: false, text: '<span class="ok-green">已解锁</span>' };
+  const ready = canResearch(t.id, techSetNow, builtSet);
+  if (!ready) {
+    const miss = missingPrereqs(t.id, techSetNow).map((m) => (TECH_BY_ID[m] ? TECH_BY_ID[m].code : m));
+    const missB = missingBuilding(t.id, builtSet)
+      .map((b) => (BUILDING_BY_ID[b] ? BUILDING_BY_ID[b].nameCn : b) + '（建筑）');
+    return { researched: false, ready: false, text: '需 ' + miss.concat(missB).join(' + ') };
+  }
+  return { researched: false, ready: true, text: affordable ? '可研究' : '研究点不足' };
 }
 
 // 把「乘算系数相对 1 的偏移」格式化为带符号百分比（如 +16.0% / -20.5%），整数去小数。
@@ -107,14 +121,10 @@ export function renderResearch(root, ctx) {
   itemTech.appendChild(techCountNode);
 
   const itemNote = el('div', 'res-head-item res-note',
-    '科研所每工位产出 0.05 研究点/秒，整体耗电 50 电/秒');
+    '科研所每工位产出 0.02 研究点/秒（极限强度 0.048），整体耗电 50 电/秒');
 
   head.append(itemPoints, itemTech, itemNote);
   wrap.appendChild(head);
-
-  // v0.2.3：删除原「全息科研导能矩阵 HUD」——「导能谐振率 99.4%」是硬编码假数据，
-  //   MFLOPs 通量是研究点增速套皮，与顶部「研究点 + 增速」完全重复，整块纯装饰。
-  //   真实信息（研究点 / 增速 / 已解锁科技数）保留在上方头部。
 
   // 研究点每秒都在涨（科研所运转时），挂 1 秒定时器只刷新顶部数字，避免整块重绘冲掉按钮与滚动位置。
   // 重复进入面板时先清旧定时器，避免叠加；面板被卸载（.research-wrap 不存在）时自动停。
@@ -297,6 +307,12 @@ function renderFacilitySection(body, ctx, techSet, rerender) {
 
   // 用账号最新的已研究集合判定（研究后立即重绘能正确反映），避免沿用渲染时快照导致刚研究的节点不翻牌
   const techSetNow = new Set(ctx.account.tech || []);
+  // v0.2.6：已建成建筑集合（座数 > 0），用于设施类科技的「建筑前置」门禁（如军营）。
+  const instF = ctx.planetCode ? getPlanetInstance(ctx.planetCode) : null;
+  const builtSet = new Set();
+  if (instF && instF.buildings) {
+    for (const k in instF.buildings) if (Number(instF.buildings[k]) > 0) builtSet.add(k);
+  }
   const facTechs = facilityTechs();
   const facCats = [
     { key: 'battery', nameCn: '电池组' },
@@ -321,14 +337,13 @@ function renderFacilitySection(body, ctx, techSet, rerender) {
     let prevResearched = true;
     for (const t of list) {
       if (!prevResearched) break;
-      const researched = techSetNow.has(t.id);
-      const ready = canResearch(t.id, techSetNow);
-      const missing = missingPrereqs(t.id, techSetNow);
       const affordable = ctx.account.researchPoints >= t.cost;
+      const s = facTechState(t, techSetNow, builtSet, affordable);
+      const researched = s.researched;
+      const ready = s.ready;
+      const missing = missingPrereqs(t.id, techSetNow);
       const row = el('div', 'fac-row' + (researched ? ' is-done' : ready ? ' is-ready' : ' is-locked'));
-      const stateText = researched ? '<span class="ok-green">已解锁</span>'
-        : !ready ? ('需 ' + missing.map((m) => (TECH_BY_ID[m] ? TECH_BY_ID[m].code : m)).join(' + '))
-          : affordable ? '可研究' : '研究点不足';
+      const stateText = s.text;
       row.innerHTML =
         `<div class="fac-line1"><span class="fac-title">${esc(t.nameCn)}</span>`
         + `<span class="fac-mark">${esc(t.code)}</span>`
@@ -344,12 +359,57 @@ function renderFacilitySection(body, ctx, techSet, rerender) {
         btn.addEventListener('click', (e) => {
           e.stopPropagation();
           const r = researchTech(t.id);
-          if (!r.ok) {
-            playLaser();
-            rerender();
-            return;
-          }   // 失败（如研究点不足）重绘后状态行会显示原因
-          playVictory();
+          if (!r.ok) { rerender(); return; }   // 失败（如研究点不足）重绘后状态行会显示原因
+          rerender();
+        });
+        row.appendChild(btn);
+      }
+      row.addEventListener('click', () => openTechDetail(ctx, t, { researched, ready, missing, affordable }, rerender));
+      box.appendChild(row);
+      prevResearched = researched;
+    }
+    body.appendChild(box);
+  }
+
+  // ===== 0.5) 军事装备解锁（v0.2.6：t_m1~t_m4 由军事科技分支移入「设施」分区）=====
+  body.appendChild(el('div', 'res-section-title', '军事装备解锁'));
+  body.appendChild(el('p', 'res-sub muted',
+    '单兵武器 / 军用装甲 / 机动平台 / 火炮重武四级军事科技。需先建成**军营**方可研究，'
+    + '研究后解锁对应军事部件的生产与兵种蓝图。'));
+  {
+    const list = facTechs.filter((t) => t.branch === 'military')
+      .sort((a, b) => (a.code || '').localeCompare(b.code || ''));
+    const box = el('details', 'fac-group');
+    box.open = true;
+    const sum = el('summary', 'fac-sum');
+    sum.innerHTML = `<span class="fac-name">军事科技</span>`
+      + `<span class="fac-note muted">前置：军营</span>`;
+    box.appendChild(sum);
+    let prevResearched = true;
+    for (const t of list) {
+      if (!prevResearched) break;
+      const affordable = ctx.account.researchPoints >= t.cost;
+      const s = facTechState(t, techSetNow, builtSet, affordable);
+      const researched = s.researched;
+      const ready = s.ready;
+      const missing = missingPrereqs(t.id, techSetNow);
+      const row = el('div', 'fac-row' + (researched ? ' is-done' : ready ? ' is-ready' : ' is-locked'));
+      row.innerHTML =
+        `<div class="fac-line1"><span class="fac-title">${esc(t.nameCn)}</span>`
+        + `<span class="fac-mark">${esc(t.code)}</span>`
+        + (researched ? '<span class="fac-lock fac-done">已解锁</span>'
+            : ready ? '' : '<span class="fac-lock">未解锁</span>') + '</div>'
+        + `<div class="fac-line2 muted">${fmtNum(t.cost)} 研究点`
+        + (s.text ? ' · ' + s.text : '') + '</div>';
+      if (!researched) {
+        const btn = el('button', 'btn btn-sm btn-primary', '研究');
+        btn.disabled = !(ready && affordable);
+        if (!ready) btn.title = '前置未完成（科技或军营）';
+        else if (!affordable) btn.title = '研究点不足';
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const r = researchTech(t.id);
+          if (!r.ok) { rerender(); return; }
           rerender();
         });
         row.appendChild(btn);
@@ -401,7 +461,7 @@ function renderFacilitySection(body, ctx, techSet, rerender) {
         + (unlocked ? '' : '<span class="fac-lock">未解锁</span>') + '</div>'
         + `<div class="fac-line2 muted">占地 ${fmtNum(b.footprint)} m³ · 质量 ${fmtNum(b.mass)} t`
         + (extra.length ? ' · ' + extra.join(' · ') : '') + '</div>'
-        + `<div class="fac-line3 muted">${richText(f.desc)}</div>`;
+        + `<div class="fac-line3 muted">${esc(f.desc)}</div>`;
 
       if (f.materialSlot) {
         const mats = (MATERIAL_SLOTS[f.materialSlot] || []).join(' / ');
@@ -423,7 +483,7 @@ function renderFacilitySection(body, ctx, techSet, rerender) {
 function openTechDetail(ctx, t, st, rerender) {
   const body = document.createElement('div');
   const lines = [];
-  lines.push('<p class="res-desc">' + richText(t.desc) + '</p>');
+  lines.push('<p class="res-desc">' + esc(t.desc) + '</p>');
   lines.push('<div class="res-kv"><span>编号</span><b>' + esc(t.code) + '</b></div>');
   lines.push('<div class="res-kv"><span>研究点花费</span><b>' + fmtNum(t.cost) + '</b></div>');
   lines.push('<div class="res-kv"><span>前置科技</span><b>'
@@ -461,10 +521,8 @@ function openTechDetail(ctx, t, st, rerender) {
       if (!r.ok) {
         tip.className = 'modal-tip';
         tip.textContent = r.reason;
-        playLaser();
         return;
       }
-      playVictory();
       tip.className = 'modal-tip cyan';
       tip.textContent = '研究完成：' + t.nameCn + '（已扣除 ' + fmtNum(r.spent) + ' 研究点）';
       btn.disabled = true;
@@ -485,7 +543,7 @@ function openUpgradeDetail(ctx, u, lv, cost, maxed, rerender) {
   const curMul = upgradeFactorAt(u, lv);
   const nextMul = upgradeFactorAt(u, lv + 1);
   body.innerHTML =
-    '<p class="res-desc">' + richText(u.desc) + '</p>'
+    '<p class="res-desc">' + esc(u.desc) + '</p>'
     + '<div class="res-kv"><span>当前等级</span><b>Lv ' + lv + ' / ' + u.maxLevel + '</b></div>'
     + '<div class="res-kv"><span>当前效果</span><b>' + (lv === 0 ? '未生效' : fmtEffPct(curMul)) + '</b></div>'
     + '<div class="res-kv"><span>升一级后</span><b>' + fmtEffPct(nextMul) + '</b></div>'
@@ -504,13 +562,7 @@ function openUpgradeDetail(ctx, u, lv, cost, maxed, rerender) {
     if (btn.disabled) btn.title = '研究点不足';
     btn.onclick = () => {
       const r = buyUpgrade(u.id);
-      if (!r.ok) {
-        tip.className = 'modal-tip';
-        tip.textContent = r.reason;
-        playLaser();
-        return;
-      }
-      playPing();
+      if (!r.ok) { tip.className = 'modal-tip'; tip.textContent = r.reason; return; }
       tip.className = 'modal-tip cyan';
       tip.textContent = '已升到 Lv ' + r.level + '（扣除 ' + fmtNum(r.spent) + ' 研究点）';
       btn.disabled = true;
@@ -528,7 +580,7 @@ function openUpgradeDetail(ctx, u, lv, cost, maxed, rerender) {
 function openFacilityDetail(ctx, f, unlocked) {
   const body = document.createElement('div');
   const lines = [];
-  lines.push('<p class="res-desc">' + richText(f.desc) + '</p>');
+  lines.push('<p class="res-desc">' + esc(f.desc) + '</p>');
   lines.push('<div class="res-kv"><span>型号</span><b>' + esc(f.markLabel) + '</b></div>');
   lines.push('<div class="res-kv"><span>类别</span><b>船上设施</b></div>');
   lines.push('<div class="res-kv"><span>占地</span><b>' + fmtNum(f.footprint) + ' m³</b></div>');

@@ -15,81 +15,60 @@
 //    开局自带 1 座建筑工厂（设计者：「开局有一个建筑工厂」）。
 // 5. 施工队列由 tick 推进：速度 = 建筑工有效人力（受建筑工厂工位限制），无人则为 0。
 
-import { PLANETS } from '../data/planets.js?v=21.18';
-import { BUILDING_BY_ID, buildingCost } from '../data/buildings.js?v=21.18';
-import { TECH_BY_ID, canResearch, missingPrereqs } from '../data/techs.js?v=21.18';
-import { UPGRADES, upgradeCost } from '../data/upgrades.js?v=21.18';
+import { PLANETS } from '../data/planets.js?v=20.8';
+import { BUILDING_BY_ID, buildingCost } from '../data/buildings.js?v=20.8';
+import { TECH_BY_ID, canResearch, missingPrereqs, missingBuilding } from '../data/techs.js?v=20.8';
+import { UPGRADES, upgradeCost } from '../data/upgrades.js?v=20.8';
 import {
   createPopulation, tickPopulation, getAvailable, gatherLaborByLayer, jobsOfBuilding, getIntensity,
   consumptionPerSec, jobOutput,
   JOBS, freeSlots,
-} from './population.js?v=21.18';
-import { buildRateOf, buildBlockReason } from './construction.js?v=21.18';
-import { tickShip, defaultBlueprints, createShip, shipBuildTick } from './shipyard.js?v=21.18';
-import { tickArmyBuildLines, armyStatsOf } from './army.js?v=21.18';
+} from './population.js?v=20.8';
+import { buildRateOf, buildBlockReason } from './construction.js?v=20.8';
+import { tickShip, defaultBlueprints, createShip, shipBuildTick } from './shipyard.js?v=20.8';
 // v0.0.6：电力系统与配方生产。
 // 注意这两个模块**不反向 import 本文件**（否则形成循环依赖），
 // 它们只从传入的 inst 上读 buildings / pop / inventory / recipes。
-import { energyOf, computePower, tickPower, thermalFuelRates } from './power.js?v=21.18';
+import { energyOf, computePower, tickPower } from './power.js?v=20.8';
 // v0.0.91：efficiencyBonus 由 production.js 导出（建筑总座数效率乘数），
 //   这里沿用既有的 state→production 单向边引入，不反向让 production import state，避免循环依赖。
-import { tickProduction, productionRates, ensureLines, lineWorkersTotal, efficiencyBonus, ensureEntry, addLine as addProductionLine, lineSlotInfo, farmRates, farmSupplyOf } from './production.js?v=21.18';
+import { tickProduction, productionRates, ensureLines, lineWorkersTotal, efficiencyBonus, ensureEntry, addLine as addProductionLine, lineSlotInfo } from './production.js?v=20.8';
 // v0.0.92：星际航行与殖民（管理模式 / 独立倾向 / 随机星球）
-import { tickIndependence, outputMulOf, happinessDeltaOf, ensureDiscoveredDefaults, discoverPlanet, purgeShopColonies, tickManagedColonies, SHOP_PLANET_CODE } from './planetgen.js?v=21.18';
+import { tickIndependence, outputMulOf, happinessDeltaOf, ensureDiscoveredDefaults, discoverPlanet, purgeShopColonies, tickManagedColonies, SHOP_PLANET_CODE } from './planetgen.js?v=20.8';
 // v0.1.2（需求 18/19）：永久升级的「效果」改乘方，唯一实现在 data/upgrades.js#upgradeMul
 // （UI 的 research.js 也用它，别在别处再写一套公式）。
 // 此前 upg_collect/refine/power/labor/research/build 六项付了钱却没有任何效果。
-import { upgradeMul } from '../data/upgrades.js?v=21.18';
-import { tickFleetMissions, ensureFleets } from './fleet.js?v=21.18';
-// v0.2.2：离线 mod 系统（叶子模块，不 import 任何游戏模块，无循环依赖风险）
-import { modEffects, applyStartBonus, applyPendingStartResources } from './mods.js?v=21.18';
+import { upgradeMul } from '../data/upgrades.js?v=20.8';
+import { tickFleetMissions, ensureFleets } from './fleet.js?v=20.8';
+import { ensureArmies, armyBuildTick, advanceTraining, ARMY_LABOR_PER_BARRACKS } from './army.js?v=20.8';   // v0.2.0 军队
 // v0.1.0：电脑账号（离线存档里的 NPC 势力）与其交易池联动。
 //   注意 npc.js 是叶子模块（只 import 数据表），shop.js 与 state.js 互为函数级引用、无顶层副作用。
-import { ensureNpcs, tickNpcs } from './npc.js?v=21.18';
+import { ensureNpcs, tickNpcs } from './npc.js?v=20.8';
 import {
   priceOf as shopPriceOf, suggestPriceOf as shopSuggestPriceOf,
   npcListOnMarket, npcTakeFromMarket, tickShop as shopTick,
   tickListings as shopTickListings,
-} from './shop.js?v=21.18';
+} from './shop.js?v=20.8';
+import { tickAuctions } from './auction.js?v=20.8';   // v0.2.6 拍卖行
 
+const SAVE_PREFIX = 'astrix.save.';
+const INDEX_KEY = SAVE_PREFIX + 'index';
+const PLANETS_KEY = SAVE_PREFIX + 'planets.';   // 每个账号的星球实例存档前缀
+
+// v0.2.5：在线存档与离线存档完全独立，且**在线池再按邮箱（云账号 uid）分开** ——
+//   每个邮箱一套自己的存档键空间，互不可见。
+function poolKeys(mode) {
+  if (mode !== 'online') {
+    return { index: INDEX_KEY, save: SAVE_PREFIX, planets: PLANETS_KEY };
+  }
+  const uid = String(STATE.onlinePoolId || 'anon').replace(/[^A-Za-z0-9_-]/g, '') || 'anon';
+  return {
+    index: INDEX_KEY + '.online.' + uid,
+    save: SAVE_PREFIX + 'online.' + uid + '.',
+    planets: PLANETS_KEY + 'online.' + uid + '.',
+  };
+}
 export const AUTOSAVE_INTERVAL = 10;            // 自动存档间隔（秒）
-
-// 存储模式与在线账号隔离：
-// offline: 'astrix.save.'
-// online:  'astrix.online.<email>.save.'
-let currentStorageMode = 'offline';
-let currentOnlineEmail = '';
-
-export function getStorageMode() {
-  return { mode: currentStorageMode, email: currentOnlineEmail };
-}
-
-export function setStorageMode(mode, email = '') {
-  const normEmail = (email || '').trim().toLowerCase();
-  if (currentStorageMode === mode && (mode === 'offline' || currentOnlineEmail === normEmail)) {
-    return;
-  }
-  // 切换前先落盘当前池
-  try { saveState(); } catch (e) {}
-  currentStorageMode = mode === 'online' ? 'online' : 'offline';
-  currentOnlineEmail = currentStorageMode === 'online' ? normEmail : '';
-  STATE.mode = currentStorageMode;
-  // 载入目标池
-  loadState();
-}
-
-function getSavePrefix() {
-  if (currentStorageMode === 'online' && currentOnlineEmail) {
-    return `astrix.online.${currentOnlineEmail}.save.`;
-  }
-  return 'astrix.save.';
-}
-function getIndexKey() {
-  return getSavePrefix() + 'index';
-}
-function getPlanetsKey() {
-  return getSavePrefix() + 'planets.';
-}
 
 // 适配器抽象：当前实现为 localStorage，后续可整体替换为云端实现
 let adapter = {
@@ -104,7 +83,8 @@ export function setAdapter(a) { adapter = a; }
 // 全局可变状态
 export const STATE = {
   mode: 'offline',          // 'offline' | 'online'
-  accounts: [],             // 离线多存档位数组
+  onlinePoolId: null,       // v0.2.5：在线池标识（云账号 uid）—— 在线存档按邮箱分开
+  accounts: [],             // 当前池的存档位数组
   currentAccountId: null,
   planets: [],              // 运行时星球实例
   ui: {},                   // UI 临时状态（预留）
@@ -129,28 +109,27 @@ function defaultAccount(name) {
     buildings: [],          // 旧版字段（保留兼容）；v0.0.5 起建筑计数在星球实例上
     ships: [],              // 舰船实例数组
     blueprint: null,        // 船坞蓝图（惰性初始化为 emptyBlueprint()）
-    armies: [],             // 陆战部队编制实例数组（v0.2.0）
-    armyBuildLines: [],     // 部队整编产线数组（v0.2.0）
     stats: { playTimeSec: 0, planetsCaptured: 0, resourcesCollected: 0 },
   };
 }
 
-// 从适配器载入全部存档到 STATE
-export function loadState() {
+// 从适配器载入指定池的全部存档到 STATE（v0.2.5：mode 决定读写哪个池，默认离线）
+export function loadState(mode) {
+  mode = mode === 'online' ? 'online' : 'offline';
+  STATE.mode = mode;
+  const keys = poolKeys(mode);
   try {
-    const raw = adapter.get(getIndexKey());
+    const raw = adapter.get(keys.index);
     if (!raw) {
       STATE.accounts = [];
       STATE.currentAccountId = null;
       return STATE;
     }
     const idx = JSON.parse(raw);
-    STATE.mode = idx.mode || currentStorageMode;
     STATE.currentAccountId = idx.currentAccountId || null;
-    const prefix = getSavePrefix();
     STATE.accounts = (idx.ids || [])
       .map((id) => {
-        const a = adapter.get(prefix + id);
+        const a = adapter.get(keys.save + id);
         try { return a ? JSON.parse(a) : null; } catch (e) { return null; }
       })
       .filter(Boolean);
@@ -158,7 +137,7 @@ export function loadState() {
       STATE.currentAccountId = STATE.accounts[0] ? STATE.accounts[0].id : null;
     }
     // 星球实例（含物品栏与产出）按账号分别持久化，刷新后进度不丢
-    STATE.planets = loadPlanets(STATE.currentAccountId);
+    STATE.planets = loadPlanets(STATE.currentAccountId, keys.planets);
   } catch (e) {
     STATE.accounts = [];
     STATE.currentAccountId = null;
@@ -168,23 +147,32 @@ export function loadState() {
 }
 
 // 读取指定账号的星球实例数组（解析失败返回空数组）
-function loadPlanets(accountId) {
+function loadPlanets(accountId, planetsKey) {
   if (!accountId) return [];
   try {
-    const arr = JSON.parse(adapter.get(getPlanetsKey() + accountId) || '[]');
+    const arr = JSON.parse(adapter.get((planetsKey || PLANETS_KEY) + accountId) || '[]');
     return Array.isArray(arr) ? arr : [];
   } catch (e) { return []; }
 }
 
-// 把 STATE 中的账号与索引写回适配器
+// v0.2.5：切换存档池（先落盘当前池，再载入目标池）—— 进入在线/离线选择界面时调用
+export function switchPool(mode) {
+  mode = mode === 'online' ? 'online' : 'offline';
+  if (STATE.currentAccountId) {
+    try { saveState(); } catch (e) { /* 落盘失败不阻断切池 */ }
+  }
+  return loadState(mode);
+}
+
+// 把 STATE 中的账号与索引写回适配器（v0.2.5：按 STATE.mode 写对应池）
 export function saveState() {
+  const keys = poolKeys(STATE.mode === 'online' ? 'online' : 'offline');
   const idx = {
     mode: STATE.mode,
     currentAccountId: STATE.currentAccountId,
     ids: STATE.accounts.map((a) => a.id),
   };
-  adapter.set(getIndexKey(), JSON.stringify(idx));
-  const prefix = getSavePrefix();
+  adapter.set(keys.index, JSON.stringify(idx));
   STATE.accounts.forEach((a) => {
     // v0.0.8：每次落盘把当前时间戳记到账号上，供离线收益结算（settleOffline）算离线时长。
     // 用 acc.stats.lastSeen 而非新建顶层字段，老存档（没有该字段）读不到就按「不结算」处理，兼容安全。
@@ -192,11 +180,11 @@ export function saveState() {
     // v0.1.1（需求 23）：只给**当前账号**刷 lastSeen。此前给所有账号刷，导致未登录账号
     // 的离线时长在每次自动存档时都被清零，离线结算永远算不出它们的离线时间。
     if (a.id === STATE.currentAccountId) a.stats.lastSeen = Date.now();
-    adapter.set(prefix + a.id, JSON.stringify(a));
+    adapter.set(keys.save + a.id, JSON.stringify(a));
   });
   // 星球实例按当前账号持久化（此前只存账号不存星球，导致刷新后进度归零）
   if (STATE.currentAccountId) {
-    adapter.set(getPlanetsKey() + STATE.currentAccountId, JSON.stringify(STATE.planets));
+    adapter.set(keys.planets + STATE.currentAccountId, JSON.stringify(STATE.planets));
   }
 }
 
@@ -218,10 +206,6 @@ export function createAccount(name, mode) {
       applyDeepStart(acc, inst);
     } catch (e) { /* 失败也要保证基础存档可用 */ }
   }
-  // v0.2.2：离线 mod 的开局加成（Ascoin 立即入账；资源暂存，待母星实例创建时落库）
-  try {
-    if (applyStartBonus(acc)) saveState();
-  } catch (e) { /* mod 加成失败不影响正常开局 */ }
   return acc;
 }
 
@@ -230,7 +214,8 @@ export function switchAccount(id) {
   if (STATE.accounts.find((a) => a.id === id)) {
     saveState();                      // 先落盘旧账号的进度
     STATE.currentAccountId = id;
-    STATE.planets = loadPlanets(id);  // 再载入新账号的进度，避免存档串数据
+    // v0.2.5：按当前池的星球键载入（在线/离线键命名空间不同）
+    STATE.planets = loadPlanets(id, poolKeys(STATE.mode).planets);  // 再载入新账号的进度，避免存档串数据
     saveState();
   }
 }
@@ -243,10 +228,11 @@ export function deleteAccount(id) {
     // v0.0.51 修复数据串档：删掉的若是当前账号，STATE.planets 里装的还是它的星球实例，
     // 紧接着的 saveState() 会把这些旧数据写进**新 currentAccountId（另一个存档）**名下，
     // 于是「删 A」反而把 A 的进度灌进了 B。这里与 switchAccount 一样重载一次目标存档。
-    STATE.planets = loadPlanets(STATE.currentAccountId);
+    STATE.planets = loadPlanets(STATE.currentAccountId, poolKeys(STATE.mode).planets);
   }
-  adapter.del(getSavePrefix() + id);
-  adapter.del(getPlanetsKey() + id);
+  const pk = poolKeys(STATE.mode);
+  adapter.del(pk.save + id);
+  adapter.del(pk.planets + id);
   saveState();
 }
 
@@ -546,8 +532,7 @@ function recalcRates(inst) {
     // v0.1.2（需求 19）：接上「采集效率」永久升级（乘方效果，见 core/upgradefx.js）。
     //   此前这项买了不加成——付了研究点却看不到任何变化。
     const upgCollect = upgradeMul(currentAccount(), 'upg_collect');
-    e.rate = e.abundance * share * BASE_COLLECT_RATE * efficiencyBonus(inst) * outputMulOf(inst) * upgCollect
-      * modEffects().collectRateMul;   // v0.2.2：离线 mod 采集倍率
+    e.rate = e.abundance * share * BASE_COLLECT_RATE * efficiencyBonus(inst) * outputMulOf(inst) * upgCollect;
     // v0.1.3（需求 3）：大气收集器效率大幅上调 —— 气体层采集统一再 ×GAS_COLLECT_RATE_MUL。
     //   只作用气体层（大气收集器工），露天/矿井/地核不受影响。
     if (e.layer === 'gas') e.rate *= GAS_COLLECT_RATE_MUL;
@@ -631,11 +616,21 @@ export function shelterRatio(inst) {
   return Math.min(1, totalShelter(inst) / total);
 }
 
-// 某建筑「第 n+1 座」的造价（n = 已有座数）
+// 某建筑「第 n+1 座」的造价（n = 已有座数 + 施工队列中同类型在修座数）。
+// v0.2.6 修复：此前只数已建成座数，导致「上一座还在修就排下一座」时，第 2 座按 baseCost×growth^n
+//   而非 baseCost×growth^(n+1) 计价，乘方增长没生效。现在把队列里的同 id 也计入基数。
 export function costOfNext(inst, buildingId) {
   const b = BUILDING_BY_ID[buildingId];
   if (!b) return {};
-  return buildingCost(b, buildingCount(inst, buildingId));
+  return buildingCost(b, buildingCount(inst, buildingId) + queuedCountOf(inst, buildingId));
+}
+
+// 施工队列里指定建筑 id 的数量（用于计费与 UI 预览，避免同类型连排时漏算增长）
+export function queuedCountOf(inst, buildingId) {
+  const q = buildQueueOf(inst);
+  let n = 0;
+  for (const it of q) if (it && it.buildingId === buildingId) n++;
+  return n;
 }
 
 // 材料是否够（v0.0.61：按**跨层总量**判定，同一材料可能分散在地表/地下/地核多条条目里）
@@ -810,10 +805,10 @@ function advancePopulation(inst, dt) {
 }
 
 // 科研：科研人员产出研究点
-// v0.0.6（需求 R5）：效率改为原来的 **1/20**。
-//   旧值：每工位 1 点/秒（且完全不看工作强度），产得飞快，科技树几十分钟就点完。
-//   新值：RESEARCH_UNIT × 强度产出倍率。标准强度 = 0.02 × 2.5 = **0.05 点/秒**，
-//         正好是旧值的 1/20；拉高工作强度可以多产（与 R12 的强度体系一致）。
+// v0.0.6（需求 R5）：效率改为原来的 **1/50**（每工位由 1 点/秒 降到 0.02 点/秒）。
+//   产出 = RESEARCH_UNIT × 强度产出倍率。标准强度 outputMul=1.0 → **0.02 点/秒/工位**；
+//   极限强度 outputMul=2.40 → **0.048 点/秒/工位**（v0.2.6 统一口径：此前研究面板误写 0.05、
+//   buildings.js 写 0.02/0.048，现以实际计算值为准）。拉高工作强度可以多产（与强度体系一致）。
 //   注：设计者明确要求**科技与升级的研究点花费不动**，所以解锁节奏会明显拉长。
 //   缺电时同样按 powerRatio 降速。
 export const RESEARCH_UNIT = 0.02;
@@ -828,8 +823,7 @@ function advanceResearch(inst, dt, powerRatio = 1) {
   if (labor <= 0) return;
   // v0.1.2（需求 19）：接上「研究效率」永久升级（乘方效果）。此前买了不加成。
   acc.researchPoints = (Number(acc.researchPoints) || 0)
-    + labor * RESEARCH_UNIT * clampRatio(powerRatio) * dt * upgradeMul(acc, 'upg_research')
-    * modEffects().researchRateMul;   // v0.2.2：离线 mod 科研倍率
+    + labor * RESEARCH_UNIT * clampRatio(powerRatio) * dt * upgradeMul(acc, 'upg_research');
 }
 
 // ============================================================================
@@ -852,6 +846,13 @@ export function researchTech(techId) {
     const miss = missingPrereqs(techId, done)
       .map((id) => (TECH_BY_ID[id] ? TECH_BY_ID[id].code + ' ' + TECH_BY_ID[id].nameCn : id));
     return { ok: false, reason: '前置科技未完成：' + miss.join('、') };
+  }
+  // v0.2.6：设施类科技的「建筑前置」校验（如军事科技需先建成军营）。
+  // 判定口径：账号下任意一颗已实例化星球上该建筑座数 > 0 即视为已建成。
+  if (t.reqBuilding) {
+    const bName = BUILDING_BY_ID[t.reqBuilding] ? BUILDING_BY_ID[t.reqBuilding].nameCn : t.reqBuilding;
+    const built = STATE.planets.some((p) => p && p.buildings && Number(p.buildings[t.reqBuilding]) > 0);
+    if (!built) return { ok: false, reason: '需要先建成「' + bName + '」才能研究。' };
   }
   const points = Number(acc.researchPoints) || 0;
   if (points < t.cost) {
@@ -884,27 +885,21 @@ export function buyUpgrade(upgradeId) {
   return { ok: true, level: lv + 1, spent: cost };
 }
 
-// 取/建星球实例（按 code，如 'syl' 或 'syl1'）；首次访问自动建实例并写入初始物资
+// 取/建星球实例（按 code，如 'syl'）；首次访问自动建实例并写入初始物资
 export function getPlanetInstance(code) {
-  if (!code) return null;
-  let inst = STATE.planets.find((p) => p.code === code || p.planetId === code);
-  if (!inst && typeof code === 'string' && /\d+$/.test(code)) {
-    const base = code.replace(/\d+$/, '');
-    inst = STATE.planets.find((p) => p.code === base || p.planetId === base);
-  }
+  let inst = STATE.planets.find((p) => p.code === code);
   if (!inst) {
     // v0.0.92：探索占领的星球（含随机生成的）存在账号的 capturedPlanets 里，优先从那里取数据
     const acc0 = currentAccount();
-    const baseCode = typeof code === 'string' ? code.replace(/\d+$/, '') : code;
     const cap = acc0 && Array.isArray(acc0.capturedPlanets)
-      ? acc0.capturedPlanets.find((c) => c && (c.code === code || c.code === baseCode)) : null;
-    const sp0 = (cap && cap.planet) || PLANETS.find((p) => p.code === code || p.id === code || p.code === baseCode || p.id === baseCode);
+      ? acc0.capturedPlanets.find((c) => c && c.code === code) : null;
+    const sp0 = (cap && cap.planet) || PLANETS.find((p) => p.code === code || p.id === code);
     // v0.1.1（需求 2/5）：探索「发现」的星球（还没殖民）定义在 acc.discovered 里，也要能实例化
     let sp = sp0;
     if (!sp) {
       const accD = currentAccount();
       const disc = accD && Array.isArray(accD.discovered)
-        ? accD.discovered.find((p) => p && (p.code === code || p.id === code || p.code === baseCode || p.id === baseCode))
+        ? accD.discovered.find((p) => p && (p.code === code || p.id === code))
         : null;
       if (disc) sp = disc;
     }
@@ -920,13 +915,9 @@ export function getPlanetInstance(code) {
     inst.buildQueue = [];
     // v0.0.92：母星标记（母星独立倾向恒 0、不参与殖民管理）+ 新占领星球的默认管理模式
     const acc1 = currentAccount();
-    inst.isHome = !!(acc1 && (acc1.homePlanetCode === sp.code || acc1.homePlanetCode === baseCode));
+    inst.isHome = !!(acc1 && acc1.homePlanetCode === sp.code);
     if (!inst.management && !inst.isHome) inst.management = 'colonial';
     inst.independence = inst.isHome ? 0 : (Number(inst.independence) || 0);
-    // v0.2.2：母星实例首次创建时，把 mod 开局资源暂存落库（applyStartBonus 在建号时暂存的）
-    if (inst.isHome && acc1) {
-      try { applyPendingStartResources(acc1, inst); } catch (e) { /* mod 资源落库失败不拖垮建实例 */ }
-    }
     STATE.planets.push(inst);
   }
   // 人口对象常驻在星球实例上（旧存档没有时惰性补建）
@@ -971,26 +962,12 @@ export function getPlanetInstance(code) {
 // 净增长（v0.0.61，需求 2）
 // ============================================================================
 // 设计者要求「物品栏界面显示各资源的净增长，- 用红色，+ 用绿色」。
-// 净增长 = 产出 − 消耗，由四部分合成（**必须与 tick 的真实结算逐项对齐**）：
-//   ① 采集：各层条目的 rate 之和（露天采集不吃电力降速，地下/深层/地核/气体吃）
-//   ② 加工：生产线（选中配方的产出为正、投料为负；只有从物品栏真正扣掉的投料才算负）
-//   ③ 农田：农田工岗位驱动的固定配方（产出有机质；投料只有「水」从物品栏扣，
-//          CO₂ 走星球大气层，不算物品栏负增长）—— rev18 补上
-//   ④ 火力设施燃料：燃机每秒烧掉的燃料是**真的从物品栏扣的** —— rev18 补上
-//   ⑤ 人口代谢：有机质 / 水 为负
-//      （呼吸排出的二氧化碳/甲烷/氨气不算「增长」——它们进的是大气层，不占物品栏；
-//        呼吸消耗的氧气也不算「消耗」——它扣的是星球气体储量，不碰物品栏）
+// 净增长 = 产出 − 消耗，由三部分合成：
+//   ① 采集：各层条目的 rate 之和（露天采集不吃电力降速，地下/地核/气体吃）
+//   ② 加工：选中配方的产出为正、投料为负（未选配方的建筑不算，它本来就不运转）
+//   ③ 人口代谢：氧气 / 有机质 / 水 为负
+//      （呼吸排出的二氧化碳/甲烷/氨气不算「增长」——它们进的是大气层，不占物品栏）
 // 结果挂在 inst.netRates 上给 UI 读，UI 按正负上色。
-//
-// ⚠ rev18 修复（设计者报「物品栏重大 bug：开采时反而减少」）：
-//   此前③④两项**完全漏算**，于是「净增长」列 ≠ 物品栏真实变化：
-//     · 农田吃水没算 → 水可能显示 **正增长（绿）却实际在减少**（这就是「开采时反而减少」）；
-//     · 农田产有机质没算 → 有机质显示远低于真实；
-//     · 燃机烧燃料没算 → 燃料同理。
-//   另外旧代码把**气体投料**（走 _consumeGas 扣星球储量/大气层）也当成物品栏负增长，
-//   属于凭空多扣（与氧气呼吸同一条理由），现改用 productionRates 的 ownedInputs。
-//   新探针 docs/_probe_inv_decrease.mjs 会逐 tick 比对「净增长 × dt」与「实际增量」，
-//   任何不一致都会失败 —— 以后谁再往 tick 管线里加产出/消耗，必须同步这里。
 function computeNetRates(inst, ratio) {
   const net = {};
   const add = (mat, v) => {
@@ -1005,30 +982,16 @@ function computeNetRates(inst, ratio) {
     add(e.mat, e.rate * r);
   }
 
-  // ② 加工（生产线）
-  //   ownedInputs = 真正从物品栏扣掉的投料；旧档 / 异常结构缺该字段时退回 inputs。
+  // ② 加工
   const rates = productionRates(inst, ratio, currentAccount());
   for (const bid in rates) {
     const info = rates[bid];
     if (!info || !info.active) continue;
     for (const k in (info.outputs || {})) add(k, info.outputs[k]);
-    const paid = (info.ownedInputs && typeof info.ownedInputs === 'object') ? info.ownedInputs : (info.inputs || {});
-    for (const k in paid) add(k, -paid[k]);
+    for (const k in (info.inputs || {})) add(k, -info.inputs[k]);
   }
 
-  // ③ 农田（由「农田工」岗位驱动，不走生产线）—— rev18 补上
-  const farm = farmRates(inst, ratio);
-  if (farm.active) {
-    const supply = farmSupplyOf(inst);
-    for (const k in farm.outputs) add(k, farm.outputs[k] * farm.rate * supply);
-    for (const k in farm.ownedInputs) add(k, -farm.ownedInputs[k] * farm.rate * supply);
-  }
-
-  // ④ 火力设施燃料燃烧 —— rev18 补上
-  const fuelRates = thermalFuelRates(inst);
-  for (const k in fuelRates) add(k, -fuelRates[k]);
-
-  // ⑤ 人口代谢消耗
+  // ③ 人口代谢消耗
   // v0.1.2（需求 2）：**呼吸消耗的氧气不再计入净增长**。
   //   呼吸走 consumeGas（见本文件 723 行 → 262/272），扣的是星球大气层的
   //   remaining + atmosphere，压根不碰物品栏；把它算进 netRates 会在物品栏
@@ -1116,6 +1079,25 @@ function advanceShipLines(inst, dt, acc) {
   }
 }
 
+// v0.2.0：军队组装线推进。production.js#tickProduction 显式跳过 armyBlueprintId 线
+// （v0.2.4 起由「军营」驱动）由 armyBuildTick 结算：labor = 军营数 × 固定建造人力
+// （军营无工位、不占人力；旧存档开在制造车间的组装线同样推进，line.workers 不再参与）；
+// 电力降速一致（powerInfo.ratio）；进度满 1 由 armyBuildTick 校验部件库存并成军。
+function advanceArmyLines(inst, dt, acc) {
+  if (!inst || !Array.isArray(inst.lines)) return;
+  const ratio = Number((inst.powerInfo && inst.powerInfo.ratio) ?? 1);
+  if (!(ratio > 0)) return;
+  // v0.2.4：军营数决定建造速率 —— 每座 60 点固定建造人力，多座叠加；无军营不推进
+  const barracks = (inst.buildings && Number(inst.buildings.barracks)) || 0;
+  if (!(barracks > 0)) return;
+  const labor = barracks * ARMY_LABOR_PER_BARRACKS;
+  for (const line of inst.lines) {
+    if (!line || !line.armyBlueprintId) continue;
+    try { armyBuildTick(inst, line.armyBlueprintId, labor, dt, ratio, acc); }
+    catch (e) { /* 单线异常不断全局 */ }
+  }
+}
+
 export function tick(dt = 1) {
   const acc = currentAccount();
   for (const inst of STATE.planets) {
@@ -1126,10 +1108,10 @@ export function tick(dt = 1) {
     tickProduction(inst, dt, pw.ratio, acc);    // ⑤
     // ⑤b v0.1.1（需求 3）：dock 造船线推进（tickProduction 显式跳过 dock，由 shipBuildTick 结算）
     advanceShipLines(inst, dt, acc);
-    // ⑤c v0.2.0：军队整编产线推进
-    if (acc) {
-      try { tickArmyBuildLines(acc, inst, dt, pw.ratio); } catch (e) {}
-    }
+    // ⑤c v0.2.0：军队组装线推进（tickProduction 显式跳过 armyBlueprintId 线，由 armyBuildTick 结算）
+    advanceArmyLines(inst, dt, acc);
+    // ⑤d v0.2.6：军队计时训练推进（点训练后开进度条，满进度结算攻防/经验加成）
+    try { advanceTraining(inst, dt, acc); } catch (e) { /* 忽略单星球异常 */ }
     advancePopulation(inst, dt);               // ⑥
     advanceConstruction(inst, dt);             // ⑦（不吃电力降速，防开局死锁）
     advanceResearch(inst, dt, pw.ratio);       // ⑧
@@ -1156,10 +1138,14 @@ export function tick(dt = 1) {
     try { shopTick(acc, dt); } catch (e) { /* 忽略 */ }
     // v0.1.1 需求16：挂单实时刷新与卖空清除（tickListings 此前是死代码，需每 tick 调用）
     try { shopTickListings(acc, dt); } catch (e) { /* 忽略 */ }
+    // v0.2.6 拍卖行：每秒推进 15s 竞价窗口、NPC 兜底出价、到期结算
+    try { tickAuctions(acc, dt, { getInst: () => getPlanetInstance(acc.homePlanetCode) }); } catch (e) { /* 忽略 */ }
     // v0.1.1 舰队持续任务（需求 3/19）：explore/transport/patrol 计时到期结算，defense 驻留。
     // discoverPlanet 必须注入：探索发现要走 acc.discovered 新契约（fleet 内置降级是旧版直接占领）。
     ensureFleets(acc);
     try { tickFleetMissions(acc, dt, { discoverPlanet }); } catch (e) { /* 忽略 */ }
+    // v0.2.0 军队：老存档迁移（幂等）
+    try { ensureArmies(acc); } catch (e) { /* 忽略 */ }
     // v0.1.1 需求 20：电脑托管殖民地——AI 岗位重排（30s 节拍）+ 贡品上缴母星（60s 节拍）。
     // 生产由本 tick 管线对全部星球实例统一结算，这里绝不能再跑一次产出（会翻倍）。
     try {
@@ -1272,7 +1258,7 @@ export function settleOffline() {
 
     // 切换到该账号的星球上下文，分块推进（每块最多 60 秒）
     STATE.currentAccountId = acc.id;
-    let planets = loadPlanets(acc.id);
+    let planets = loadPlanets(acc.id, poolKeys(STATE.mode).planets);   // v0.2.5：按池取键
     // v0.1.3：当前账号若读盘为空（首次进入、或历史存档没写过 planets 槽），
     //   直接用内存里那份最新实例，绝不能拿空数组去 tick 再写回 —— 那会把进度清空。
     if (acc.id === prevCurrentId && (!planets || !planets.length) && prevPlanets.length) {
@@ -1296,9 +1282,9 @@ export function settleOffline() {
       _sinceSave = 0;                                             // 抑制分块过程自动存档
       remaining -= chunk;
     }
-    // 该账号的星球实例写回它自己的存储槽
+    // 该账号的星球实例写回它自己的存储槽（v0.2.5：按池取键）
     if (acc.id) {
-      try { adapter.set(getPlanetsKey() + acc.id, JSON.stringify(STATE.planets)); } catch (e) { /* 单账号写盘失败不拖垮其它账号 */ }
+      try { adapter.set(poolKeys(STATE.mode).planets + acc.id, JSON.stringify(STATE.planets)); } catch (e) { /* 单账号写盘失败不拖垮其它账号 */ }
     }
     // v0.1.3：当前账号的实例就是推进过的这份 —— 结束时用它恢复上下文，别再用旧数组。
     if (acc.id === prevCurrentId) settledPlanetsOfCurrent = STATE.planets;
@@ -1347,15 +1333,16 @@ function applyDeepStart(acc, inst) {
   acc.tech = ['t_a1', 't_a2', 't_b8', 't_b1', 't_c1', 't_e2',
     't_b2', 't_c2', 't_e4', 't_a4', 't_b5', 't_b7', 't_e3',
     't_b3', 't_c3', 't_d1', 't_d2',
-    't_m1', 't_m2', 't_m3', 't_m4', 't_m5'];
+    't_m1', 't_m2', 't_m3', 't_m4'];   // v0.2.6：军事科技整条线直接授予（军营已建，满足设施前置）
   acc.researchPoints = 60000;
 
-  // 2) 建筑：中期规模
+  // 2) 建筑：中期规模（v0.2.6 追加 军营×1 + 训练场×1，作为军事体系基础）
   inst.buildings = {
     workshop: 2, house: 14, manual_power: 3, farm: 3, gas_collector: 2,
     furnace: 3, blast_furnace: 2, electrolyzer: 1, thermal_plant: 1, clean_plant: 1,
     mine_shallow: 2, mine_deep: 2, mine_core: 1, storage_plant: 2,
     lab: 2, fabricator: 2, chem_lab: 1, refinery: 1, dock: 1, repair_bay: 1,
+    barracks: 1, training_ground: 1,
   };
 
   // 3) 物资：中期储备
@@ -1380,6 +1367,21 @@ function applyDeepStart(acc, inst) {
   });
   acc.ascoin = 1e6;
 
+  // 4b) v0.2.6：中期开局直接配齐军用装备（铁质）—— 军营/训练场已建、军事科技已授，
+  //     进来即可组装三张默认兵种蓝图并立即训练，不必再从零生产军事部件。
+  inst.equipment = inst.equipment || {};
+  const MIL = {
+    'ap_frame_light@铁': 8, 'ap_wpn_rifle@铁': 10, 'ap_armor_light@铁': 4, 'ap_mob_wheel@铁': 4,
+    'ap_frame_heavy@铁': 2, 'ap_wpn_hmg@铁': 2, 'ap_armor_composite@铁': 2, 'ap_mob_track@铁': 2,
+    'ap_wpn_howitzer@铁': 1, 'ap_sup_radar@铁': 1, 'ap_sup_supply@铁': 1,
+  };
+  for (const key in MIL) {
+    const [partId, material] = key.split('@');
+    const e = inst.equipment[key] || { partId, material: material || null, count: 0 };
+    e.count = (Number(e.count) || 0) + MIL[key];
+    inst.equipment[key] = e;
+  }
+
   // 5) 随机赠送 10 艘飞船（3 张默认蓝图混编）
   const bps = defaultBlueprints();
   acc.blueprints = bps.slice();
@@ -1401,40 +1403,6 @@ function applyDeepStart(acc, inst) {
   //     够单船一次满距离探索（360 mol）+ 一次起飞还有富余。
   for (const s of (acc.ships || [])) {
     if (s && s.state) s.state.fuelMol = Math.max(Number(s.state.fuelMol) || 0, 2000);
-  }
-
-  // 5c) v0.2.0：漫溯深空开局赠送初始驻防防卫部队与制造车间军事部件储备
-  acc.armies = [
-    {
-      id: 'army_deep_1',
-      bpId: 'ab_ranger',
-      nameCn: '游骑兵第 1 营',
-      planetCode: inst.code || acc.homePlanetCode || 'syl',
-      stats: armyStatsOf('ab_ranger'),
-      stationed: true,
-      createdAt: Date.now(),
-    },
-    {
-      id: 'army_deep_2',
-      bpId: 'ab_ironwall',
-      nameCn: '铁壁重装第 1 营',
-      planetCode: inst.code || acc.homePlanetCode || 'syl',
-      stats: armyStatsOf('ab_ironwall'),
-      stationed: true,
-      createdAt: Date.now(),
-    },
-  ];
-  inst.equipment = inst.equipment || {};
-  const milParts = [
-    { id: 'ap_assault_rifle', mat: '钢', count: 120 },
-    { id: 'ap_light_armor', mat: '钢', count: 120 },
-    { id: 'ap_heavy_armor', mat: '钢', count: 60 },
-    { id: 'ap_heavy_mg', mat: '钢', count: 40 },
-    { id: 'ap_chassis_wheel', mat: '铝', count: 20 },
-    { id: 'ap_chassis_track', mat: '钢', count: 20 },
-  ];
-  for (const p of milParts) {
-    inst.equipment[`${p.id}@${p.mat}`] = { partId: p.id, material: p.mat, count: p.count };
   }
 
   // 6a) v0.1.5（需求 1）：漫溯深空开局人口设为 500（中期规模，足以喂满下方预分配岗位与生产线）。

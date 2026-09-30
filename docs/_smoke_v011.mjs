@@ -30,7 +30,7 @@ const server = http.createServer((req, res) => {
 await new Promise((r) => server.listen(PORT, '127.0.0.1', r));
 
 import { createRequire } from 'node:module';
-const require = createRequire(import.meta.url);
+const require = createRequire('C:/Users/11603/.workbuddy/binaries/node/workspace/package.json');
 const { chromium } = require('playwright-core');
 const browser = await chromium.launch({
   executablePath: 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe',

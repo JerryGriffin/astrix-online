@@ -19,16 +19,21 @@
 import {
   HULLS, ENGINES, WEAPONS, FACILITIES,
   MATERIAL_SLOTS, DEFAULT_MATERIAL,
-} from '../data/ship_parts.js?v=21.18';
+} from '../data/ship_parts.js?v=20.8';
 import {
   evaluateBlueprint, materialMul,
   ensureBlueprints, genBlueprintId, kindOfHull, HULL_RP_COST,
-  equipmentList, emptyBlueprint,
-} from '../core/shipyard.js?v=21.18';
-import { getPlanetInstance, ownedOf, getBuildingCounts } from '../core/state.js?v=21.18';
-import { fmtNum } from '../core/format.js?v=21.18';
-import { buildBlueprintEditor, shipBuildBlockReason } from './shipyard.js?v=21.18';
-import { playPing, playVictory, playLaser } from '../core/sound.js?v=21.18';
+  equipmentList, emptyBlueprint, shipBuildCheck,
+} from '../core/shipyard.js?v=20.8';
+import { getPlanetInstance, ownedOf, getBuildingCounts, spendOwned } from '../core/state.js?v=20.8';
+import { lineSlotInfo, freeLaborOf } from '../core/production.js?v=20.8';
+import { fmtNum } from '../core/format.js?v=20.8';
+// R4：蓝图编辑器（含「建造」开 dock 线）从 shipyard.js 的舰船分支迁到「设计」分支。
+//   这里只复用函数，编辑器本体仍定义在 shipyard.js（其天然的归属），按其渲染。
+import {
+  buildBlueprintEditor, shipBuildBlockReason,
+  materialBuildBlockReason, createDockLine, blueprintMaterialNeeds,
+} from './shipyard.js?v=20.8';
 
 function esc(s) {
   return String(s).replace(/[&<>"']/g, (c) => (
@@ -73,19 +78,13 @@ function makeMaterialSelect(slot, value, onChange, ownedMat) {
 
 function addButton(label, onClick) {
   const b = el('button', 'btn btn-sm bp-add', label);
-  b.onclick = (e) => {
-    playPing();
-    onClick(e);
-  };
+  b.onclick = onClick;
   return b;
 }
 
 function removeButton(onClick) {
   const b = el('button', 'btn btn-sm btn-danger bp-remove', '移除');
-  b.onclick = (e) => {
-    playLaser();
-    onClick(e);
-  };
+  b.onclick = onClick;
   return b;
 }
 
@@ -171,6 +170,7 @@ export function renderDesign(container, ctx) {
       (v) => {
         const b = account.blueprints.find((x) => x.id === v);
         if (b) account.blueprint = b;
+        container._designExpanded = false;   // v0.2.1：切换蓝图后默认回到紧凑数值视图
         if (typeof ctx.rerender === 'function') ctx.rerender();
       },
     );
@@ -184,18 +184,26 @@ export function renderDesign(container, ctx) {
   // ===== 蓝图设计 / 编辑（R4：从舰船分支迁来）=====
   // 在「设计」页直接编辑当前蓝图（account.blueprint，先 ensureBlueprints 再读，v0.1.1 id 铁律），
   // 并能点「建造」开 dock 造船线（材料校验/扣料在 buildBlueprintEditor 内，见 R19-2）。
+  // v0.2.1：已保存蓝图默认只显示数值（容量/质量/航速/强度…），不再罗列具体设施；
+  //   点「展开编辑」才显示完整设施 / 材料编辑器与「建造」按钮（expanded 状态挂在 container 上跨重绘保留）。
   const editBox = el('div', 'dsn-edit');
   editBox.appendChild(el('div', 'res-section-title', '蓝图设计 / 编辑（建造）'));
   // 兜底：确保当前蓝图存在且带 id（默认蓝图已带 id；老存档在此补齐）
   ensureBlueprints(account);
   if (!account.blueprint || !account.blueprint.hullId) account.blueprint = emptyBlueprint();
+  const isSaved = !!(account.blueprint && account.blueprints.some((b) => b.id === account.blueprint.id));
+  const expanded = !!container._designExpanded;
   const counts = getBuildingCounts(inst);
   const blockReason = shipBuildBlockReason(inst, counts);
   const rerenderDesign = () =>
     (typeof ctx.rerender === 'function' ? ctx.rerender() : renderDesign(container, ctx));
-  editBox.appendChild(
-    buildBlueprintEditor(account, ctx, account.blueprint, researched, rerenderDesign, blockReason),
-  );
+  if (isSaved && !expanded) {
+    editBox.appendChild(buildCompactSavedCard(account.blueprint, rerenderDesign));
+  } else {
+    editBox.appendChild(
+      buildBlueprintEditor(account, ctx, account.blueprint, researched, rerenderDesign, blockReason),
+    );
+  }
   wrap.appendChild(editBox);
 
   // ===== 设计编辑器 =====
@@ -343,24 +351,17 @@ export function renderDesign(container, ctx) {
     const ev = evaluateBlueprint(draft, { researched, ships: account.ships });
     evalPanel.innerHTML = '';
     const grid = el('div', 'bp-eval-grid');
-    const twr = ev.massT > 0 ? (ev.thrust / ev.massT).toFixed(2) : '0.00';
     const rows = [
       ['容量占用', `${fmtNum(ev.footprint)} / ${fmtNum(ev.capacity)}`
         + (ev.footprintLeft < 0 ? ` <span class="bad">超 ${fmtNum(-ev.footprintLeft)}</span>` : '')],
       ['总质量', fmtNum(ev.massT)],
       ['总推力', fmtNum(ev.thrust)],
-      ['推重比(TWR)', `${twr} · ${Number(twr) >= 1.0 ? '<span class="ok">强劲</span>' : '<span class="warn">迟钝</span>'}`],
       ['航速', fmtNum(ev.speed)],
       ['结构强度', fmtNum(ev.agg.struct)],
       ['MK 等级', ev.markLabel],
       ['类型', ev.className],
-      ['综合强度', ev.strength + '（' + ev.grade + '级）'],
+      ['强度', ev.strength + '（' + ev.grade + '级）'],
     ];
-
-    const circuitLine = el('div', 'quantum-circuit');
-    circuitLine.style.cssText = 'height:3px;width:100%;border-radius:2px;margin-bottom:8px;';
-    evalPanel.appendChild(circuitLine);
-
     for (const [k, v] of rows) {
       const cell = el('div', 'bp-eval-cell');
       cell.innerHTML = `<span class="bp-eval-k muted">${esc(k)}</span><span class="bp-eval-v">${v}</span>`;
@@ -390,11 +391,9 @@ export function renderDesign(container, ctx) {
     designBtn.disabled = !(bpOk && rpOk);
     designBtn.onclick = () => {
       if (!(bpOk && rpOk)) {
-        playLaser();
         ctx.openModal({ title: '无法设计', body: simpleBody(esc(reasons.join('。<br>')) + '。'), sheet: true });
         return;
       }
-      playVictory();
       const bp = {
         id: genBlueprintId(kindOfHull(draft.hullId)),
         nameCn: draft.nameCn,
@@ -431,6 +430,86 @@ export function renderDesign(container, ctx) {
     const d = document.createElement('div');
     d.innerHTML = '<p class="sp-simple">' + html + '</p>';
     return d;
+  }
+
+  // v0.2.1：已保存蓝图的紧凑卡片 —— 只展示数值（不罗列具体设施 / 材料），
+  //   点「展开编辑」切到 buildBlueprintEditor（含完整编辑器与「建造」按钮）。
+  function buildCompactSavedCard(bp, rerender) {
+    const card = el('div', 'dsn-saved-card glass');
+    card.appendChild(el('div', 'dsn-saved-hint muted',
+      '已保存蓝图 · 仅展示数值（右侧可直接建造；点「展开编辑」修改设施 / 材料）'));
+    const ev = evaluateBlueprint(bp, { researched, ships: account.ships });
+    const grid = el('div', 'bp-eval-grid');
+    const rows = [
+      ['容量占用', `${fmtNum(ev.footprint)} / ${fmtNum(ev.capacity)}`
+        + (ev.footprintLeft < 0 ? ` <span class="bad">超 ${fmtNum(-ev.footprintLeft)}</span>` : '')],
+      ['总质量', fmtNum(ev.massT)],
+      ['总推力', fmtNum(ev.thrust)],
+      ['航速', fmtNum(ev.speed)],
+      ['结构强度', fmtNum(ev.agg.struct)],
+      ['MK 等级', ev.markLabel],
+      ['类型', ev.className],
+      ['强度', ev.strength + '（' + ev.grade + '级）'],
+    ];
+    for (const [k, v] of rows) {
+      const cell = el('div', 'bp-eval-cell');
+      cell.innerHTML = `<span class="bp-eval-k muted">${esc(k)}</span><span class="bp-eval-v">${v}</span>`;
+      grid.appendChild(cell);
+    }
+    card.appendChild(grid);
+    // v0.2.2：蓝图右侧直接建造 —— 不再要求先「展开编辑」才能造。
+    //   已保存蓝图的材料/设施都已定，建造只差配员：与编辑器「建造」同一套校验与扣料。
+    const buildRow = el('div', 'dsn-build-row');
+    buildRow.appendChild(el('span', 'bp-label', '配员'));
+    const wInput = document.createElement('input');
+    wInput.type = 'number';
+    wInput.min = '1';
+    wInput.className = 'bp-input';
+    const slot0 = lineSlotInfo(inst, 'dock');
+    wInput.value = String(Math.max(1, Math.min(slot0.free, freeLaborOf(inst), 10)));
+    const buildBtn = el('button', 'btn btn-primary', '建造');
+    buildBtn.disabled = !ev.ok;
+    if (!ev.ok) buildBtn.title = '蓝图非法（容量超限等），请展开编辑修正后再建造';
+    const status = el('span', 'dsn-build-msg muted');
+    buildBtn.addEventListener('click', () => {
+      status.textContent = '';
+      status.className = 'dsn-build-msg muted';
+      const target = getPlanetInstance(bp.planetCode || (ctx && ctx.planetCode) || 'syl');
+      const block = shipBuildBlockReason(target, getBuildingCounts(target));
+      if (block) { status.textContent = block; status.className = 'dsn-build-msg err'; return; }
+      const chk = shipBuildCheck(target, account, bp.id);
+      if (!chk.ok) {
+        const msgs = (chk.reasons || []).slice();
+        if (chk.missing && chk.missing.length) msgs.push('装备缺件 ' + chk.missing.length + ' 项');
+        status.textContent = '无法开工：' + (msgs.join('；') || '校验未通过');
+        status.className = 'dsn-build-msg err';
+        return;
+      }
+      const matReason = materialBuildBlockReason(target, bp);
+      if (matReason) { status.textContent = '无法开工：' + matReason; status.className = 'dsn-build-msg err'; return; }
+      // 齐备才整笔扣料（与编辑器同口径：先校验全齐，再 spendOwned）
+      const matNeeds = blueprintMaterialNeeds(bp);
+      for (const mat in matNeeds) spendOwned(target, mat, matNeeds[mat]);
+      const slotNow = lineSlotInfo(target, 'dock');
+      const free = freeLaborOf(target);
+      if (slotNow.free <= 0 || free <= 0) {
+        status.textContent = '无法开工：' + (slotNow.free <= 0 ? '船坞产线工位已满。' : '没有可分配的空闲人力。');
+        status.className = 'dsn-build-msg err';
+        return;
+      }
+      const want = Math.max(1, Math.min(slotNow.free, free, Math.floor(Number(wInput.value) || 1)));
+      const res = createDockLine(target, bp.id, want);
+      if (!res.ok) { status.textContent = '无法开工：' + res.reason; status.className = 'dsn-build-msg err'; return; }
+      rerender();
+    });
+    buildRow.appendChild(wInput);
+    buildRow.appendChild(buildBtn);
+    buildRow.appendChild(status);
+    card.appendChild(buildRow);
+    const btn = el('button', 'btn btn-sm btn-primary', '展开编辑');
+    btn.onclick = () => { container._designExpanded = true; rerender(); };
+    card.appendChild(btn);
+    return card;
   }
 
   // 顶栏研究点每秒刷新（与科研面板一致），切走自动清理

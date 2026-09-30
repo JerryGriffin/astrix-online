@@ -36,7 +36,7 @@ export const FUELS = [
     heatValue: 3.519,
     burnRate: 0.15,
     burnTime1x: 1 / 0.15,
-    desc: '工业时代能量货币，质量基准 29307 千焦/千克（≈29.3 MJ/kg），按碳当量折算，能量密度偏低。'
+    desc: '工业时代能量货币，质量基准 29307 kJ/kg，按碳当量折算，能量密度偏低。'
   },
   {
     id: 'uranium',

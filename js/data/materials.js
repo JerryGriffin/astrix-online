@@ -115,7 +115,7 @@ export const MATERIALS = [
     molarHeatCapacity: 0.1,
     meltingPointK: 1687,
     special: '半导体',
-    description: '半导体元素，提取自石英，是电子工业与光伏器件的基石。'
+    description: '半导体元素，提取自石英，为电子工业基石（非 Astroneer 原生，按用户物理调研补入）。'
   },
   {
     id: 'malachite',

@@ -5,7 +5,8 @@ import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-const require = createRequire(import.meta.url);
+import { createRequire } from 'node:module';
+const require = createRequire('C:/Users/11603/.workbuddy/binaries/node/workspace/package.json');
 const { chromium } = require('playwright-core');
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');

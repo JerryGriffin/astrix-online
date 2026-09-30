@@ -146,9 +146,6 @@
 }
 .inv-row:hover { border-color: var(--border-strong); background: rgba(124, 215, 255, 0.1); }
 .inv-row-store { border-style: dashed; opacity: 0.92; }
-/* rev16：未解锁的层（未建矿井 / 未研究「A1 深度采集」）灰显，与「能采但没人」区分开 */
-.inv-row-locked { opacity: 0.55; }
-.inv-row-locked:hover { opacity: 0.8; }
 .inv-row::after { content: '›'; color: var(--muted); margin-left: 6px; font-size: 1.2rem; line-height: 1; flex-shrink: 0; }
 
 .inv-name {
@@ -173,7 +170,6 @@
 }
 .inv-chip-surface { color: #8fe3b0; border-color: rgba(143, 227, 176, 0.4); }
 .inv-chip-underground { color: #e3c98f; border-color: rgba(227, 201, 143, 0.4); }
-.inv-chip-deep { color: #e39fd0; border-color: rgba(227, 159, 208, 0.4); }
 .inv-chip-core { color: #ff9f8f; border-color: rgba(255, 159, 143, 0.4); }
 .inv-chip-gas { color: var(--cyan); border-color: rgba(124, 215, 255, 0.4); }
 
@@ -189,8 +185,7 @@
 .inv-rate { color: var(--ok); font-style: normal; }
 .inv-rate-zero { color: var(--muted); }
 .inv-remain { font-weight: 700; color: #ffd479; }
-/* rev16：层解锁条件可能较长，窄屏下截断而不撑破行 */
-.inv-ab { font-size: 0.72rem; max-width: 58vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.inv-ab { font-size: 0.72rem; }
 
 /* ===== 详情表 ===== */
 .detail-table { width: 100%; border-collapse: collapse; }
@@ -355,4 +350,232 @@
   color: #fff;
   border: none;
   padding: 0 6px;
+}
+
+/* ============================================================================
+   v0.2.0：通用页骨架（军队 / 星际两页共用；此前无全局定义）
+   ========================================================================= */
+.page-title {
+  font-size: 1.3rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding: 4px 2px 12px;
+  color: var(--text);
+}
+.panel-section {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel);
+  padding: 14px 16px;
+  margin-bottom: 16px;
+}
+.section-title {
+  font-size: 0.98rem;
+  font-weight: 700;
+  color: var(--cyan);
+  letter-spacing: 0.05em;
+  padding-bottom: 8px;
+  margin-bottom: 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+/* ============================================================================
+   v0.2.0：军队页（组装生产线 / 蓝图 / 建制军队）
+   ========================================================================= */
+.army-line-row,
+.army-unit-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: rgba(10, 16, 30, 0.5);
+  padding: 10px 12px;
+  margin-bottom: 8px;
+}
+.army-line-head { min-width: 160px; font-size: 0.95rem; }
+.army-line-stat {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.85rem;
+  flex: 1;
+  min-width: 200px;
+}
+.army-progress {
+  flex: 1 1 180px;
+  min-width: 160px;
+  height: 10px;
+  border-radius: 5px;
+  background: rgba(5, 9, 18, 0.8);
+  border: 1px solid var(--border);
+  overflow: hidden;
+}
+.army-progress-fill {
+  height: 100%;
+  border-radius: 5px;
+  background: linear-gradient(90deg, rgba(124, 215, 255, 0.65), rgba(179, 156, 255, 0.8));
+  transition: width 0.4s ease;
+}
+.army-miss { color: #f09595; font-size: 0.85rem; }
+
+.army-bp-card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: rgba(10, 16, 30, 0.45);
+  padding: 12px 14px;
+  margin-top: 10px;
+}
+/* v0.2.5：军队页概况卡 + 蓝图网格 + 数值面板 + 部件胶囊（借鉴卡片式军队界面） */
+.army-header {
+  display: flex; flex-wrap: wrap; gap: 10px 18px; justify-content: space-between; align-items: center;
+  padding: 13px 16px; border: 1px solid var(--border); border-radius: var(--radius);
+  background: var(--panel); margin-bottom: 12px;
+}
+.army-header .t { font-size: 1.02rem; font-weight: 700; color: var(--cyan); }
+.army-header .s { font-size: 0.82rem; color: var(--muted); margin-top: 4px; line-height: 1.6; }
+.army-header b.ok { color: #9FE1CB; }
+.army-header b.warn { color: #ffc46b; }
+.army-bp-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; }
+.army-bp-grid .army-bp-card { margin-top: 0; display: flex; flex-direction: column; gap: 8px; }
+.army-stat-box {
+  background: rgba(5, 9, 18, 0.55); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); padding: 8px 10px; font-size: 0.85rem;
+  display: flex; flex-wrap: wrap; gap: 4px 14px;
+}
+.army-stat-box .atk { color: #f09595; }
+.army-stat-box .def { color: var(--cyan); }
+.army-stat-box .spd { color: #ffc46b; }
+.army-stat-box .pwr { color: #9FE1CB; font-size: 0.92rem; }
+.army-stat-box .row2 { width: 100%; border-top: 1px dashed var(--border); padding-top: 5px; display: flex; justify-content: space-between; }
+.army-chips { display: flex; flex-wrap: wrap; gap: 4px; }
+.army-chip { padding: 2px 8px; border-radius: 6px; font-size: 0.74rem; }
+.army-chip.ok { color: #9FE1CB; background: rgba(159, 225, 203, 0.08); border: 1px solid rgba(159, 225, 203, 0.28); }
+.army-chip.lack { color: #f09595; background: rgba(240, 149, 149, 0.08); border: 1px solid rgba(240, 149, 149, 0.32); }
+.army-go {
+  width: 100%; min-height: 44px; border-radius: var(--radius-sm); font-weight: 700;
+  border: 1px solid var(--border-strong); background: rgba(124, 215, 255, 0.16);
+  color: var(--cyan); cursor: pointer; font-size: 0.9rem;
+}
+.army-go:disabled { border-color: #33415580; background: rgba(255, 255, 255, 0.04); color: #64748b; cursor: not-allowed; }
+.army-badge {
+  font-size: 0.72rem; padding: 2px 8px; border-radius: 6px; margin-left: 8px;
+  vertical-align: middle; display: inline-block;
+}
+.army-badge.ok { color: #9FE1CB; background: rgba(159, 225, 203, 0.12); border: 1px solid rgba(159, 225, 203, 0.3); }
+.army-badge.exp { color: #ffc46b; background: rgba(255, 196, 107, 0.1); border: 1px solid rgba(255, 196, 107, 0.3); }
+.army-bp-title { font-size: 0.98rem; display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; }
+.army-bp-title b { color: var(--text); }
+.army-bp-title .muted { font-size: 0.82rem; }
+.army-bp-desc { font-size: 0.85rem; padding: 2px 0 6px; }
+.army-bp-lock { color: var(--muted); font-size: 0.9rem; }
+.army-bp-locked {
+  font-size: 0.82rem;
+  color: var(--warn, #e8c170);
+  background: rgba(232, 193, 112, 0.08);
+  border: 1px solid rgba(232, 193, 112, 0.25);
+  border-radius: var(--radius-sm, 8px);
+  padding: 4px 8px;
+  margin: 6px 0 2px;
+}
+.army-bp-parts {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 4px 16px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: rgba(5, 9, 18, 0.45);
+}
+.army-part-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 0.86rem;
+  min-height: 28px;
+  align-items: baseline;
+}
+.army-part-row.ok { color: #9FE1CB; }
+.army-part-row.lack { color: #f09595; }
+.army-part-row .muted { font-size: 0.8rem; }
+.army-bp-mats { font-size: 0.78rem; padding: 8px 2px 0; line-height: 1.6; }
+.army-bp-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 10px;
+  padding-top: 10px;
+}
+.army-workers-input {
+  width: 84px;
+  min-height: 44px;
+  text-align: center;
+}
+.army-form-msg { font-size: 0.82rem; min-width: 80px; }
+.army-unit-info { flex: 1; min-width: 200px; font-size: 0.92rem; }
+.army-unit-info .muted { font-size: 0.82rem; }
+
+/* ============================================================================
+   v0.2.0：星际页（云服务：状态栏 / 表单 / 收件箱 / 星系列表）
+   ========================================================================= */
+.galaxy-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: rgba(10, 16, 30, 0.5);
+  padding: 10px 12px;
+  margin-bottom: 16px;
+  font-size: 0.9rem;
+}
+.galaxy-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 460px;
+}
+.galaxy-form input,
+.galaxy-form select { width: 100%; min-height: 44px; }
+.galaxy-form .btn { width: 100%; }
+.galaxy-incident,
+.galaxy-planet {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: rgba(10, 16, 30, 0.45);
+  padding: 10px 12px;
+  margin-bottom: 8px;
+  font-size: 0.9rem;
+}
+.galaxy-incident > b,
+.galaxy-planet-head b { color: var(--cyan); }
+.galaxy-incident .muted { font-size: 0.8rem; padding: 2px 0 6px; }
+.galaxy-incident-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding-top: 6px;
+}
+.galaxy-planet-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  align-items: baseline;
+  font-size: 0.9rem;
+}
+.galaxy-planet-head .muted { font-size: 0.8rem; }
+.galaxy-planet-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding-top: 8px;
+}
+
+/* v0.2.0：移动端适配（点击区 ≥44px、蓝图部件单列） */
+@media (max-width: 899px) {
+  .army-bp-parts { grid-template-columns: 1fr; }
+  .army-workers-input { min-height: 44px; }
+  .galaxy-form { max-width: none; }
 }

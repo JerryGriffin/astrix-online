@@ -12,24 +12,25 @@
 //  - 所有数字走 js/core/format.js；文本一律用 el({text})（textContent）做 HTML 转义。
 //  - 样式内联注入，不碰 css/ 目录。
 
-import { PLANETS } from '../data/planets.js?v=21.18';
+import { PLANETS } from '../data/planets.js?v=20.8';
 import {
   STATE, getPlanetInstance, shelterRatio, ownedOf,
-} from '../core/state.js?v=21.18';
-import { fmtNum } from '../core/format.js?v=21.18';
+} from '../core/state.js?v=20.8';
+import { fmtNum } from '../core/format.js?v=20.8';
 // v0.1.2（R8）：调派人力从母星扣「可用人力」，走 population.js 既有接口，不硬改字段
-import { getAvailable } from '../core/population.js?v=21.18';
+import { getAvailable } from '../core/population.js?v=20.8';
 // v0.1.5（需求 2）：运输物资到殖民地 —— 复用 fleet.js 的运输任务（startMission + listFleets）
-import { startMission, listFleets } from '../core/fleet.js?v=21.18';
+import { startMission, listFleets } from '../core/fleet.js?v=20.8';
 // v0.0.93：商店星 Ast1（独立星球入口）+ 商店面板（舰队页复用）
-import { SHOP_PLANET } from '../core/shop.js?v=21.18';
+import { SHOP_PLANET } from '../core/shop.js?v=20.8';
 // v0.1.1：发现门禁 + 商店星拦截 + 托管说明
 import {
   capturePlanet, ensureDiscoveredDefaults, purgeShopColonies,
   modeOf, TRIBUTE_RATES, MANAGEMENT_MODES,
-} from '../core/planetgen.js?v=21.18';
-import { renderShop } from './fleet.js?v=21.18';
-import { playPing, playVictory, playWarp } from '../core/sound.js?v=21.18';
+} from '../core/planetgen.js?v=20.8';
+import { renderShop } from './fleet.js?v=20.8';
+// v0.2.1：殖民地报告内联化 —— 每颗星球行内直接显示最新报告（不再弹右下角提示条）
+import { reportTextOf } from './reports.js?v=20.8';
 
 const CSS = `
   .col-panel { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; color: #e8eef2; padding: 12px; box-sizing: border-box; max-width: 960px; margin: 0 auto; }
@@ -58,6 +59,8 @@ const CSS = `
   .col-note { font-size: 11px; color: #f09595; opacity: .85; }
   .col-manage { font-size: 11px; color: #ffd27f; opacity: .95; }
   .col-manage.assimilated { color: #9FE1CB; }
+  /* v0.2.1：殖民地报告内联行（取代右下角弹窗） */
+  .col-report { font-size: 11px; color: #9FE1CB; opacity: .92; margin-top: 5px; line-height: 1.6; background: rgba(159,225,203,0.07); border: 1px solid rgba(159,225,203,0.18); border-radius: 8px; padding: 5px 8px; }
   .col-res { font-size: 11px; opacity: .8; margin-top: 4px; line-height: 1.6; }
   .col-energy { font-size: 11px; opacity: .85; margin-top: 2px; }
   .col-energy .env-hydro { color: #5cc8e0; }
@@ -138,6 +141,18 @@ function resourceSummary(p) {
   const core = (layers.core || []).length;
   const gases = (p.gases || []).length;
   return `地表 ${surface} · 地下 ${underground} · 地核 ${core} · 气体 ${gases}`;
+}
+
+// v0.2.1：取某星球最新一条殖民地报告（acc.colonyReports 按 at 倒序取第一条匹配 code）
+function latestReportOf(acc, code) {
+  const list = (acc && Array.isArray(acc.colonyReports)) ? acc.colonyReports : [];
+  let best = null;
+  for (const r of list) {
+    if (r && (r.code === code)) {
+      if (!best || Number(r.at) > Number(best.at)) best = r;
+    }
+  }
+  return best;
 }
 
 function currentAccountSafe() {
@@ -284,7 +299,6 @@ export function renderColony(root, ctx) {
         }
       }
       const ni = getPlanetInstance(p.code);   // 殖民：惰性建立星球实例（写入开局物资）
-      playVictory();
       // v0.1.2（R8）：从母星调派人力到新星（走 dispatchWorkforce，总数守恒）
       const n = Number(sel.value) || 0;
       if (n > 0 && homeInst && ni) {
@@ -296,6 +310,64 @@ export function renderColony(root, ctx) {
     cancel.addEventListener('click', () => { if (closeModal) closeModal(); });
     row.appendChild(ok);
     row.appendChild(cancel);
+    wrap.appendChild(row);
+    return wrap;
+  }
+
+  // ---- 向殖民地运送人力（v0.2.3）----
+  // 母星（源）→ 本星（目的地）：走 dispatchWorkforce（增减 pop.total，总数守恒，
+  // 可用人力每 tick 由 getAvailable 重新派生），不硬改 available 等派生字段。
+  // 人力是「人」，不走船队运输任务，立即抵达。
+  function buildWorkforceBody(p, inst) {
+    const acc = currentAccountSafe();
+    const homeCode = acc && acc.homePlanetCode;
+    let homeInst = null, homeAvail = 0;
+    if (homeCode) {
+      try { homeInst = getPlanetInstance(homeCode); } catch (e) { homeInst = null; }
+      if (homeInst && homeInst.pop) homeAvail = getAvailable(homeInst.pop);
+    }
+    const wrap = el('div', { class: 'col-confirm' });
+    wrap.appendChild(el('p', { class: 'col-confirm-text',
+      text: '从母星「' + (homeCode || '—') + '」向「' + p.nameCn + '」运送人力（移民立即抵达，不走船队）。' }));
+    const input = el('input', {
+      class: 'col-confirm-sel', type: 'number', min: '1',
+      value: String(Math.max(1, Math.min(25, Math.floor(homeAvail)))),
+      style: 'width:120px;',
+    });
+    const hasAvail = homeAvail > 0 && !!homeInst;
+    if (!hasAvail) input.setAttribute('disabled', 'disabled');
+    wrap.appendChild(el('div', { class: 'col-confirm-row' }, [
+      el('span', { class: 'k', text: '运送人数 ' }),
+      input,
+    ]));
+    wrap.appendChild(el('div', {
+      class: 'col-confirm-note' + (hasAvail ? '' : ' warn'),
+      text: '母星当前可用人力 ' + fmtNum(Math.floor(homeAvail))
+        + '（可用人力 = 总人力 × 劳动参与率 × 幸福度 − 已分配岗位与产线）。'
+        + (hasAvail ? '运送后从母星扣除、计入本星，总数守恒。' : '母星暂无剩余可用人力，无法运送。'),
+    }));
+    const msg = el('div', { class: 'col-confirm-note' });
+    const row = el('div', { class: 'col-confirm-btns' });
+    const ok = el('button', { class: 'col-btn col-colonize', text: '确认运送' });
+    if (!hasAvail) ok.setAttribute('disabled', 'disabled');
+    ok.addEventListener('click', () => {
+      const n = Math.floor(Number(input.value) || 0);
+      if (!(n > 0)) { msg.textContent = '请输入大于 0 的人数。'; return; }
+      if (!homeInst) { msg.textContent = '找不到母星实例，无法运送。'; return; }
+      const moved = dispatchWorkforce(homeInst, inst, n);
+      if (!(moved > 0)) {
+        msg.textContent = '运送失败：母星可用人力不足（当前 '
+          + fmtNum(Math.floor(getAvailable(homeInst.pop))) + '）。';
+        return;
+      }
+      if (closeModal) closeModal();
+      draw();
+    });
+    const cancel = el('button', { class: 'col-btn', text: '取消' });
+    cancel.addEventListener('click', () => { if (closeModal) closeModal(); });
+    row.appendChild(ok);
+    row.appendChild(cancel);
+    wrap.appendChild(msg);
     wrap.appendChild(row);
     return wrap;
   }
@@ -486,6 +558,17 @@ export function renderColony(root, ctx) {
             text: '（change 即生效；领土需幸福度长期很高自动同化后可选）' }),
         ]));
       }
+
+      // v0.2.1：殖民地报告内联显示（最新一条，取代右下角弹窗）
+      const rep = latestReportOf(currentAccountSafe(), code);
+      if (rep) {
+        const t = new Date(Number(rep.at) || Date.now());
+        const hh = String(t.getHours()).padStart(2, '0');
+        const mm = String(t.getMinutes()).padStart(2, '0');
+        const ss = String(t.getSeconds()).padStart(2, '0');
+        main.appendChild(el('div', { class: 'col-report muted', text:
+          '📡 ' + hh + ':' + mm + ':' + ss + '　' + reportTextOf(rep) }));
+      }
     }
 
     // 资源概况
@@ -511,10 +594,7 @@ export function renderColony(root, ctx) {
       if (canEnterPlanet(inst)) {
         const enterBtn = el('button', { class: 'col-btn col-enter', text: '进入' });
         if (onEnterPlanet) {
-          enterBtn.addEventListener('click', () => {
-            playPing();
-            onEnterPlanet(code);
-          });
+          enterBtn.addEventListener('click', () => onEnterPlanet(code));
         } else {
           // 没有进入回调：禁用按钮，提示在主界面切换（绝不 import main.js）
           enterBtn.setAttribute('disabled', 'disabled');
@@ -530,16 +610,20 @@ export function renderColony(root, ctx) {
       if (!inst.isHome) {
         const tBtn = el('button', { class: 'col-btn col-colonize', text: '运输物资' });
         tBtn.addEventListener('click', () => {
-          playWarp();
           if (openModal) openModal({ title: '向 ' + p.nameCn + ' 运输物资', body: buildTransportBody(p, inst) });
         });
         btnWrap.appendChild(tBtn);
+        // v0.2.3：向殖民地运送人力 —— 母星可用人力 → 本星人口（立即抵达，总数守恒）
+        const wfBtn = el('button', { class: 'col-btn col-colonize', text: '运送人力' });
+        wfBtn.addEventListener('click', () => {
+          if (openModal) openModal({ title: '向 ' + p.nameCn + ' 运送人力', body: buildWorkforceBody(p, inst) });
+        });
+        btnWrap.appendChild(wfBtn);
       }
     } else {
       btnWrap = el('button', { class: 'col-btn col-colonize', text: '殖民' });
       btnWrap.setAttribute('data-code', code);
       btnWrap.addEventListener('click', () => {
-        playPing();
         if (openModal) openModal({ title: '建立殖民地 · ' + p.nameCn, body: buildConfirmBody(p) });
       });
     }
@@ -566,9 +650,6 @@ export function renderColony(root, ctx) {
     panel.appendChild(el('div', { class: 'col-title', text: '殖民地管理' }));
     panel.appendChild(el('div', { class: 'col-sub',
       text: '统筹帝国疆域：只有探索发现的星球才会出现在这里；殖民扩张，托管星球由电脑代管并向母星上缴贡品。' }));
-
-    // v0.2.3：删除原「行星疆域全息中枢条」——「超空间物流网络：畅通运行」是硬编码装饰徽章，
-    //   无任何数据含义；真实的疆域统计由下方概览四项（已殖民/人口/人力/幸福度）承担。
 
     // 顶部概览
     const overview = el('div', { class: 'col-overview' });

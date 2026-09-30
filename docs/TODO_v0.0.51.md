@@ -250,13 +250,13 @@ if (STATE.currentAccountId === id) {
 
 ```bash
 # 数据层全量断言（当前 1258 项，会随新增断言增加）
-node docs/selfcheck_v005.mjs
+"C:/Users/11603/.workbuddy/binaries/node/versions/22.22.2-3/node.exe" docs/selfcheck_v005.mjs
 
 # 星球资源 × 材料表 × 建筑造价 三角交叉比对
-node docs/selfcheck_materials.mjs
+"C:/Users/11603/.workbuddy/binaries/node/versions/22.22.2-3/node.exe" docs/selfcheck_materials.mjs
 
 # 最小 DOM 桩跑全流程，抓运行时异常
-node docs/selfcheck_render.mjs
+"C:/Users/11603/.workbuddy/binaries/node/versions/22.22.2-3/node.exe" docs/selfcheck_render.mjs
 ```
 
 Bash 偶发 `dirname: command not found` 时，命令前加
@@ -272,8 +272,8 @@ Bash 偶发 `dirname: command not found` 时，命令前加
 | `docs/DECISIONS.md` | 全部设计决策与「仍待定」清单 |
 | `docs/labor.md` | 人力系统说明书（营养/工位/幸福度公式，改庇护必读） |
 | `docs/buildings.md` | 建筑与科技数据表 + **建材层级铁律** |
-| `docs/memory/MEMORY.md` | 项目长期约定（工作流、技术约定、踩坑） |
-| `docs/memory/2026-09-17.md` | 当日工作日志（v0.0.2 → v0.0.5 全过程） |
+| `.workbuddy/memory/MEMORY.md` | 项目长期约定（工作流、技术约定、踩坑） |
+| `.workbuddy/memory/2026-09-17.md` | 当日工作日志（v0.0.2 → v0.0.5 全过程） |
 
 ---
 
