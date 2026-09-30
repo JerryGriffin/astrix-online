@@ -12,15 +12,15 @@
 //
 // 约定：不修改 state.js（账号对象由调用方传入）；互 import 仅限函数体内使用（无 TDZ 风险）。
 
-import { PLANETS } from '../data/planets.js?v=21.10';
+import { PLANETS } from '../data/planets.js?v=21.13';
 import {
   generateRandomPlanet, capturePlanet, captureDefaultPlanet, uncapturedDefaults,
-} from './planetgen.js?v=21.10';
-import { ownedOf, spendOwned, getPlanetInstance } from './state.js?v=21.10';
-import { CELL_VOLUME, cellsForEquipmentKey } from './footprint.js?v=21.10';   // 纯聚合工具，state.js 不 import 本文件，无环
-import { resolveBlueprint, totalMass } from './shipyard.js?v=21.10';          // 只读导出：蓝图部件 / 蓝图质量
-import { ensureEntry } from './production.js?v=21.10';                        // 装卸货 / 奖励入包（生产模块不 import 本文件，无环）
-import { fmtNum } from './format.js?v=21.10';
+} from './planetgen.js?v=21.13';
+import { ownedOf, spendOwned, getPlanetInstance } from './state.js?v=21.13';
+import { CELL_VOLUME, cellsForEquipmentKey } from './footprint.js?v=21.13';   // 纯聚合工具，state.js 不 import 本文件，无环
+import { resolveBlueprint, totalMass } from './shipyard.js?v=21.13';          // 只读导出：蓝图部件 / 蓝图质量
+import { ensureEntry } from './production.js?v=21.13';                        // 装卸货 / 奖励入包（生产模块不 import 本文件，无环）
+import { fmtNum } from './format.js?v=21.13';
 
 // ============================================================================
 // 编队
@@ -108,6 +108,8 @@ export function disbandFleet(acc, fleetId) {
   const fleets = listFleets(acc);
   const i = fleets.findIndex((f) => f.id === fleetId);
   if (i < 0) return false;
+  // v0.2.2：解散编队时把搭载的登陆部队原地下船归建，防止部队永久卡在「出征」状态
+  releaseEmbarkedArmies(acc, fleetId);
   fleets.splice(i, 1);
   return true;
 }
@@ -267,7 +269,8 @@ export function fleetCargoCells(acc, fleet) {
 // ============================================================================
 /** 各任务类型的固定航程（单位与速度同刻度：m 与 m/s），duration = 距离 / 编队速度 */
 // v0.1.2 R6：探索航程 ×5（60000 → 300000），时长 clamp 上限 1800s → 9000s、下限 30s → 150s
-export const MISSION_DISTANCE = { explore: 300000, transport: 36000, patrol: 24000 };
+// v0.2.2：新增「登陆」任务航程 150000（比探索近：陆军要大规模投送，航线走已测绘的繁忙航道）
+export const MISSION_DISTANCE = { explore: 300000, transport: 36000, patrol: 24000, land: 150000 };
 const MISSION_MIN_SEC = 150;
 const MISSION_MAX_SEC = 9000;
 
@@ -276,8 +279,8 @@ const MISSION_MAX_SEC = 9000;
 // 需求要求单次探索消耗 ≈ 一箱的 20%~50%。取 36% → 360 mol。
 // 探索距离 300000 m ⇒ EXPLORE_FUEL_PER_DIST = 360 / 300000 = 0.0012 mol/m（每船）。
 export const EXPLORE_FUEL_PER_DIST = 0.0012;
-const MISSION_TYPES = ['explore', 'transport', 'patrol', 'defense'];
-const MISSION_TYPE_LABEL = { explore: '探索', transport: '运输', patrol: '巡航', defense: '低空防卫' };
+const MISSION_TYPES = ['explore', 'transport', 'patrol', 'defense', 'land'];
+const MISSION_TYPE_LABEL = { explore: '探索', transport: '运输', patrol: '巡航', defense: '低空防卫', land: '登陆' };
 
 /** 任务中文名 + 目标（UI 展示用） */
 export function fleetMissionLabel(mission) {
@@ -285,6 +288,7 @@ export function fleetMissionLabel(mission) {
   const t = MISSION_TYPE_LABEL[mission.type] || mission.type;
   if (mission.type === 'defense') return t + '（驻留）';
   if (mission.type === 'transport') return t + ' → ' + (mission.targetCode || '?');
+  if (mission.type === 'land') return t + ' → ' + (mission.targetCode || '?');
   if (mission.type === 'explore' && mission.targetCode) return t + '：' + mission.targetCode;
   return t;
 }
@@ -354,10 +358,37 @@ export function startMission(acc, fleetId, type, targetCode, cargo) {
     cmd = { cargo: goods, fromCode: fleet.homePlanetCode, toCode: targetCode, cells: need, capacity: cap, fromShips };
   }
 
-  // 探索任务：出发前按距离预扣编队燃料（R6）。改为编队共享油箱（总量口径）：
-  // 只要编队总燃料 >= 总需求即放行；逐船顺序扣减，不足部分顺延到下一艘，杜绝负数燃料。
-  if (type === 'explore') {
-    const needPerShip = Math.round(MISSION_DISTANCE.explore * EXPLORE_FUEL_PER_DIST);   // 取整恢复 360 精确值（避浮点残差）
+  // v0.2.2：登陆任务——搭载地面部队出征。校验部队存在、未被其它舰队搭载；
+  //   通过后立即把部队标记为「随舰队出征」（embarkFleet = 舰队 id），
+  //   这些部队不再计入星球地面防卫（见 army.js#stationedArmyPower）。
+  if (type === 'land') {
+    if (!targetCode) return { ok: false, reason: '请选择登陆目标星球' };
+    if (targetCode === (acc && acc.homePlanetCode)) {
+      return { ok: false, reason: '目标就是母星，无需登陆' };
+    }
+    const wantIds = Array.isArray(cargo && cargo.armyIds) ? cargo.armyIds : [];
+    if (!wantIds.length) return { ok: false, reason: '请至少选择一支部队随舰队出征' };
+    const armies = Array.isArray(acc.armies) ? acc.armies : [];
+    const picked = [];
+    for (const id of wantIds) {
+      const a = armies.find((x) => x && x.id === id);
+      if (!a) return { ok: false, reason: '找不到选中的部队（' + id + '）' };
+      if (a.embarkFleet) return { ok: false, reason: '部队「' + a.nameCn + '」已随其它编队出征' };
+      picked.push(a);
+    }
+    // 重复选中同一部队去重校验（armyIds 里出现重复 id 时拒绝，防呆）
+    if (new Set(wantIds).size !== wantIds.length) {
+      return { ok: false, reason: '部队选择列表里有重复项，请重新选择' };
+    }
+    for (const a of picked) a.embarkFleet = fleet.id;
+    cmd = { armyIds: picked.map((a) => a.id) };
+  }
+
+  // 探索/登陆任务：出发前按距离预扣编队燃料（R6 / v0.2.2 登陆沿用同系数）。
+  // 编队共享油箱（总量口径）：只要编队总燃料 >= 总需求即放行；
+  // 逐船顺序扣减，不足部分顺延到下一艘，杜绝负数燃料。
+  if (type === 'explore' || type === 'land') {
+    const needPerShip = Math.round(MISSION_DISTANCE[type] * EXPLORE_FUEL_PER_DIST);   // 取整恢复精确值（避浮点残差）
     const ships = fleet.shipIds.map((id) => shipById(acc, id)).filter(Boolean);
     let totalNeed = 0, totalHave = 0;
     for (const s of ships) {
@@ -529,14 +560,20 @@ export function resolveFleetAnomaly(acc, fleetId, choiceId) {
   return { ok: true, anomaly: ano, resultMsg };
 }
 
-/** 取消任务：进度作废。驻留防卫也由此结束 */
+/** 取消任务：进度作废。驻留防卫也由此结束；登陆任务取消时搭载部队原地下船归建 */
 export function cancelMission(acc, fleetId) {
   const fleet = listFleets(acc).find((f) => f.id === fleetId);
   if (!fleet) return { ok: false, reason: '找不到该编队' };
   if (!fleet.mission) return { ok: false, reason: '该编队没有进行中的任务' };
   const label = fleetMissionLabel(fleet.mission);
+  const wasLand = fleet.mission.type === 'land';
   fleet.mission = null;
-  fleet.lastResult = { cmd: null, kind: 'info', message: '任务「' + label + '」已取消（进度作废）。', at: Date.now() };
+  let extra = '';
+  if (wasLand) {
+    const n = releaseEmbarkedArmies(acc, fleetId);
+    if (n > 0) extra = '搭载的 ' + n + ' 个营已原地下船，返回出发星球。';
+  }
+  fleet.lastResult = { cmd: null, kind: 'info', message: '任务「' + label + '」已取消（进度作废）。' + extra, at: Date.now() };
   return { ok: true };
 }
 
@@ -689,6 +726,7 @@ function finishMission(acc, fleet, m, env) {
     if (m.type === 'explore') result = settleExplore(acc, fleet, env);
     else if (m.type === 'patrol') result = cmdPatrol(acc, fleet, {});
     else if (m.type === 'transport') result = settleTransport(acc, fleet, m, env);
+    else if (m.type === 'land') result = settleLand(acc, fleet, m, env);
     else result = { ok: true, kind: 'info', message: '任务完成。' };
   } catch (e) {
     result = { ok: false, kind: 'info', message: '任务结算异常：' + (e && e.message ? e.message : e) };
@@ -761,9 +799,222 @@ function cmdPatrol(acc, fleet, ctx) {
   return out;
 }
 
-/** 登陆：军队系统未完成 */
-function cmdLand(acc, fleet, ctx) {
-  return { ok: false, cmd: 'land', reason: '军队系统开发中，登陆需要陆军部队（后续版本开放）' };
+// ============================================================================
+// 登陆任务（v0.2.2）：部队换防 / 登陆战
+// ============================================================================
+// 口径：
+//   * 部队在 startMission('land') 时即标记 embarkFleet（ embark 期间不计地面防卫）；
+//   * 目标为己方星球（母星 / 已占领）→ 抵达后全军换防驻扎，不动一枪一弹；
+//   * 目标为未知星球 → 登陆战：守军规模由星球资源丰度推算（丰度越高守军越富越强），
+//     攻方战力 = 各部队综合战力之和；胜利则占领该星球 + 掠夺战利品 + 全军驻扎；
+//     失败则各营 50% 概率被歼，幸存者撤回母星。
+//   * 取消任务 / 解散编队 → 部队原地下船，回到出发星球（planetCode 未曾改动）。
+
+/** 在星球守军强度系数表中查找星球定义（PLANETS / 已发现 / 已占领 三处） */
+export function findPlanetDef(acc, code) {
+  if (!code) return null;
+  let p = PLANETS.find((x) => x && x.code === code) || null;
+  if (p) return p;
+  const disc = (acc && Array.isArray(acc.discovered) ? acc.discovered : [])
+    .find((x) => x && x.code === code);
+  if (disc) return disc;
+  const cap = (acc && Array.isArray(acc.capturedPlanets) ? acc.capturedPlanets : [])
+    .find((x) => x && x.code === code);
+  return (cap && cap.planet) || null;
+}
+
+/** 星球是否已在玩家版图内（母星 / 已占领；商店星不算） */
+function isOwnedPlanetCode(acc, code) {
+  if (!acc || !code) return false;
+  if (code === acc.homePlanetCode) return true;
+  return (Array.isArray(acc.capturedPlanets) ? acc.capturedPlanets : [])
+    .some((c) => c && c.code === code && !c.isShop && !(c.planet && c.planet.isShop));
+}
+
+/**
+ * 由星球定义推算地面守军规模（登陆战敌方战力）。
+ * 口径：四层矿脉丰度之和 × 150 + 大气丰度 × 80 + 底数 600；
+ * 默认星球（母星系七球，原设有常驻居民与设施）再 + 1200；最后乘 0.85~1.15 的随机扰动。
+ * 丰度量级参考：随机星球四层合计丰度约 20~400，对应守军 3600 ~ 66000，属终局玩法难度。
+ */
+export function garrisonPowerOf(planetDef) {
+  if (!planetDef) return 0;
+  let res = 0;
+  const layers = planetDef.layers || {};
+  for (const k of ['surface', 'underground', 'deep', 'core']) {
+    const rows = Array.isArray(layers[k]) ? layers[k] : [];
+    res += rows.reduce((s, r) => s + (Number(r && r.abundance) || 0), 0);
+  }
+  let gas = 0;
+  if (Array.isArray(planetDef.gases)) {
+    gas = planetDef.gases.reduce((s, g) => s + (Number(g && g.abundance) || 0), 0);
+  }
+  const base = 600 + res * 150 + gas * 80 + (planetDef.random ? 0 : 1200);
+  return Math.max(120, Math.round(base * (0.85 + Math.random() * 0.3)));
+}
+
+/** 守军规模侦察预估区间（±25%，供登陆前的情报展示） */
+export function estimateGarrisonOf(planetDef) {
+  if (!planetDef) return { min: 0, max: 0 };
+  let res = 0;
+  const layers = planetDef.layers || {};
+  for (const k of ['surface', 'underground', 'deep', 'core']) {
+    const rows = Array.isArray(layers[k]) ? layers[k] : [];
+    res += rows.reduce((s, r) => s + (Number(r && r.abundance) || 0), 0);
+  }
+  let gas = 0;
+  if (Array.isArray(planetDef.gases)) {
+    gas = planetDef.gases.reduce((s, g) => s + (Number(g && g.abundance) || 0), 0);
+  }
+  const base = 600 + res * 150 + gas * 80 + (planetDef.random ? 0 : 1200);
+  return { min: Math.max(120, Math.round(base * 0.85)), max: Math.round(base * 1.15) };
+}
+
+/** 某编队当前搭载的全部部队 */
+export function embarkedArmiesOf(acc, fleetId) {
+  if (!acc || !Array.isArray(acc.armies) || !fleetId) return [];
+  return acc.armies.filter((a) => a && a.embarkFleet === fleetId);
+}
+
+/** 释放（原地下船）某编队搭载的全部部队；返回释放数量 */
+export function releaseEmbarkedArmies(acc, fleetId) {
+  if (!acc || !Array.isArray(acc.armies) || !fleetId) return 0;
+  let n = 0;
+  for (const a of acc.armies) {
+    if (a && a.embarkFleet === fleetId) {
+      delete a.embarkFleet;
+      n++;
+    }
+  }
+  return n;
+}
+
+/** 登陆目标候选列表（母星 / 已占领 / 已发现且未占领；商店星排除）。UI 下拉数据源 */
+export function listLandTargets(acc) {
+  const out = [];
+  const seen = new Set();
+  const push = (code, nameCn, type, owned) => {
+    if (!code || seen.has(code) || code === 'ast1') return;
+    seen.add(code);
+    out.push({ code, nameCn, type, owned });
+  };
+  if (acc) {
+    const home = PLANETS.find((p) => p && p.code === acc.homePlanetCode);
+    if (home) push(home.code, home.nameCn, home.type, true);
+    for (const c of (Array.isArray(acc.capturedPlanets) ? acc.capturedPlanets : [])) {
+      if (!c) continue;
+      push(c.code, c.nameCn || c.code, (c.planet && c.planet.type) || c.type || '', true);
+    }
+    for (const d of (Array.isArray(acc.discovered) ? acc.discovered : [])) {
+      if (!d) continue;
+      push(d.code, d.nameCn || d.code, d.type || '', false);
+    }
+  }
+  return out;
+}
+
+/** 登陆任务结算（tick 到期由 finishMission 调用） */
+function settleLand(acc, fleet, m, env) {
+  const homeCode = (acc && acc.homePlanetCode) || 'syl';
+  const targetCode = m.targetCode;
+  // 搭载名单以 embarkFleet 实际标记为准（cmd.armyIds 只作兜底）
+  let armies = (Array.isArray(acc.armies) ? acc.armies : [])
+    .filter((a) => a && a.embarkFleet === fleet.id);
+  if (!armies.length && m.cmd && Array.isArray(m.cmd.armyIds)) {
+    armies = m.cmd.armyIds
+      .map((id) => (Array.isArray(acc.armies) ? acc.armies : []).find((x) => x && x.id === id))
+      .filter(Boolean);
+  }
+  if (!armies.length) {
+    return { ok: true, kind: 'info', message: '登陆编队抵达目标空域，但舰上已没有任何部队（可能已被解散）。' };
+  }
+
+  const def = findPlanetDef(acc, targetCode);
+  if (!def) {
+    // 目标定义丢失（存档损坏等）：全军原路撤回，不白白送死
+    for (const a of armies) { delete a.embarkFleet; a.stationed = true; }
+    return { ok: true, kind: 'info', message: '登陆目标「' + targetCode + '」坐标失效，舰队已原路返航，各营归建。' };
+  }
+
+  // —— 换防：目标已是己方星球 ——
+  if (isOwnedPlanetCode(acc, targetCode)) {
+    for (const a of armies) {
+      a.planetCode = targetCode;
+      a.stationed = true;
+      delete a.embarkFleet;
+    }
+    return {
+      ok: true, kind: 'info', owned: true,
+      message: '登陆编队已抵达「' + (def.nameCn || targetCode) + '」，'
+        + armies.length + ' 个营完成换防，全部进入驻防状态。',
+    };
+  }
+
+  // —— 登陆战：目标为未知星球 ——
+  const attack = armies.reduce((s, a) => s + ((a.stats && a.stats.power) || 0), 0);
+  const garrison = garrisonPowerOf(def);
+  const win = attack >= garrison;
+
+  if (win) {
+    // 占领：走 planetgen 的标准占领契约（写 capturedPlanets；商店星等非法目标会被拒绝）
+    const cap = capturePlanet(acc, def);
+    for (const a of armies) {
+      a.planetCode = targetCode;
+      a.stationed = true;
+      delete a.embarkFleet;
+    }
+    // 战利品：太空元素 + 从目标星球地表矿脉掠夺 2 种（数量与丰度挂钩）
+    const loot = { '太空元素': 150 };
+    const surface = (def.layers && Array.isArray(def.layers.surface)) ? def.layers.surface : [];
+    const picks = surface.slice().sort((a, b) => (Number(b.abundance) || 0) - (Number(a.abundance) || 0))
+      .slice(0, 2);
+    for (const r of picks) {
+      const qty = Math.max(50, Math.round((Number(r.abundance) || 1) * 60));
+      loot[r.name] = qty;
+    }
+    grantRewards(acc, env, loot);
+    const lootText = Object.keys(loot).map((k) => k + ' ×' + fmtNum(loot[k])).join('、');
+    return {
+      ok: true, kind: 'combat', win: true, owned: true, planet: def, rewards: loot,
+      combat: { enemyNameCn: '「' + (def.nameCn || targetCode) + '」地面守军', enemyPower: garrison, ourPower: attack, win: true },
+      message: '登陆战胜利！我方 ' + armies.length + ' 个营（战力 ' + fmtNum(attack) + '）'
+        + '击溃「' + (def.nameCn || targetCode) + '」地面守军（战力 ' + fmtNum(garrison) + '），'
+        + '星球已纳入版图，缴获 ' + lootText + '，全军就地驻防。',
+      losses: [],
+      captureFailed: cap.ok === false ? cap.reason : null,
+    };
+  }
+
+  // 战败：各营 50% 概率被歼，幸存者撤回母星
+  const armiesAll = Array.isArray(acc.armies) ? acc.armies : [];
+  const losses = [];
+  const survivors = [];
+  for (const a of armies) {
+    if (Math.random() < 0.5) {
+      losses.push(a.nameCn);
+      const i = armiesAll.indexOf(a);
+      if (i >= 0) armiesAll.splice(i, 1);
+    } else {
+      a.planetCode = homeCode;
+      a.stationed = true;
+      delete a.embarkFleet;
+      survivors.push(a.nameCn);
+    }
+  }
+  return {
+    ok: true, kind: 'combat', win: false,
+    combat: { enemyNameCn: '「' + (def.nameCn || targetCode) + '」地面守军', enemyPower: garrison, ourPower: attack, win: false },
+    message: '登陆战失败……我方 ' + armies.length + ' 个营（战力 ' + fmtNum(attack) + '）'
+      + '强攻「' + (def.nameCn || targetCode) + '」（守军战力 ' + fmtNum(garrison) + '）受挫，'
+      + (losses.length ? '「' + losses.join('」「') + '」被歼；' : '')
+      + (survivors.length ? '幸存部队已撤回母星整补。' : '全军覆没。'),
+    losses,
+  };
+}
+
+/** 旧指令接口保留 land 的即时提示（真实入口是 startMission('land') + 舰队面板弹窗） */
+function cmdLand() {
+  return { ok: false, cmd: 'land', reason: '登陆已改为持续任务：请用舰队面板的「登陆」弹窗选择目标与部队发起。' };
 }
 
 /**

@@ -2,7 +2,7 @@
 // 提供编队战备管理、实时战术交互交战视窗、船载物流、殖民地政令与星港贸易。
 // 纯原生 ES 模块，深空玻璃拟态风格，移动端与 PC 端自适应（点击区 >= 44px）。
 
-import { fmtNum, fmtRate, fmtTime } from '../core/format.js?v=21.10';
+import { fmtNum, fmtRate, fmtTime } from '../core/format.js?v=21.13';
 import {
   listFleets, createFleet, disbandFleet, addShipToFleet, removeShipFromFleet,
   fleetSpeedOf, fleetPowerOf, executeCommand,
@@ -10,21 +10,23 @@ import {
   shipCargoOf, loadShipCargo, unloadShipCargo,
   shipCargoMassOf, shipCargoCellsOf, shipCargoCellsMax, effectiveSpeedOf,
   resolveFleetAnomaly,
-} from '../core/fleet.js?v=21.10';
-import { equipmentList } from '../core/shipyard.js?v=21.10';
+  listLandTargets, estimateGarrisonOf, embarkedArmiesOf, findPlanetDef, MISSION_DISTANCE, EXPLORE_FUEL_PER_DIST,
+} from '../core/fleet.js?v=21.13';
+import { embarkableArmies } from '../core/army.js?v=21.13';
+import { equipmentList } from '../core/shipyard.js?v=21.13';
 import {
   MANAGEMENT_MODES, MANAGEMENT_BY_ID, modeOf, setManagement,
   TERRITORY_ASSIMILATE_SEC, TERRITORY_HAPPY_THRESHOLD,
-} from '../core/planetgen.js?v=21.10';
+} from '../core/planetgen.js?v=21.13';
 import {
   SHOP_PLANET, shopPrices, sell, pendingOrders, deliverOrder, ascoinBalance,
   suggestPriceOf, listForSale, marketListings, cancelListing, buyListing, priceOf, shopStateOf,
   MARKET_FEE,
-} from '../core/shop.js?v=21.10';
-import { getPlanetInstance, currentAccount, ownedOf } from '../core/state.js?v=21.10';
-import { openBattleView } from './combat.js?v=21.10';
-import { detectShipRole, SHIP_ROLES } from '../core/combat.js?v=21.10';
-import { isSoundEnabled, toggleSound, playPing, playVictory, playWarp, playExplosion } from '../core/sound.js?v=21.10';
+} from '../core/shop.js?v=21.13';
+import { getPlanetInstance, currentAccount, ownedOf } from '../core/state.js?v=21.13';
+import { openBattleView } from './combat.js?v=21.13';
+import { detectShipRole, SHIP_ROLES } from '../core/combat.js?v=21.13';
+import { isSoundEnabled, toggleSound, playPing, playVictory, playWarp, playExplosion } from '../core/sound.js?v=21.13';
 
 // HTML 转义
 function esc(s) {
@@ -45,15 +47,23 @@ function btn(text, cls) {
 }
 
 const CMD_LABEL = {
-  explore: '探索', defense: '低空防卫', patrol: '巡航', transport: '运输', land: '登陆',
+  explore: '🔍 探索', defense: '🛡️ 低空防卫', patrol: '📡 巡航', transport: '📦 运输', land: '🪖 登陆',
 };
 const CMD_TIP = {
   explore: '派出舰队探索未知星域，任务完成后结算：大概率发现新星球，也可能发生空间遭遇战',
   defense: '舰队驻留母星空域执行低空防卫，增加行星要塞防御力；手动取消任务才结束',
   patrol: '派出舰队巡航，任务期间可能拦截敌对侦察舰并触发实时战术交火',
   transport: '需编队配属运输船；把物资运到目的地星球，抵达后自动卸货',
-  land: '军队系统已开放，可在军队面板进行成建制整编与星球登陆驻防',
+  land: '搭载地面部队执行登陆任务：己方星球直接换防驻扎；未知星球将发动登陆战，胜利可占领星球并掠夺战利品',
 };
+
+// 统计小卡片（v0.2.3：概况区从一行长文本改为图标数字卡片，便于一眼读数）
+function fleetStatCard(icon, label, val, color) {
+  return '<div style="flex:1;min-width:96px;background:rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.08);'
+    + 'border-radius:6px;padding:8px 10px;text-align:center;">'
+    + '<div style="font-size:16px;font-weight:bold;color:' + color + ';">' + icon + ' ' + val + '</div>'
+    + '<div style="font-size:10px;color:#94a3b8;margin-top:2px;">' + label + '</div></div>';
+}
 
 // 周期性局部刷新心跳
 function startFleetHeartbeat(container, updaters) {
@@ -235,18 +245,23 @@ export function renderFleet(container, ctx) {
   const totalShips = (account.ships || []).length;
   let totalFleetPower = 0;
   fleets.forEach((f) => { totalFleetPower += fleetPowerOf(account, f); });
+  // v0.2.3：在泊待命 = 尚未编入任何编队的舰船（提醒玩家有闲置战力可用）
+  const idleShips = (account.ships || []).filter((s) => s && !fleets.some((f) => f.shipIds.includes(s.id))).length;
 
   const summary = document.createElement('div');
   summary.className = 'glass fleet-page-root';
   summary.style.cssText = 'padding:16px;border-radius:8px;margin-bottom:14px;border:1px solid rgba(124,215,255,0.25);display:flex;flex-wrap:wrap;gap:14px;justify-content:space-between;align-items:center;';
 
   summary.innerHTML = `
-    <div>
+    <div style="flex:1;min-width:260px;">
       <div style="font-size:17px;font-weight:bold;color:#7cd7ff;display:flex;align-items:center;gap:8px;">
         <span>🚀 太空舰队与战术指挥中心</span>
       </div>
-      <div style="font-size:12px;color:#94a3b8;margin-top:4px;line-height:1.5;">
-        总编队：<b style="color:#f1f5f9;">${fleets.length}</b> 支 · 现役舰船：<b style="color:#9FE1CB;">${totalShips}</b> 艘 · 编队总战力：<b style="color:#7cd7ff;">${fmtNum(Math.round(totalFleetPower))}</b>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:10px;">
+        ${fleetStatCard('🛸', '总编队', fleets.length, '#7cd7ff')}
+        ${fleetStatCard('🚀', '现役舰船', totalShips, '#9FE1CB')}
+        ${fleetStatCard('⚓', '在泊待命', idleShips, idleShips > 0 ? '#ffc46b' : '#64748b')}
+        ${fleetStatCard('⚔️', '编队总战力', fmtNum(Math.round(totalFleetPower)), '#fda4af')}
       </div>
     </div>
   `;
@@ -259,6 +274,8 @@ export function renderFleet(container, ctx) {
   btnDrill.onclick = () => {
     const pShips = (account.ships && account.ships.length > 0) ? account.ships.slice(0, 4) : [];
     let chosenDoctrine = 'blitzkrieg';
+    // v0.2.3 修复：此前 div 未定义（ReferenceError），推演弹窗完全打不开
+    const div = document.createElement('div');
     div.innerHTML = `
       <p style="color:#94a3b8;font-size:13px;line-height:1.5;margin-bottom:10px;">
         指挥部实时全息推演系统。请配置本次战役所贯彻的<b>最高军事统帅学说</b>与作战方案：
@@ -396,11 +413,15 @@ export function renderFleet(container, ctx) {
     const power = Math.round(fleetPowerOf(account, fleet));
 
     const head = el('div', 'fac-line1');
-    head.style.cssText = 'display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;';
+    head.style.cssText = 'display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;gap:8px;flex-wrap:wrap;';
+    // v0.2.3：属性改徽章（chip）排布，任务中的编队直接在名称旁显示任务徽章
     head.innerHTML = `
-      <div>
+      <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
         <span class="fac-title" style="font-size:15px;color:#f1f5f9;">${esc(fleet.nameCn)}</span>
-        <span class="fac-mark muted" style="margin-left:8px;">${fleet.shipIds.length} 艘 · 航速 ${fmtNum(speed)} · 战力 <b style="color:#9FE1CB">${fmtNum(power)}</b></span>
+        ${fleet.mission ? `<span style="font-size:11px;padding:2px 8px;border-radius:10px;background:rgba(56,189,248,0.15);border:1px solid #38bdf850;color:#7cd7ff;">${esc(fleetMissionLabel(fleet.mission))}</span>` : ''}
+        <span style="font-size:11px;padding:2px 8px;border-radius:10px;background:rgba(255,255,255,0.05);border:1px solid #33415580;color:#94a3b8;">🚀 ${fleet.shipIds.length} 艘</span>
+        <span style="font-size:11px;padding:2px 8px;border-radius:10px;background:rgba(255,255,255,0.05);border:1px solid #33415580;color:#94a3b8;">💨 航速 ${fmtNum(speed)}</span>
+        <span style="font-size:11px;padding:2px 8px;border-radius:10px;background:rgba(159,225,203,0.08);border:1px solid #9FE1CB40;color:#9FE1CB;">⚔️ 战力 ${fmtNum(power)}</span>
       </div>
     `;
 
@@ -420,7 +441,10 @@ export function renderFleet(container, ctx) {
 
     // 舰船名单与移出
     const shipsBox = el('div', 'fac-line2 muted');
-    if (!fleet.shipIds.length) shipsBox.textContent = '（空编队，请点击下方加入在泊战舰）';
+    if (!fleet.shipIds.length) {
+      shipsBox.textContent = '（空编队——先在下方「加入编队」选入在泊战舰，再发起星际任务）';
+      shipsBox.style.cssText = 'padding:6px 8px;border:1px dashed #334155;border-radius:4px;color:#64748b;font-size:12px;';
+    }
     row.appendChild(shipsBox);
 
     for (const sid of fleet.shipIds) {
@@ -429,8 +453,11 @@ export function renderFleet(container, ctx) {
       const roleMeta = SHIP_ROLES[roleId] || {};
       const line = el('div', 'fleet-ship');
       line.style.cssText = 'display:flex;justify-content:space-between;align-items:center;padding:4px 8px;background:rgba(0,0,0,0.2);border-radius:4px;margin-bottom:4px;';
+      // v0.2.3：舰船行尾部显示单船战力（与编队总战力同口径，取 strength）
+      const shipPower = s ? Math.round(Number(s.strength) || 0) : 0;
       const label = document.createElement('span');
-      label.innerHTML = `<span style="margin-right:6px;">${roleMeta.icon || '🚀'}</span><span style="font-weight:500;">${esc(s ? (s.className || s.name || '飞船') : sid)}</span> <span style="font-size:11px;color:#7cd7ff;margin-left:4px;">[${roleMeta.name || '战舰'}]</span>`;
+      label.innerHTML = `<span style="margin-right:6px;">${roleMeta.icon || '🚀'}</span><span style="font-weight:500;">${esc(s ? (s.className || s.name || '飞船') : sid)}</span> <span style="font-size:11px;color:#7cd7ff;margin-left:4px;">[${roleMeta.name || '战舰'}]</span>`
+        + (shipPower > 0 ? ` <span style="font-size:10px;color:#64748b;margin-left:6px;">⚔️ ${fmtNum(shipPower)}</span>` : '');
       line.appendChild(label);
       const rm = btn('移出', 'btn-sm');
       rm.addEventListener('click', () => {
@@ -592,9 +619,12 @@ export function renderFleet(container, ctx) {
       row.appendChild(radarBox);
     }
 
-    // 五项持续任务指令
+    // 五项持续任务指令（v0.2.3：加分组标题，按钮带图标更易辨识）
+    const cmdsLabel = el('div', 'fac-line2 muted', '星际任务指令：');
+    cmdsLabel.style.cssText = 'font-size:11px;margin-top:10px;';
+    row.appendChild(cmdsLabel);
     const cmdBox = el('div', 'fleet-cmds');
-    cmdBox.style.cssText = 'display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;';
+    cmdBox.style.cssText = 'display:flex;flex-wrap:wrap;gap:8px;margin-top:4px;';
     for (const cmd of ['explore', 'defense', 'patrol', 'transport', 'land']) {
       const b = btn(CMD_LABEL[cmd], cmd === 'explore' ? 'btn-primary' : '');
       b.style.cssText = 'min-height:44px;padding:6px 14px;border-radius:6px;';
@@ -674,8 +704,7 @@ export function renderFleet(container, ctx) {
   // 任务分发处理
   function runCommand(fleet, cmd) {
     if (cmd === 'land') {
-      const res = executeCommand(account, fleet.id, 'land', { planetCode });
-      if (!res.ok) alert(res.message || res.reason || '指令失败');
+      openLandDialog(fleet, redraw);
       return;
     }
     if (fleet.mission) {
@@ -692,24 +721,87 @@ export function renderFleet(container, ctx) {
   }
 
   function openTransportDialog(fleet) {
-    const capList = (account.capturedPlanets || []).map((c) => c.code);
+    // v0.2.2：恢复 R12 契约 —— 物资品类与目的地一律用下拉选择，不再手填文本。
+    //   目的地 = 已占领星球（捕获列表）；货单候选 = 当前星球物品栏持有 > 0 的条目。
+    const capList = (account.capturedPlanets || []).map((c) => c && c.code).filter(Boolean);
+    const heldMats = [];
+    try {
+      const agg = new Map();
+      for (const e of ((inst && inst.inventory) || [])) {
+        if (!e || !e.mat) continue;
+        const n = Number(e.owned) || 0;
+        if (n > 0) agg.set(e.mat, (agg.get(e.mat) || 0) + n);
+      }
+      for (const [m, n] of agg) heldMats.push({ mat: m, owned: n });
+    } catch (e) { /* 物品栏异常时退化为空列表 */ }
+    heldMats.sort((a, b) => a.mat.localeCompare(b.mat, 'zh'));
+
     const form = el('div', 'transport-form');
-    form.innerHTML = `
-      <p style="color:#94a3b8;font-size:13px;line-height:1.5;">指派编队运送母星物资直达目标殖民地仓储。</p>
-      <div style="margin-bottom:12px;">
-        <label style="font-size:12px;color:#94a3b8;display:block;margin-bottom:4px;">目的地：</label>
-        <input type="text" id="tp-target-code" value="${capList[0] || 'des'}" style="width:100%;min-height:44px;background:#0b101c;border:1px solid #22354c;color:#c8d4e0;border-radius:6px;padding:8px 12px;font-size:14px;">
-      </div>
-      <div style="margin-bottom:12px;">
-        <label style="font-size:12px;color:#94a3b8;display:block;margin-bottom:4px;">物资品类：</label>
-        <input type="text" id="tp-mat-name" value="铁" style="width:100%;min-height:44px;background:#0b101c;border:1px solid #22354c;color:#c8d4e0;border-radius:6px;padding:8px 12px;font-size:14px;">
-      </div>
-      <div style="margin-bottom:12px;">
-        <label style="font-size:12px;color:#94a3b8;display:block;margin-bottom:4px;">运送数量：</label>
-        <input type="number" id="tp-qty" value="50" min="1" max="10000" style="width:100%;min-height:44px;background:#0b101c;border:1px solid #22354c;color:#c8d4e0;border-radius:6px;padding:8px 12px;font-size:14px;">
-      </div>
-      <button id="btn-tp-confirm" style="width:100%;min-height:44px;background:#7cd7ff;color:#050814;font-weight:bold;border:none;border-radius:6px;cursor:pointer;">下达启航指令</button>
-    `;
+    const infoP = el('p', null, '指派编队运送母星物资直达目标殖民地仓储。货物在下单后由该编队送达。');
+    infoP.style.cssText = 'color:#94a3b8;font-size:13px;line-height:1.5;';
+    form.appendChild(infoP);
+
+    // 目的地
+    const tgtLabel = el('label', null, '目的地：');
+    tgtLabel.style.cssText = 'font-size:12px;color:#94a3b8;display:block;margin-bottom:4px;';
+    const tgtSel = document.createElement('select');
+    tgtSel.id = 'tp-target-code';
+    tgtSel.style.cssText = 'width:100%;min-height:44px;background:#0b101c;border:1px solid #22354c;color:#c8d4e0;border-radius:6px;padding:8px 12px;font-size:14px;';
+    for (const c of (capList.length ? capList : ['des'])) {
+      const o = document.createElement('option');
+      o.value = c;
+      o.textContent = c;
+      tgtSel.appendChild(o);
+    }
+    const tgtBox = el('div');
+    tgtBox.style.cssText = 'margin-bottom:12px;';
+    tgtBox.append(tgtLabel, tgtSel);
+    if (!capList.length) {
+      const warn = el('div', null, '尚无已占领殖民地，先去探索占领星球。');
+      warn.style.cssText = 'font-size:11px;color:#f09595;margin-top:4px;';
+      tgtBox.appendChild(warn);
+    }
+
+    // 物资品类（当前星球持有 > 0）
+    const matLabel = el('label', null, '物资品类（当前星球持有 > 0）：');
+    matLabel.style.cssText = 'font-size:12px;color:#94a3b8;display:block;margin-bottom:4px;';
+    const matSel2 = document.createElement('select');
+    matSel2.id = 'tp-mat-name';
+    matSel2.style.cssText = 'width:100%;min-height:44px;background:#0b101c;border:1px solid #22354c;color:#c8d4e0;border-radius:6px;padding:8px 12px;font-size:14px;';
+    for (const h of heldMats) {
+      const o = document.createElement('option');
+      o.value = h.mat;
+      o.textContent = h.mat + '（持有 ' + fmtNum(h.owned) + '）';
+      matSel2.appendChild(o);
+    }
+    if (!heldMats.length) {
+      const o = document.createElement('option');
+      o.value = '';
+      o.textContent = '（当前星球没有持有物资）';
+      matSel2.appendChild(o);
+    }
+    const matBox = el('div');
+    matBox.style.cssText = 'margin-bottom:12px;';
+    matBox.append(matLabel, matSel2);
+
+    // 数量
+    const qtyLabel = el('label', null, '运送数量：');
+    qtyLabel.style.cssText = 'font-size:12px;color:#94a3b8;display:block;margin-bottom:4px;';
+    const qtyInput = document.createElement('input');
+    qtyInput.type = 'number';
+    qtyInput.id = 'tp-qty';
+    qtyInput.min = '1';
+    qtyInput.value = '50';
+    qtyInput.style.cssText = 'width:100%;min-height:44px;box-sizing:border-box;background:#0b101c;border:1px solid #22354c;color:#c8d4e0;border-radius:6px;padding:8px 12px;font-size:14px;';
+    const qtyBox = el('div');
+    qtyBox.style.cssText = 'margin-bottom:12px;';
+    qtyBox.append(qtyLabel, qtyInput);
+
+    const confirmBtn = el('button', null, '下达启航指令');
+    confirmBtn.id = 'btn-tp-confirm';
+    confirmBtn.style.cssText = 'width:100%;min-height:44px;background:#7cd7ff;color:#050814;font-weight:bold;border:none;border-radius:6px;cursor:pointer;';
+
+    form.append(tgtBox, matBox, qtyBox, confirmBtn);
 
     if (openModal) {
       openModal({ title: '发起舰队运输任务', body: form });
@@ -720,6 +812,7 @@ export function renderFleet(container, ctx) {
             const tgt = document.getElementById('tp-target-code').value;
             const mat = document.getElementById('tp-mat-name').value;
             const qty = parseInt(document.getElementById('tp-qty').value, 10) || 10;
+            if (!mat) { alert('当前星球没有可运送的物资'); return; }
             const r = startMission(account, fleet.id, 'transport', tgt, { [mat]: qty });
             if (!r.ok) { alert(r.reason || '无法发起'); return; }
             if (closeModal) closeModal();
@@ -728,5 +821,109 @@ export function renderFleet(container, ctx) {
         }
       }, 50);
     }
+  }
+
+  // ============================================================================
+  // 登陆任务弹窗（v0.2.2）：选目标 + 选部队 → 发起登陆任务
+  // ============================================================================
+  function openLandDialog(fleet) {
+    const targets = listLandTargets(account);
+    const armies = embarkableArmies(account);
+    if (!targets.length) { alert('暂无可用登陆目标'); return; }
+
+    const form = el('div');
+    form.style.cssText = 'color:#c8d4e0;font-size:13px;';
+
+    const tgtLabel = el('label', null, '登陆目标：');
+    tgtLabel.style.cssText = 'display:block;margin-bottom:4px;color:#94a3b8;font-size:12px;';
+    const tgtSel = document.createElement('select');
+    tgtSel.id = 'land-target-sel';
+    tgtSel.style.cssText = 'width:100%;min-height:44px;background:#0b101c;border:1px solid #22354c;color:#c8d4e0;border-radius:6px;padding:8px 12px;font-size:14px;';
+    for (const t of targets) {
+      const opt = document.createElement('option');
+      opt.value = t.code;
+      opt.textContent = t.nameCn + '（' + t.code + '）· ' + (t.owned ? '己方星球（换防）' : '未知区域（登陆战）');
+      tgtSel.appendChild(opt);
+    }
+
+    const intel = el('div');
+    intel.style.cssText = 'margin:10px 0 12px;padding:10px;border:1px solid #22354c;border-radius:6px;background:rgba(0,0,0,0.3);line-height:1.7;';
+
+    const armyLabel = el('label', null, '选择出征部队（' + armies.length + ' 支可用）：');
+    armyLabel.style.cssText = 'display:block;margin-bottom:6px;color:#94a3b8;font-size:12px;';
+    const armyBox = el('div');
+    armyBox.style.cssText = 'max-height:220px;overflow-y:auto;border:1px solid #22354c;border-radius:6px;padding:6px;background:rgba(0,0,0,0.25);';
+    if (!armies.length) {
+      armyBox.appendChild(el('div', null, '没有可出征的部队（其余部队可能已随其它编队出征）。'));
+      armyBox.style.cssText += 'color:#64748b;padding:14px;text-align:center;';
+    }
+    const checks = [];
+    armies.forEach((a, i) => {
+      const lab = document.createElement('label');
+      lab.style.cssText = 'display:flex;align-items:center;gap:8px;padding:8px 6px;min-height:40px;cursor:pointer;border-bottom:1px dashed #1a2940;';
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.value = a.id;
+      cb.dataset.power = (a.stats && a.stats.power) || 0;
+      const info = document.createElement('span');
+      info.style.cssText = 'flex:1;font-size:12px;';
+      info.innerHTML = esc(a.nameCn)
+        + ' <span style="color:#9FE1CB;">战力 ' + fmtNum((a.stats && a.stats.power) || 0) + '</span>'
+        + ' <span style="color:#64748b;">· 现驻 ' + esc(a.planetCode || account.homePlanetCode || 'syl') + '</span>';
+      lab.append(cb, info);
+      armyBox.appendChild(lab);
+      checks.push(cb);
+      cb.addEventListener('change', updateIntel);
+    });
+
+    const ourLine = el('div');
+    const errLine = el('div');
+    errLine.style.cssText = 'color:#ff6b81;font-size:12px;margin:8px 0;min-height:16px;';
+    const confirmBtn = btn('下达登陆指令', 'btn-primary');
+    confirmBtn.style.cssText = 'width:100%;min-height:44px;background:#7cd7ff;color:#050814;font-weight:bold;border:none;border-radius:6px;cursor:pointer;';
+
+    function selectedArmyIds() {
+      return checks.filter((c) => c.checked).map((c) => c.value);
+    }
+    function selectedPower() {
+      return checks.reduce((s, c) => s + (c.checked ? (Number(c.dataset.power) || 0) : 0), 0);
+    }
+    function updateIntel() {
+      const t = targets.find((x) => x.code === tgtSel.value);
+      if (!t) return;
+      const v = fleetSpeedOf(account, fleet.id);
+      const dur = Math.round(Math.min(9000, Math.max(150, MISSION_DISTANCE.land / Math.max(1, v))));
+      const fuel = Math.round(MISSION_DISTANCE.land * EXPLORE_FUEL_PER_DIST);
+      let html = '航程约 <b style="color:#7cd7ff;">' + fmtTime(dur) + '</b>'
+        + ' · 每艘船燃料 <b style="color:#ffc46b;">' + fmtNum(fuel) + ' mol</b><br>';
+      if (t.owned) {
+        html += '<span style="color:#9FE1CB;">目标为己方星球：抵达后全军换防驻扎，无战斗。</span>';
+      } else {
+        const def = findPlanetDef(account, t.code);
+        const est = estimateGarrisonOf(def);
+        const our = selectedPower();
+        html += '<span style="color:#ffc46b;">侦测情报：守军规模约 ' + fmtNum(est.min) + ' ~ ' + fmtNum(est.max)
+          + '（丰度越高守军越强）</span><br>'
+          + '我方登陆部队总战力：<b style="color:' + (our > 0 ? '#9FE1CB' : '#64748b') + ';">' + fmtNum(our) + '</b>'
+          + (our > 0 && our >= est.max ? ' <span style="color:#9FE1CB;">≥ 守军上限，胜算极高</span>'
+            : our >= est.min ? ' <span style="color:#ffc46b;">处于预估区间，胜负难料</span>'
+              : our > 0 ? ' <span style="color:#f09595;">低于守军下限，风险极高</span>' : '');
+      }
+      intel.innerHTML = html;
+    }
+    tgtSel.addEventListener('change', updateIntel);
+    updateIntel();
+
+    confirmBtn.addEventListener('click', () => {
+      const ids = selectedArmyIds();
+      if (!ids.length) { errLine.textContent = '请至少选择一支部队出征。'; return; }
+      const r = startMission(account, fleet.id, 'land', tgtSel.value, { armyIds: ids });
+      if (!r.ok) { errLine.textContent = r.reason || '无法发起登陆任务'; return; }
+      if (closeModal) closeModal();
+      redraw();
+    });
+
+    form.append(tgtLabel, tgtSel, intel, armyLabel, armyBox, ourLine, errLine, confirmBtn);
+    if (openModal) openModal({ title: '发起登陆任务：' + fleet.nameCn, body: form });
   }
 }

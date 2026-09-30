@@ -24,15 +24,18 @@
 // 所有数字显示一律走 format.js 的 fmtNum / fmtRate / fmtRateBody / fmtSci。
 // 样式集中在 css/planet.css。
 
-import { MATERIALS } from '../data/materials.js?v=21.10';
-import { fmtNum, fmtRate, fmtSci } from '../core/format.js?v=21.10';
-import { getPlanetInstance, tick, currentAccount, atmosphereOf, ownedOf, rateOf } from '../core/state.js?v=21.10';
-import { computePower } from '../core/power.js?v=21.10';
-import { equipmentList } from '../core/shipyard.js?v=21.10';
-import { materialLabel, productionRates } from '../core/production.js?v=21.10';
-import { BUILDING_BY_ID } from '../data/buildings.js?v=21.10';
-import { NUTRIENT_NAMES, METABOLITE_NAMES, consumptionPerSec, metabolitePerSec } from '../core/population.js?v=21.10';
-import { playPing } from '../core/sound.js?v=21.10';
+import { MATERIALS } from '../data/materials.js?v=21.13';
+import { fmtNum, fmtRate, fmtSci } from '../core/format.js?v=21.13';
+import { getPlanetInstance, tick, currentAccount, atmosphereOf, ownedOf, rateOf } from '../core/state.js?v=21.13';
+import { computePower } from '../core/power.js?v=21.13';
+import { equipmentList } from '../core/shipyard.js?v=21.13';
+import { materialLabel, productionRates } from '../core/production.js?v=21.13';
+import { BUILDING_BY_ID } from '../data/buildings.js?v=21.13';
+import { NUTRIENT_NAMES, METABOLITE_NAMES, consumptionPerSec, metabolitePerSec } from '../core/population.js?v=21.13';
+import { playPing } from '../core/sound.js?v=21.13';
+// v0.2.3：军工与地面部队概览（真实数据，替换原装饰性假 HUD）
+import { ARMY_PART_BY_ID } from '../data/army_parts.js?v=21.13';
+import { stationedArmyPower } from '../core/army.js?v=21.13';
 
 // 地层扫描雷达配置
 const STRATA_CONFIG = [
@@ -176,81 +179,62 @@ export function renderInventory(container, planetOrCtx) {
   equipGrid.className = 'inv-grid';
   equipWrap.append(equipTitle, equipGrid);
 
-  // 军工重工与战备产能动员中枢 (v0.2.1-rev8 钢雄式军工种田体系)
-  const milIndustrySection = document.createElement('section');
-  milIndustrySection.className = 'inv-block mil-industry-section';
-  const milIndustryTitle = document.createElement('div');
-  milIndustryTitle.className = 'inv-block-title';
-  milIndustryTitle.innerHTML = '🏭 战时军工重工业动员枢纽<span class="inv-block-sub muted"> · 钢铁雄心式战时经济产能、重工流水线与战略武器军械总库</span>';
+  // ============================================================================
+  // v0.2.3：军备与地面部队概览（真实数据）
+  // ============================================================================
+  // 替换原「战时军工重工业动员枢纽」装饰性 HUD —— 那块的产能数字是硬编码的、
+  // 两个按钮只改一行随机文案（且调用了未导入的 playShield/playLaser，点击即报错），
+  // 没有任何游戏效果。现在只显示存档里的真实军事内容：
+  //   ① 军事部件库存（装备库里 ap_* 开头的部件，含材料与数量）
+  //   ② 现役部队与地面防卫战力（core/army.js 实时口径）
+  //   ③ 整编产线真实进度
+  // 没有任何军事内容时整块隐藏，不再占用首页空间。
+  const acc0 = currentAccount();
+  const milEquip = equipmentList(planet).filter((e) => e.count > 0 && String(e.partId || '').startsWith('ap_'));
+  const milArmies = acc0 && Array.isArray(acc0.armies) ? acc0.armies : [];
+  const milLines2 = acc0 && Array.isArray(acc0.armyBuildLines) ? acc0.armyBuildLines : [];
+  const hasMilContent = milEquip.length > 0 || milArmies.length > 0 || milLines2.length > 0;
 
-  const milIndustryHud = document.createElement('div');
-  milIndustryHud.className = 'glass';
-  milIndustryHud.style.cssText = 'margin:8px 0 14px 0;padding:12px;border-radius:8px;border:1px solid rgba(239,68,68,0.35);background:rgba(69,10,10,0.22);';
+  let milSection = null;
+  if (hasMilContent) {
+    milSection = document.createElement('section');
+    milSection.className = 'inv-block';
+    const milTitle = document.createElement('div');
+    milTitle.className = 'inv-block-title';
+    milTitle.innerHTML = '🪖 军备与地面部队<span class="inv-block-sub muted"> · 真实库存与整编进度（整编 / 驻防 / 登陆在「军队」与「舰队」页操作）</span>';
+    const milGrid = document.createElement('div');
+    milGrid.className = 'inv-grid';
+    milSection.append(milTitle, milGrid);
 
-  const milHeader = document.createElement('div');
-  milHeader.style.cssText = 'display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:8px;margin-bottom:10px;';
+    const milRows = [];
+    for (const e of milEquip.slice(0, 6)) {
+      const p = ARMY_PART_BY_ID[e.partId];
+      milRows.push('军事部件 · ' + (p ? p.nameCn : e.partId)
+        + '（' + materialLabel(planet, e.material == null ? '通用材料' : e.material) + '）×' + fmtNum(e.count));
+    }
+    if (milEquip.length > 6) milRows.push('……另有 ' + (milEquip.length - 6) + ' 种军事部件在装备库');
+    if (milArmies.length) {
+      const stationedN = milArmies.filter((a) => a && a.stationed !== false && !a.embarkFleet).length;
+      const embarkedN = milArmies.filter((a) => a && a.embarkFleet).length;
+      const pw = stationedArmyPower(acc0, planet.code);
+      milRows.push('现役部队 ' + milArmies.length + ' 个营（驻防 ' + stationedN
+        + (embarkedN ? ' · 随舰队出征 ' + embarkedN : '') + '）· 本星地面防卫 +' + fmtNum(pw));
+    }
+    for (const l of milLines2.slice(0, 4)) {
+      milRows.push('整编中：' + (l.nameCn || '部队') + ' · 进度 ' + Math.min(100, Math.floor((Number(l.progress) || 0) * 100)) + '%');
+    }
+    if (milLines2.length > 4) milRows.push('……另有 ' + (milLines2.length - 4) + ' 条整编产线');
 
-  const milStatus = document.createElement('div');
-  milStatus.style.cssText = 'font-size:13px;font-weight:bold;color:#fca5a5;display:flex;align-items:center;gap:6px;';
-  milStatus.innerHTML = '<span class="assembly-spark" style="display:inline-block;">⚙️</span><span>最高战备军备动员令</span><span style="font-size:11px;color:#fecaca;font-weight:normal;background:rgba(239,68,68,0.25);padding:2px 6px;border-radius:4px;border:1px solid rgba(239,68,68,0.4);">军工效能 100% · 总体战法案已签署</span>';
-
-  const milBtnGroup = document.createElement('div');
-  milBtnGroup.style.cssText = 'display:flex;gap:6px;';
-
-  const mobilizeBtn = document.createElement('button');
-  mobilizeBtn.type = 'button';
-  mobilizeBtn.className = 'btn-action';
-  mobilizeBtn.style.cssText = 'padding:4px 10px;min-height:30px;font-size:12px;border-radius:6px;border:1px solid #ef4444;background:rgba(239,68,68,0.2);color:#fca5a5;cursor:pointer;';
-  mobilizeBtn.innerHTML = '🚩 动员战时工业';
-
-  const speedupBtn = document.createElement('button');
-  speedupBtn.type = 'button';
-  speedupBtn.className = 'btn-action';
-  speedupBtn.style.cssText = 'padding:4px 10px;min-height:30px;font-size:12px;border-radius:6px;border:1px solid #f59e0b;background:rgba(245,158,11,0.2);color:#fcd34d;cursor:pointer;';
-  speedupBtn.innerHTML = '⚡ 过载军工厂流水线';
-
-  milBtnGroup.append(mobilizeBtn, speedupBtn);
-  milHeader.append(milStatus, milBtnGroup);
-
-  const milTelemetry = document.createElement('div');
-  milTelemetry.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;margin-bottom:8px;font-size:12px;';
-
-  const milLines = [
-    { icon: '🪖', name: '军用单兵突击步枪', cap: '产能 100%', status: '三班倒满载', color: '#f87171' },
-    { icon: '🛡️', name: '动力外骨骼装甲', cap: '产能 98%', status: '超导淬火中', color: '#60a5fa' },
-    { icon: '🚜', name: '全地形重装履带底盘', cap: '产能 95%', status: '流水线组装', color: '#fbbf24' },
-    { icon: '💣', name: '穿甲反舰高爆重火炮', cap: '产能 100%', status: '火线总装备战', color: '#a78bfa' }
-  ];
-
-  milLines.forEach(l => {
-    const card = document.createElement('div');
-    card.style.cssText = 'background:rgba(0,0,0,0.35);border:1px solid rgba(255,255,255,0.08);padding:8px;border-radius:6px;display:flex;align-items:center;gap:8px;';
-    card.innerHTML = `<div class="assembly-spark" style="font-size:20px;">${l.icon}</div><div><div style="font-weight:bold;color:${l.color};font-size:11px;">${l.name}</div><div style="font-size:10px;color:#94a3b8;">${l.cap} · <span style="color:#f87171;">${l.status}</span></div></div>`;
-    milTelemetry.appendChild(card);
-  });
-
-  const milLog = document.createElement('div');
-  milLog.style.cssText = 'font-size:11px;color:#94a3b8;font-family:monospace;background:rgba(0,0,0,0.25);padding:6px 10px;border-radius:6px;';
-  milLog.textContent = '重工简报：民用工业全力转产军工 · 冶金铸造与合金总装流水线运转正常 · 战备弹药储备率 100%';
-
-  mobilizeBtn.onclick = () => {
-    playShield();
-    const eff = Math.floor(105 + Math.random() * 20);
-    milLog.textContent = `战备动员已激活：全星球民用工厂已切换战时生产法案 · 重工总产出达标率 ${eff}% · 军械下线加速`;
-    milLog.style.color = '#f87171';
-    setTimeout(() => { milLog.style.color = '#94a3b8'; }, 2400);
-  };
-
-  speedupBtn.onclick = () => {
-    playLaser();
-    const boost = (18 + Math.random() * 12).toFixed(1);
-    milLog.textContent = `重工过载：注入超导高压电弧 · 军工制造车间工效即刻提升 +${boost}% · 重装武器总装序列全速推进`;
-    milLog.style.color = '#fbbf24';
-    setTimeout(() => { milLog.style.color = '#94a3b8'; }, 2400);
-  };
-
-  milIndustryHud.append(milHeader, milTelemetry, milLog);
-  milIndustrySection.append(milIndustryTitle, milIndustryHud);
+    for (const t of milRows) {
+      const row = document.createElement('div');
+      row.className = 'inv-row';
+      const name = document.createElement('span');
+      name.className = 'inv-name';
+      name.textContent = t;
+      row.appendChild(name);
+      milGrid.appendChild(row);
+    }
+  }
 
   const storeWrap = document.createElement('section');
   storeWrap.className = 'inv-block inv-block-store';
@@ -258,44 +242,18 @@ export function renderInventory(container, planetOrCtx) {
   storeTitle.className = 'inv-block-title';
   storeTitle.innerHTML = '星球储藏<span class="inv-block-sub muted"> · 按「资源 × 层」分开标注剩余储量，采集会扣减</span>';
 
-  // 行星地质断层雷达与深地脉勘探阵列
+  // v0.2.3：地层筛选条（保留真实功能：点按层卡片即可筛选下方储藏表；
+  //   删除原「地质断层雷达」里纯装饰的假声纳按钮、地震波动画与随机伪造回波文案）
   let selectedLayer = 'all';
   const strataHud = document.createElement('div');
   strataHud.className = 'strata-scanner glass';
   strataHud.style.cssText = 'margin:8px 0 12px 0;padding:12px;border-radius:8px;border:1px solid #38bdf835;background:rgba(15,23,42,0.65);';
 
   const radarHeader = document.createElement('div');
-  radarHeader.style.cssText = 'display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px;';
+  radarHeader.style.cssText = 'font-size:13px;font-weight:bold;color:#7cd7ff;margin-bottom:8px;';
+  radarHeader.textContent = '📡 按地层筛选储藏';
 
-  const radarTitle = document.createElement('div');
-  radarTitle.style.cssText = 'font-size:13px;font-weight:bold;color:#7cd7ff;display:flex;align-items:center;gap:6px;';
-  radarTitle.innerHTML = '<span>📡 行星地质断层雷达与深地脉勘探</span><span style="font-size:11px;color:#94a3b8;font-weight:normal;">(地壳深潜勘探阵列)</span>';
-
-  const sonarBtn = document.createElement('button');
-  sonarBtn.type = 'button';
-  sonarBtn.className = 'btn-action';
-  sonarBtn.style.cssText = 'padding:4px 10px;min-height:32px;font-size:12px;border-radius:6px;border:1px solid #38bdf850;background:rgba(56,189,248,0.15);color:#7cd7ff;cursor:pointer;';
-  sonarBtn.innerHTML = '⚡ 激发地脉声纳';
-
-  radarHeader.append(radarTitle, sonarBtn);
-
-  const waveContainer = document.createElement('div');
-  waveContainer.style.cssText = 'display:flex;align-items:center;gap:10px;margin-bottom:10px;background:rgba(0,0,0,0.25);padding:6px 10px;border-radius:6px;';
-
-  const waveGraphic = document.createElement('div');
-  waveGraphic.style.cssText = 'display:flex;align-items:center;gap:3px;height:18px;';
-  for (let i = 0; i < 7; i++) {
-    const bar = document.createElement('span');
-    bar.className = 'seismic-wave-bar';
-    bar.style.cssText = `display:inline-block;width:3px;height:${8 + (i % 3) * 5}px;background:#38bdf8;border-radius:2px;animation-delay:${i * 0.15}s;`;
-    waveGraphic.appendChild(bar);
-  }
-
-  const waveText = document.createElement('div');
-  waveText.style.cssText = 'font-size:11px;color:#94a3b8;font-family:monospace;flex:1;';
-  waveText.textContent = '地质回波：岩层稳定 · 地热流 310 K · 声纳通量 100% · 地层过滤已就绪';
-
-  waveContainer.append(waveGraphic, waveText);
+  const waveContainer = null;   // v0.2.3：地震波动画与伪造回波文案已删除（纯装饰）
 
   const strataRow = document.createElement('div');
   strataRow.style.cssText = 'display:flex;gap:6px;flex-wrap:wrap;';
@@ -321,16 +279,6 @@ export function renderInventory(container, planetOrCtx) {
     });
   }
 
-  sonarBtn.onclick = () => {
-    playPing();
-    const freqs = [14.2, 18.6, 22.4, 28.1, 9.8];
-    const f = freqs[Math.floor(Math.random() * freqs.length)];
-    const temp = Math.floor(290 + Math.random() * 80);
-    waveText.textContent = `地质回波：激发频率 ${f} Hz · 深层地热 ${temp} K · 勘探信噪比 21.8 dB · 矿脉谐振良好`;
-    waveText.style.color = '#34d399';
-    setTimeout(() => { waveText.style.color = '#94a3b8'; }, 2000);
-  };
-
   for (const s of STRATA_CONFIG) {
     const btn = document.createElement('button');
     btn.type = 'button';
@@ -345,10 +293,11 @@ export function renderInventory(container, planetOrCtx) {
     strataRow.appendChild(btn);
   }
 
-  strataHud.append(radarHeader, waveContainer, strataRow);
+  strataHud.append(radarHeader, strataRow);
   storeWrap.append(storeTitle, strataHud, storeGrid);
 
-  container.append(ownedWrap, equipWrap, milIndustrySection, storeWrap);
+  if (milSection) container.append(milSection);   // v0.2.3：仅在有真实军事内容时插入
+  container.append(ownedWrap, equipWrap, storeWrap);
 
   // ========================================================================
   // 行集合动态重建（v0.0.62）

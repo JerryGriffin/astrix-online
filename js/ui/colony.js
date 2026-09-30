@@ -12,24 +12,24 @@
 //  - 所有数字走 js/core/format.js；文本一律用 el({text})（textContent）做 HTML 转义。
 //  - 样式内联注入，不碰 css/ 目录。
 
-import { PLANETS } from '../data/planets.js?v=21.10';
+import { PLANETS } from '../data/planets.js?v=21.13';
 import {
   STATE, getPlanetInstance, shelterRatio, ownedOf,
-} from '../core/state.js?v=21.10';
-import { fmtNum } from '../core/format.js?v=21.10';
+} from '../core/state.js?v=21.13';
+import { fmtNum } from '../core/format.js?v=21.13';
 // v0.1.2（R8）：调派人力从母星扣「可用人力」，走 population.js 既有接口，不硬改字段
-import { getAvailable } from '../core/population.js?v=21.10';
+import { getAvailable } from '../core/population.js?v=21.13';
 // v0.1.5（需求 2）：运输物资到殖民地 —— 复用 fleet.js 的运输任务（startMission + listFleets）
-import { startMission, listFleets } from '../core/fleet.js?v=21.10';
+import { startMission, listFleets } from '../core/fleet.js?v=21.13';
 // v0.0.93：商店星 Ast1（独立星球入口）+ 商店面板（舰队页复用）
-import { SHOP_PLANET } from '../core/shop.js?v=21.10';
+import { SHOP_PLANET } from '../core/shop.js?v=21.13';
 // v0.1.1：发现门禁 + 商店星拦截 + 托管说明
 import {
   capturePlanet, ensureDiscoveredDefaults, purgeShopColonies,
   modeOf, TRIBUTE_RATES, MANAGEMENT_MODES,
-} from '../core/planetgen.js?v=21.10';
-import { renderShop } from './fleet.js?v=21.10';
-import { playPing, playVictory, playWarp } from '../core/sound.js?v=21.10';
+} from '../core/planetgen.js?v=21.13';
+import { renderShop } from './fleet.js?v=21.13';
+import { playPing, playVictory, playWarp } from '../core/sound.js?v=21.13';
 
 const CSS = `
   .col-panel { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; color: #e8eef2; padding: 12px; box-sizing: border-box; max-width: 960px; margin: 0 auto; }
@@ -567,21 +567,8 @@ export function renderColony(root, ctx) {
     panel.appendChild(el('div', { class: 'col-sub',
       text: '统筹帝国疆域：只有探索发现的星球才会出现在这里；殖民扩张，托管星球由电脑代管并向母星上缴贡品。' }));
 
-    // 行星疆域全息中枢条
-    const domainHud = el('div', {
-      style: 'background:#16202b;border:1px solid #38bdf835;border-radius:10px;padding:12px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;',
-    });
-    const dTitle = el('div', {
-      style: 'font-size:13px;font-weight:bold;color:#7cd7ff;display:flex;align-items:center;gap:6px;',
-      html: '<span>🪐 星际文明拓展与深空行省疆域</span><span style="font-size:11px;color:#94a3b8;font-weight:normal;">(多行星据点网络)</span>',
-    });
-    const dBadge = el('div', {
-      class: 'quantum-circuit',
-      style: 'font-size:11px;color:#6ee7b7;padding:3px 8px;border-radius:4px;border:1px solid #10b98150;font-family:monospace;',
-      text: '超空间物流网络：畅通运行',
-    });
-    domainHud.append(dTitle, dBadge);
-    panel.appendChild(domainHud);
+    // v0.2.3：删除原「行星疆域全息中枢条」——「超空间物流网络：畅通运行」是硬编码装饰徽章，
+    //   无任何数据含义；真实的疆域统计由下方概览四项（已殖民/人口/人力/幸福度）承担。
 
     // 顶部概览
     const overview = el('div', { class: 'col-overview' });

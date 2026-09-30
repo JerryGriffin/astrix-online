@@ -2,10 +2,10 @@
 // 提供军队蓝图战力评估、建制组装生产线、驻防防卫结算与部队管理。
 // 遵循零构建原生 ES 模块规范，纯算法与业务逻辑。
 
-import { ARMY_BLUEPRINTS, ARMY_BP_BY_ID, ARMY_PART_BY_ID, armyBpPartNeeds } from '../data/army_parts.js?v=21.10';
-import { getPlanetInstance, ownedOf, spendOwned } from './state.js?v=21.10';
-import { fmtNum } from './format.js?v=21.10';
-import { addEquipment } from './shipyard.js?v=21.10';
+import { ARMY_BLUEPRINTS, ARMY_BP_BY_ID, ARMY_PART_BY_ID, armyBpPartNeeds } from '../data/army_parts.js?v=21.13';
+import { getPlanetInstance, ownedOf, spendOwned } from './state.js?v=21.13';
+import { fmtNum } from './format.js?v=21.13';
+import { addEquipment } from './shipyard.js?v=21.13';
 
 let _armySeq = 0;
 function genArmyId() {
@@ -71,12 +71,15 @@ export function ensureArmies(acc) {
 
 /**
  * 计算驻防在指定星球的全部地面军队总战力
+ * v0.2.2：随舰队出征（embarkFleet 非空）的部队**不计入**任何星球的地面防卫——
+ *   部队已经登舰在途，不能再「既守家又在船上」两头吃加成。
  */
 export function stationedArmyPower(acc, planetCode) {
   if (!acc || !Array.isArray(acc.armies)) return 0;
   const targetCode = planetCode || acc.homePlanetCode || 'syl';
   let total = 0;
   for (const a of acc.armies) {
+    if (!a || a.embarkFleet) continue;                     // 在舰队上的不算地面驻防
     if (a && a.stationed !== false) {
       const code = a.planetCode || acc.homePlanetCode || 'syl';
       if (code === targetCode || code === targetCode.replace(/\d+$/, '') || targetCode.startsWith(code)) {
@@ -85,6 +88,12 @@ export function stationedArmyPower(acc, planetCode) {
     }
   }
   return total;
+}
+
+/** 未被舰队搭载、可执行登陆任务的全部部队（v0.2.2） */
+export function embarkableArmies(acc) {
+  if (!acc || !Array.isArray(acc.armies)) return [];
+  return acc.armies.filter((a) => a && !a.embarkFleet);
 }
 
 /**

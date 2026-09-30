@@ -1,9 +1,11 @@
 // 开始界面：标题、离线/在线模式、账号选择、各次要入口模态层（Astrix）
-import {  STATE, createAccount, switchAccount, deleteAccount, currentAccount, START_MODES, setStorageMode, getStorageMode  } from '../core/state.js?v=21.10';
-import { fmtNum, fmtTime } from '../core/format.js?v=21.10';
-import { isSoundEnabled, toggleSound } from '../core/sound.js?v=21.10';
+import {  STATE, createAccount, switchAccount, deleteAccount, currentAccount, START_MODES, setStorageMode, getStorageMode  } from '../core/state.js?v=21.13';
+import { fmtNum, fmtTime } from '../core/format.js?v=21.13';
+import { isSoundEnabled, toggleSound } from '../core/sound.js?v=21.13';
 // 版本号与更新日志的唯一来源：任何地方要显示版本都从这里取，改版本只改 js/version.js 一处
-import { VERSION, VERSIONS } from '../version.js?v=21.10';
+import { VERSION, VERSIONS } from '../version.js?v=21.13';
+// v0.2.2：离线 mod 系统
+import { listMods, installMod, setModEnabled, removeMod, modEffects } from '../core/mods.js?v=21.13';
 
 // 创建元素的小工具
 function el(tag, cls, text) {
@@ -612,14 +614,143 @@ function openStats(ctx) {
   ctx.openModal({ title: '指挥官统帅殿堂与星际成就', body });
 }
 
+// ============================================================================
+// mod 管理（v0.2.2 落地）：JSON 导入 / 启停 / 卸载，仅离线模式生效
+// ============================================================================
+const MOD_SAMPLE = {
+  name: '畅玩加速包',
+  version: '1.0',
+  author: '指挥官',
+  desc: '采集/生产/科研 3 倍，开局追加物资',
+  effects: {
+    collectRateMul: 3,
+    lineRateMul: 3,
+    researchRateMul: 3,
+    powerOutputMul: 1.5,
+    startAscoin: 500000,
+    startResources: { '石头': 5000, '水': 5000, '铁': 1000 },
+  },
+};
+
+function fmtModEffectLine(fx) {
+  const parts = [];
+  const mulNames = {
+    collectRateMul: '采集', lineRateMul: '生产', researchRateMul: '科研', powerOutputMul: '发电',
+  };
+  for (const k in mulNames) {
+    const v = Number(fx[k]);
+    if (Number.isFinite(v) && v !== 1) parts.push(mulNames[k] + ' ×' + v);
+  }
+  if (Number(fx.startAscoin) > 0) parts.push('开局 +' + fmtNum(fx.startAscoin) + ' Ascoin');
+  const res = fx.startResources || {};
+  const resKeys = Object.keys(res);
+  if (resKeys.length) {
+    parts.push('开局 ' + resKeys.map((m) => m + '×' + fmtNum(res[m])).join('、'));
+  }
+  return parts.length ? parts.join(' · ') : '（无生效数值）';
+}
+
 function openMod(ctx) {
   const body = document.createElement('div');
-  body.appendChild(el('p', 'modal-tip', '离线模式 mod 系统开发中，敬请期待。'));
-  const only = el('p', 'modal-tip mod-offline-only', '⚠ 只对离线模式生效');
-  body.appendChild(only);
-  const btn = el('button', 'btn', '导入 mod');
-  btn.disabled = true;
-  body.appendChild(btn);
+
+  body.appendChild(el('p', 'modal-tip',
+    '导入 JSON 格式 mod 文件，为离线游戏调整数值倍率或开局物资。倍率对离线模式的全部存档生效，开局物资只对导入后新建的存档生效。不会上传、不影响在线模式。'));
+
+  // 当前生效的总效果
+  const fx = modEffects();
+  const fxLine = el('p', 'modal-tip', '当前合成效果：' + fmtModEffectLine(fx));
+  fxLine.style.color = '#9FE1CB';
+  body.appendChild(fxLine);
+
+  // 已安装列表
+  const mods = listMods();
+  if (mods.length) {
+    const listTitle = el('div', null, '已安装（' + mods.length + '）');
+    listTitle.style.cssText = 'font-size:13px;font-weight:bold;color:#7cd7ff;margin:10px 0 6px;';
+    body.appendChild(listTitle);
+    for (const m of mods) {
+      const row = document.createElement('div');
+      row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:8px;border:1px solid #22354c;border-radius:6px;margin-bottom:6px;background:rgba(0,0,0,0.25);';
+      const info = document.createElement('div');
+      info.style.cssText = 'flex:1;min-width:0;';
+      info.innerHTML = '<b style="color:#f1f5f9;">' + escapeHtml(m.name) + '</b>'
+        + ' <span style="color:#64748b;font-size:11px;">v' + escapeHtml(m.version || '') + ' · ' + escapeHtml(m.author || '') + '</span>'
+        + '<div style="font-size:11px;color:#94a3b8;margin-top:2px;word-break:break-all;">'
+        + (m.desc ? escapeHtml(m.desc) + '<br>' : '')
+        + '<span style="color:#9FE1CB;">' + escapeHtml(fmtModEffectLine(m.effects || {})) + '</span></div>';
+      const tog = el('button', 'btn btn-sm', m.enabled === false ? '已停用' : '已启用');
+      tog.style.cssText = 'min-height:36px;' + (m.enabled === false
+        ? 'background:rgba(255,255,255,0.06);color:#64748b;'
+        : 'background:rgba(159,225,203,0.15);color:#9FE1CB;');
+      tog.addEventListener('click', () => {
+        setModEnabled(m.id, m.enabled === false);
+        closeModal();
+        openMod(ctx);
+      });
+      const del = el('button', 'btn btn-sm btn-danger', '卸载');
+      del.style.cssText = 'min-height:36px;';
+      del.addEventListener('click', () => {
+        confirmModal(ctx, '卸载 mod', `确定卸载「${m.name}」吗？（开局资源类效果对已建存档不回滚）`, () => {
+          removeMod(m.id);
+          closeModal();
+          openMod(ctx);
+        });
+      });
+      row.append(info, tog, del);
+      body.appendChild(row);
+    }
+  } else {
+    body.appendChild(el('p', 'modal-tip muted', '尚未安装任何 mod。'));
+  }
+
+  // 导入区
+  const impTitle = el('div', null, '导入新 mod');
+  impTitle.style.cssText = 'font-size:13px;font-weight:bold;color:#7cd7ff;margin:12px 0 6px;';
+  body.appendChild(impTitle);
+
+  const ta = document.createElement('textarea');
+  ta.id = 'mod-json-input';
+  ta.placeholder = '把 mod 的 JSON 内容粘贴到这里，或点击下方「载入示例」参考格式…';
+  ta.style.cssText = 'width:100%;height:130px;box-sizing:border-box;background:#0b101c;color:#c8d4e0;border:1px solid #22354c;border-radius:6px;padding:10px;font:12px/1.5 ui-monospace,Consolas,monospace;white-space:pre;word-break:break-all;';
+  body.appendChild(ta);
+
+  const err = el('div', null, '');
+  err.style.cssText = 'color:#ff6b81;font-size:12px;margin:6px 0;min-height:16px;';
+  body.appendChild(err);
+
+  const btnRow = document.createElement('div');
+  btnRow.style.cssText = 'display:flex;gap:8px;flex-wrap:wrap;';
+  const btnSample = el('button', 'btn', '载入示例');
+  btnSample.style.minHeight = '44px';
+  btnSample.addEventListener('click', () => { ta.value = JSON.stringify(MOD_SAMPLE, null, 2); });
+  const btnFile = el('button', 'btn', '从文件导入');
+  btnFile.style.minHeight = '44px';
+  btnFile.addEventListener('click', () => {
+    const inp = document.createElement('input');
+    inp.type = 'file';
+    inp.accept = '.json,application/json';
+    inp.addEventListener('change', () => {
+      const f = inp.files && inp.files[0];
+      if (!f) return;
+      const reader = new FileReader();
+      reader.addEventListener('load', () => { ta.value = String(reader.result || ''); });
+      reader.readAsText(f);
+    });
+    inp.click();
+  });
+  const btnInstall = el('button', 'btn btn-primary', '安装 mod');
+  btnInstall.style.minHeight = '44px';
+  btnInstall.addEventListener('click', () => {
+    const r = installMod(ta.value);
+    if (!r.ok) { err.textContent = r.reason || '安装失败'; return; }
+    closeModal();
+    openMod(ctx);
+  });
+  btnRow.append(btnSample, btnFile, btnInstall);
+  body.appendChild(btnRow);
+
+  body.appendChild(el('p', 'modal-tip mod-offline-only', '⚠ 只对离线模式生效；在线模式一律忽略 mod 数值。'));
+
   ctx.openModal({ title: 'mod 管理', body });
 }
 

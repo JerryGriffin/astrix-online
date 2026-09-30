@@ -13,17 +13,19 @@
 //   * 不修改 state.js / ui/* / data/buildings.js / data/materials.js / data/facilities.js /
 //     data/techs.js / version.js / index.html。
 
-import { RECIPES, RECIPE_BY_ID, recipesOfBuilding, getRecipe } from '../data/recipes.js?v=21.10';
-import { jobsOfBuilding, getIntensity, getAvailable, buildingSlots, jobOutput } from './population.js?v=21.10';
-import { MATERIALS } from '../data/materials.js?v=21.10';
-import { PART_BY_ID, craftableParts, craftWorkOf } from '../data/ship_parts.js?v=21.10';
-import { POWER_FACILITY_BY_ID } from '../data/facilities.js?v=21.10';
+import { RECIPES, RECIPE_BY_ID, recipesOfBuilding, getRecipe } from '../data/recipes.js?v=21.13';
+import { jobsOfBuilding, getIntensity, getAvailable, buildingSlots, jobOutput } from './population.js?v=21.13';
+import { MATERIALS } from '../data/materials.js?v=21.13';
+import { PART_BY_ID, craftableParts, craftWorkOf } from '../data/ship_parts.js?v=21.13';
+import { POWER_FACILITY_BY_ID } from '../data/facilities.js?v=21.13';
 // v0.0.92：殖民管理模式对产出的倍率（自由 1.25 / 剥削 1.60 / 领土 0.85 …）
-import { outputMulOf } from './planetgen.js?v=21.10';
-import { addEquipment } from './shipyard.js?v=21.10';
+import { outputMulOf } from './planetgen.js?v=21.13';
+import { addEquipment } from './shipyard.js?v=21.13';
 // v0.1.2（需求 18/19）：永久升级「冶炼 / 人力」的乘方效果，唯一实现在 data/upgrades.js#upgradeMul
-import { upgradeMul } from '../data/upgrades.js?v=21.10';
-import { ARMY_PARTS, ARMY_PART_BY_ID } from '../data/army_parts.js?v=21.10';
+import { upgradeMul } from '../data/upgrades.js?v=21.13';
+import { ARMY_PARTS, ARMY_PART_BY_ID } from '../data/army_parts.js?v=21.13';
+// v0.2.2：离线 mod 生产线倍率（叶子模块，无循环依赖）
+import { modEffects } from './mods.js?v=21.13';
 
 // nameCn → 材料对象（供 derivedStatsOf 查属性，纯查表不读 inst）
 const MATERIAL_BY_NAME = Object.fromEntries(MATERIALS.map((m) => [m.nameCn, m]));
@@ -883,7 +885,7 @@ export function tickProduction(inst, dt, powerRatio, acc = null) {
     if (!(labor > 0)) continue;
     // 产出速率 = 有效人力 × powerRatio / recipe.work（次/秒）
     // v0.1.2 R16：生产线（非农田）产出速率统一 ×5（V012_LINE_RATE_MUL）；农田不在此路径，不会叠加成 ×25。
-    const rate = (labor * powerRatio * V012_LINE_RATE_MUL * upg.refine) / Math.max(1, Number(recipe.work) || 1);
+    const rate = (labor * powerRatio * V012_LINE_RATE_MUL * upg.refine * modEffects().lineRateMul) / Math.max(1, Number(recipe.work) || 1);   // v0.2.2：mod 倍率
 
     // 投料：部件配方按线选定的材料折算；设施配方可能要投所选板面材料；其余用配方自带 inputs
     const inputs = recipe.producesPart
@@ -1029,7 +1031,7 @@ export function productionRates(inst, powerRatio, acc = null) {
       let eff = labor * efficiencyBonus(inst) * outputMulOf(inst) * upg.labor;
       const cached = Number(line._ratio);
       if (Number.isFinite(cached)) eff *= cached;
-      rate = (eff * powerRatio * upg.refine * V012_LINE_RATE_MUL) / Math.max(1, Number(recipe.work) || 1);
+      rate = (eff * powerRatio * upg.refine * V012_LINE_RATE_MUL * modEffects().lineRateMul) / Math.max(1, Number(recipe.work) || 1);   // v0.2.2：mod 倍率
     }
     let slot = out[bid];
     if (!slot) {

@@ -9,15 +9,15 @@
 // 「船上设施」已从科技树移到「设施」子分类，科技树里只保留解锁它们的节点。
 //
 // 研究点存放在账号对象上（acc.researchPoints / acc.tech / acc.upgrades）。
-import { TECHS, TECH_BY_ID, BRANCHES, techsByTier, canResearch, missingPrereqs, facilityTechs } from '../data/techs.js?v=21.10';
-import { researchTech, buyUpgrade, currentAccount, getPlanetInstance, RESEARCH_UNIT } from '../core/state.js?v=21.10';
-import { UPGRADES, upgradeCost, upgradeMul, upgradeFactorAt } from '../data/upgrades.js?v=21.10';
-import { BUILDING_BY_ID } from '../data/buildings.js?v=21.10';
-import { FACILITIES, MATERIAL_SLOTS, DEFAULT_MATERIAL, isPartUnlocked } from '../data/ship_parts.js?v=21.10';
-import { materialMul, resolvePart } from '../core/shipyard.js?v=21.10';
-import { fmtNum, fmtTime, fmtRate } from '../core/format.js?v=21.10';
-import { jobsOfBuilding, jobOutput } from '../core/population.js?v=21.10';
-import { playPing, playVictory, playLaser } from '../core/sound.js?v=21.10';
+import { TECHS, TECH_BY_ID, BRANCHES, techsByTier, canResearch, missingPrereqs, facilityTechs } from '../data/techs.js?v=21.13';
+import { researchTech, buyUpgrade, currentAccount, getPlanetInstance, RESEARCH_UNIT } from '../core/state.js?v=21.13';
+import { UPGRADES, upgradeCost, upgradeMul, upgradeFactorAt } from '../data/upgrades.js?v=21.13';
+import { BUILDING_BY_ID } from '../data/buildings.js?v=21.13';
+import { FACILITIES, MATERIAL_SLOTS, DEFAULT_MATERIAL, isPartUnlocked } from '../data/ship_parts.js?v=21.13';
+import { materialMul, resolvePart } from '../core/shipyard.js?v=21.13';
+import { fmtNum, fmtTime, fmtRate } from '../core/format.js?v=21.13';
+import { jobsOfBuilding, jobOutput } from '../core/population.js?v=21.13';
+import { playPing, playVictory, playLaser } from '../core/sound.js?v=21.13';
 
 function esc(s) {
   return String(s).replace(/[&<>"']/g, (c) => (
@@ -112,25 +112,9 @@ export function renderResearch(root, ctx) {
   head.append(itemPoints, itemTech, itemNote);
   wrap.appendChild(head);
 
-  // 全息科研导能矩阵 HUD
-  const matrixHud = el('div', 'quantum-hud glass');
-  matrixHud.style.cssText = 'margin:10px 0 14px 0;padding:12px 16px;border-radius:8px;border:1px solid #38bdf840;position:relative;overflow:hidden;background:rgba(15,23,42,0.65);';
-
-  const circuitBar = el('div', 'quantum-circuit');
-  circuitBar.style.cssText = 'height:3px;width:100%;border-radius:2px;margin-bottom:10px;';
-
-  const matrixContent = el('div');
-  matrixContent.style.cssText = 'display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:12px;font-size:12px;';
-
-  const mStatus = el('div');
-  mStatus.innerHTML = '<span style="color:#38bdf8;font-weight:bold;">⚛️ 量子超导科研矩阵</span> <span style="color:#94a3b8;margin-left:6px;">导能谐振率 99.4%</span>';
-
-  const mThroughput = el('div', 'res-throughput');
-  mThroughput.style.cssText = 'color:#34d399;font-family:monospace;';
-
-  matrixContent.append(mStatus, mThroughput);
-  matrixHud.append(circuitBar, matrixContent);
-  wrap.appendChild(matrixHud);
+  // v0.2.3：删除原「全息科研导能矩阵 HUD」——「导能谐振率 99.4%」是硬编码假数据，
+  //   MFLOPs 通量是研究点增速套皮，与顶部「研究点 + 增速」完全重复，整块纯装饰。
+  //   真实信息（研究点 / 增速 / 已解锁科技数）保留在上方头部。
 
   // 研究点每秒都在涨（科研所运转时），挂 1 秒定时器只刷新顶部数字，避免整块重绘冲掉按钮与滚动位置。
   // 重复进入面板时先清旧定时器，避免叠加；面板被卸载（.research-wrap 不存在）时自动停。
@@ -141,12 +125,9 @@ export function renderResearch(root, ctx) {
     if (g > 1e-9) {
       growthNode.textContent = '(' + fmtRate(g) + ')';
       growthNode.setAttribute('style', 'color:#9FE1CB');
-      const mflops = (g * 840).toFixed(1);
-      mThroughput.innerHTML = `算力通量：<b>${mflops}</b> MFLOPs · 超弦拟合中`;
     } else {
       growthNode.textContent = '(0)';
       growthNode.setAttribute('style', 'color:#7d8a97');
-      mThroughput.innerHTML = '算力通量：<b style="color:#7d8a97">0.0</b> MFLOPs · 待机';
     }
   }
   updateGrowth();

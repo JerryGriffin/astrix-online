@@ -3,10 +3,10 @@
 // 所有相对导入一律带 ?v=11.0（与冻结契约一致）。
 import {
   MISSION_DISTANCE, EXPLORE_FUEL_PER_DIST, startMission,
-  createFleet, addShipToFleet, ensureFleets,
-} from '../js/core/fleet.js?v=21.10';
-import { STATE } from '../js/core/state.js?v=21.10';
-import { renderFleet } from '../js/ui/fleet.js?v=21.10';
+  createFleet, addShipToFleet, ensureFleets, listFleets, disbandFleet,
+} from '../js/core/fleet.js?v=21.13';
+import { STATE } from '../js/core/state.js?v=21.13';
+import { renderFleet } from '../js/ui/fleet.js?v=21.13';
 
 // ---------------------------------------------------------------------------
 // 极简 DOM 桩：仅实现 renderFleet / openTransportForm 用到的子集
@@ -68,7 +68,7 @@ ensureFleets(account);
 // 母星实例：3 项持有 > 0，2 项持有 = 0（用于 R12 下拉断言）
 const inst = {
   code: HOME, planetId: HOME + '1', isHome: true, management: 'territory', independence: 0,
-  buildings: { dock: 1 }, buildQueue: [], pop: { happiness: 1, total: 0 },
+  buildings: { dock: 1 }, buildQueue: [], pop: { happiness: 1, total: 0, assignments: {}, intensityId: 'standard' },
   inventory: [
     { mat: '石头', owned: 100, layer: 'surface' },
     { mat: '水', owned: 0, layer: 'surface' },
@@ -92,6 +92,8 @@ const s2 = mkShip('s2');
 account.ships.push(s1, s2);
 
 function freshFleet(name) {
+  // 先解散既有编队释放 s1/s2（飞船不可同时编入两队，否则后续编队为空、startMission 全挂）
+  for (const f of listFleets(account).slice()) disbandFleet(account, f.id);
   const f = createFleet(account, name).fleet;
   addShipToFleet(account, f.id, s1.id);
   addShipToFleet(account, f.id, s2.id);
@@ -138,8 +140,9 @@ console.log('  [推导] 每船每次 = ' + perShip + ' mol（占一箱 ' + BOX +
 console.log('  [新旧值] 编队燃料: 出发前 ' + beforeFuel + ' → 出发后 ' + afterFuel + '（扣 ' + (beforeFuel - afterFuel) + '）');
 check('每船预扣 = dist × EXPLORE_FUEL_PER_DIST', perShip === 300000 * 0.0012, 'perShip=' + perShip);
 check('单次消耗落在 一箱 20%~50%', perShip >= BOX * 0.2 && perShip <= BOX * 0.5, '占比=' + (perShip / BOX * 100).toFixed(0) + '%');
-check('编队总扣 = 每船 × 船数', (beforeFuel - afterFuel) === perShip * 2, '扣=' + (beforeFuel - afterFuel));
-check('每艘船精确扣 360', s1.state.fuelMol === BOX - perShip && s2.state.fuelMol === BOX - perShip, 's1=' + s1.state.fuelMol);
+check('编队总扣 = 每船 × 船数', Math.round(beforeFuel - afterFuel) === Math.round(perShip) * 2, '扣=' + (beforeFuel - afterFuel));
+// 共享油箱口径：逐船顺序扣减（先扣满一艘再下一艘），总量精确即可，单船分布不要求均分
+check('编队扣减总量 = 每船 × 船数（共享油箱）', Math.round(s1.state.fuelMol + s2.state.fuelMol) === Math.round(beforeFuel - Math.round(perShip) * 2), '余=' + (s1.state.fuelMol + s2.state.fuelMol));
 
 console.log('\n===== R6 燃料不足 → startMission 失败并给原因 =====');
 s1.state.fuelMol = 100; s2.state.fuelMol = 100;   // 合计 200 < 需要 720
@@ -147,7 +150,7 @@ const fShort = freshFleet('燃料不足');
 const rShort = startMission(account, fShort.id, 'explore');
 console.log('  [原因] ' + (rShort.reason || '(无)'));
 check('燃料不足时 ok=false', rShort.ok === false, 'ok=' + rShort.ok);
-check('原因含「燃料不足（需要 X，编队仅有 Y）」', /燃料不足（需要\s*\d+，编队仅有\s*\d+）/.test(rShort.reason || ''), 'reason=' + rShort.reason);
+check('原因含「燃料不足（需要 X，编队合计 Y）」', /燃料不足（需要\s*\d+，编队合计\s*\d+）/.test(rShort.reason || ''), 'reason=' + rShort.reason);
 check('燃料不足不扣船油', s1.state.fuelMol === 100 && s2.state.fuelMol === 100, 's1=' + s1.state.fuelMol);
 
 console.log('\n===== R12 运输物资下拉 = 持有 >0 条目数（真实 UI）=====');
@@ -157,10 +160,10 @@ const container = makeEl('div');
 let capturedForm = null;
 const openModal = (opts) => { capturedForm = opts && opts.body; };
 renderFleet(container, { account, planetCode: HOME, openModal, rerender: () => {} });
-const tBtn = findEl(container, (e) => e.textContent === '运输' && e._l && e._l.click);
+const tBtn = findEl(container, (e) => e.textContent === '📦 运输' && e._l && e._l.click);   // v0.2.3 rev13：任务按钮带图标
 check('找到「运输」指令按钮', !!tBtn);
 if (tBtn) tBtn.click();
-const matSel = capturedForm ? findEl(capturedForm, (e) => e.tagName === 'select') : null;
+const matSel = capturedForm ? findEl(capturedForm, (e) => e.tagName === 'select' && e.id === 'tp-mat-name') : null;
 const optCount = matSel ? matSel.children.filter((c) => c.value !== '').length : -1;
 const heldCount = inst.inventory.filter((e) => (Number(e.owned) || 0) > 0).length;
 console.log('  [实测] 运输下拉非占位选项数 = ' + optCount);

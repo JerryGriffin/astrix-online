@@ -12,15 +12,17 @@
 //
 // 重要：本模块**不 import state.js**（state.js 会 import 本模块，互相 import 会成环）。
 // 所有星球实例数据（inst.buildings / inst.pop / inst.inventory / inst.facilities / 静态 inst.power）
-// 都直接从传入的 inst 对象上读；建筑表来自 '../data/buildings.js?v=21.10'（纯数据，无环）。
+// 都直接从传入的 inst 对象上读；建筑表来自 '../data/buildings.js?v=21.13'（纯数据，无环）。
 
-import { BUILDING_BY_ID } from '../data/buildings.js?v=21.10';
-import { POWER_FACILITY_BY_ID } from '../data/facilities.js?v=21.10';
-import { RECIPES } from '../data/recipes.js?v=21.10';
-import { jobsOfBuilding, jobOutput, assignedToBuilding, buildingSlots } from '../core/population.js?v=21.10';
-import { facilityStockOf, linesOf } from './production.js?v=21.10';
+import { BUILDING_BY_ID } from '../data/buildings.js?v=21.13';
+import { POWER_FACILITY_BY_ID } from '../data/facilities.js?v=21.13';
+import { RECIPES } from '../data/recipes.js?v=21.13';
+import { jobsOfBuilding, jobOutput, assignedToBuilding, buildingSlots } from '../core/population.js?v=21.13';
+import { facilityStockOf, linesOf } from './production.js?v=21.13';
 // v0.1.2（需求 18/19）：永久升级「发电效率」的乘方效果，唯一实现在 data/upgrades.js#upgradeMul
-import { upgradeMul } from '../data/upgrades.js?v=21.10';
+import { upgradeMul } from '../data/upgrades.js?v=21.13';
+// v0.2.2：离线 mod 发电倍率（叶子模块，无循环依赖）
+import { modEffects } from './mods.js?v=21.13';
 
 // ============================================================================
 // v0.0.7：玩家在制造车间为设施选定的「燃料 / 板面材料」
@@ -265,6 +267,8 @@ export function computePower(inst, acc) {
   }
 
   // ---- 耗电：只统计「正在运转」的耗电建筑 ----
+  // v0.2.2：离线 mod 发电倍率统一乘在总发电上（建筑 + 设施一并生效）
+  gen = gen * modEffects().powerOutputMul;
   // 两种口径（设计者 v0.1.0 明确区分）：
   //   * 加工建筑（HAS_RECIPE_BUILDING）：按「运转中的生产线条数 × powerDraw」——
   //     每条运转的线代表一个独立工序，付费按工序数而非人数（见下分支）。

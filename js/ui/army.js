@@ -1,17 +1,17 @@
 // 军队系统用户界面（Astrix v0.2.0）
 // 纯原生 ES 模块，深空玻璃拟态风格，移动端与 PC 端自适应（点击区 >= 44px）
 
-import { currentAccount, getPlanetInstance } from '../core/state.js?v=21.10';
+import { currentAccount, getPlanetInstance } from '../core/state.js?v=21.13';
 import {
   ARMY_BLUEPRINTS, ARMY_BP_BY_ID, ARMY_PART_BY_ID, armyBpPartNeeds, armyBpMaterialNeeds
-} from '../data/army_parts.js?v=21.10';
+} from '../data/army_parts.js?v=21.13';
 import {
   listArmies, ensureArmies, armyStatsOf, stationedArmyPower, toggleStationed, disbandArmy,
   getArmyPartStock, canAssembleArmy, startArmyAssemble, cancelArmyAssemble
-} from '../core/army.js?v=21.10';
-import { fmtNum } from '../core/format.js?v=21.10';
-import { playPing, playShield, playLaser, playVictory } from '../core/sound.js?v=21.10';
-import { openBattleView } from './combat.js?v=21.10';
+} from '../core/army.js?v=21.13';
+import { fmtNum } from '../core/format.js?v=21.13';
+import { playPing, playShield, playLaser, playVictory } from '../core/sound.js?v=21.13';
+import { openBattleView } from './combat.js?v=21.13';
 
 function escapeHtml(s) {
   return String(s ?? '').replace(/[&<>"']/g, (c) => (
@@ -45,7 +45,8 @@ export function renderArmy(root, ctx) {
     // 1. 顶部战力与驻防概况
     const totalPower = stationedArmyPower(acc, inst.code || planetCode);
     const armies = listArmies(acc);
-    const stationedCount = armies.filter((a) => a.stationed !== false).length;
+    const stationedCount = armies.filter((a) => a.stationed !== false && !a.embarkFleet).length;
+    const embarkedCount = armies.filter((a) => a.embarkFleet).length;
     const hasCommandTech = Array.isArray(acc.tech) && acc.tech.includes('t_m5');
 
     const header = document.createElement('div');
@@ -58,7 +59,7 @@ export function renderArmy(root, ctx) {
         <span>🪖 行星防卫与陆战部队</span>
       </div>
       <div style="font-size:12px;color:#94a3b8;margin-top:6px;line-height:1.5;">
-        现役编成：<b style="color:#f1f5f9;">${armies.length}</b> 个营（驻防中 <b style="color:#9FE1CB;">${stationedCount}</b> 个）
+        现役编成：<b style="color:#f1f5f9;">${armies.length}</b> 个营（驻防中 <b style="color:#9FE1CB;">${stationedCount}</b> 个${embarkedCount > 0 ? ` · 随舰队出征 <b style="color:#7cd7ff;">${embarkedCount}</b> 个` : ''}）
         <span style="margin:0 6px;">·</span>
         地面要塞防卫战力：<b style="color:#9FE1CB;font-size:14px;">+${fmtNum(totalPower)}</b>
       </div>
@@ -255,14 +256,15 @@ export function renderArmy(root, ctx) {
 
       const stats = a.stats || {};
       const isStationed = a.stationed !== false;
+      const isEmbarked = !!a.embarkFleet;   // v0.2.2：随舰队出征中
 
       const info = document.createElement('div');
       info.style.cssText = 'flex:1;min-width:240px;';
       info.innerHTML = `
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
           <span style="font-size:15px;font-weight:bold;color:#f1f5f9;">${escapeHtml(a.nameCn)}</span>
-          <span style="font-size:11px;padding:2px 6px;border-radius:4px;background:${isStationed ? 'rgba(159,225,203,0.15)' : 'rgba(255,255,255,0.06)'};color:${isStationed ? '#9FE1CB' : '#94a3b8'};border:1px solid ${isStationed ? '#9FE1CB50' : '#475569'};">
-            ${isStationed ? '🛡️ 驻防本星' : '⚡ 机动备勤'}
+          <span style="font-size:11px;padding:2px 6px;border-radius:4px;background:${isEmbarked ? 'rgba(124,215,255,0.15)' : isStationed ? 'rgba(159,225,203,0.15)' : 'rgba(255,255,255,0.06)'};color:${isEmbarked ? '#7cd7ff' : isStationed ? '#9FE1CB' : '#94a3b8'};border:1px solid ${isEmbarked ? '#7cd7ff50' : isStationed ? '#9FE1CB50' : '#475569'};">
+            ${isEmbarked ? '🚀 随舰队出征中' : isStationed ? '🛡️ 驻防本星' : '⚡ 机动备勤'}
           </span>
         </div>
         <div style="font-size:12px;color:#94a3b8;display:flex;gap:14px;margin-top:4px;">
@@ -271,28 +273,36 @@ export function renderArmy(root, ctx) {
           <span>机动: <b style="color:#ffc46b">${stats.speed || 0}</b></span>
           <span>综合战力: <b style="color:#9FE1CB">${fmtNum(stats.power || 0)}</b></span>
         </div>
+        ${isEmbarked ? '<div style="font-size:11px;color:#7cd7ff;margin-top:4px;">该营已登舰，由舰队面板的「登陆」任务统一指挥；出征期间不计入星球地面防卫。</div>' : ''}
       `;
 
       const actions = document.createElement('div');
       actions.style.cssText = 'display:flex;gap:8px;align-items:center;';
 
-      // 驻防状态切换
+      // 驻防状态切换（出征中锁定）
       const btnToggle = document.createElement('button');
       btnToggle.className = 'btn-action';
-      btnToggle.style.cssText = `padding:6px 12px;min-height:44px;border-radius:6px;font-size:12px;cursor:pointer;border:1px solid ${isStationed ? '#7cd7ff50' : '#9FE1CB50'};background:${isStationed ? 'rgba(124,215,255,0.1)' : 'rgba(159,225,203,0.12)'};color:${isStationed ? '#7cd7ff' : '#9FE1CB'};`;
-      btnToggle.textContent = isStationed ? '转入机动备勤' : '驻防本星防线';
+      btnToggle.style.cssText = `padding:6px 12px;min-height:44px;border-radius:6px;font-size:12px;cursor:${isEmbarked ? 'not-allowed' : 'pointer'};border:1px solid ${isEmbarked ? '#334155' : isStationed ? '#7cd7ff50' : '#9FE1CB50'};background:${isEmbarked ? 'rgba(255,255,255,0.04)' : isStationed ? 'rgba(124,215,255,0.1)' : 'rgba(159,225,203,0.12)'};color:${isEmbarked ? '#64748b' : isStationed ? '#7cd7ff' : '#9FE1CB'};`;
+      btnToggle.textContent = isEmbarked ? '出征中…' : isStationed ? '转入机动备勤' : '驻防本星防线';
+      btnToggle.disabled = isEmbarked;
+      btnToggle.title = isEmbarked ? '部队正随舰队出征，任务结束（或取消）后归建' : '';
       btnToggle.onclick = () => {
+        if (isEmbarked) return;
         playPing();
         toggleStationed(acc, a.id);
         refresh();
       };
 
-      // 解散编制
+      // 解散编制（出征中锁定）
       const btnDisband = document.createElement('button');
       btnDisband.className = 'btn-action';
       btnDisband.style.cssText = 'padding:6px 12px;min-height:44px;border:1px solid #f0959540;background:rgba(240,149,149,0.08);color:#f09595;border-radius:6px;cursor:pointer;font-size:12px;';
       btnDisband.textContent = '解散编制';
+      btnDisband.disabled = isEmbarked;
+      btnDisband.style.opacity = isEmbarked ? '0.45' : '1';
+      btnDisband.style.cursor = isEmbarked ? 'not-allowed' : 'pointer';
       btnDisband.onclick = () => {
+        if (isEmbarked) return;
         if (confirm(`确定要解散部队「${a.nameCn}」吗？部分部件将返还归入装备库。`)) {
           playLaser();
           disbandArmy(acc, inst, a.id);

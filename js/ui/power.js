@@ -8,14 +8,14 @@ import {
   computePower, energyOf,
   installedFacilities, installFacility, uninstallFacility, facilityStockOf,
   panelEffOf, facilityFuelOf, buildingCountBonus,
-} from '../core/power.js?v=21.10';
-import { POWER_FACILITIES, POWER_FACILITY_BY_ID } from '../data/facilities.js?v=21.10';
-import { BUILDING_BY_ID } from '../data/buildings.js?v=21.10';
-import { RECIPES } from '../data/recipes.js?v=21.10';
-import { linesOf } from '../core/production.js?v=21.10';
-import { jobsOfBuilding, jobOutput, assignedToBuilding, buildingSlots } from '../core/population.js?v=21.10';
-import { fmtNum, fmtRate, fmtRateBody } from '../core/format.js?v=21.10';
-import { playPing, playLaser, playShield } from '../core/sound.js?v=21.10';
+} from '../core/power.js?v=21.13';
+import { POWER_FACILITIES, POWER_FACILITY_BY_ID } from '../data/facilities.js?v=21.13';
+import { BUILDING_BY_ID } from '../data/buildings.js?v=21.13';
+import { RECIPES } from '../data/recipes.js?v=21.13';
+import { linesOf } from '../core/production.js?v=21.13';
+import { jobsOfBuilding, jobOutput, assignedToBuilding, buildingSlots } from '../core/population.js?v=21.13';
+import { fmtNum, fmtRate, fmtRateBody } from '../core/format.js?v=21.13';
+import { playPing, playLaser, playShield } from '../core/sound.js?v=21.13';
 
 const CSS = `
   .pwr-panel { font-family: system-ui, sans-serif; color: #e8eef2; padding: 12px; box-sizing: border-box; }
@@ -272,13 +272,13 @@ export function renderPower(root, ctx) {
     });
     panel.appendChild(sourcesWrap);
 
-    // ---- 智能微电网导能环网 HUD ----
+    // ---- 储电蓄能条 HUD（v0.2.3：删除假「调测微电网母线」按钮与伪造频率/相角文案，
+    //      只保留真实的储电蓄能率可视化，数字口径与下方概览一致）----
     const gridHud = el('div', { class: 'pwr-grid-hud' });
     const hudHead = el('div', { class: 'pwr-hud-head' });
     const hudTitle = el('div', { class: 'pwr-hud-title' });
-    hudTitle.innerHTML = '<span>⚡ 行星智能微电网与导流中枢</span><span style="font-size:11px;color:#94a3b8;font-weight:normal;">(超导母线自动稳频)</span>';
-    const diagBtn = el('button', { class: 'pwr-hud-btn', text: '⚡ 调测微电网母线' });
-    hudHead.append(hudTitle, diagBtn);
+    hudTitle.innerHTML = '<span>⚡ 电网储电蓄能</span><span style="font-size:11px;color:#94a3b8;font-weight:normal;">(实时蓄能率)</span>';
+    hudHead.append(hudTitle);
 
     const chargePct = pw.storageMax > 0 ? Math.min(100, Math.max(0, Math.round((pw.storage / pw.storageMax) * 100))) : 0;
     const chargeTrack = el('div', { class: 'pwr-charge-track' });
@@ -289,17 +289,7 @@ export function renderPower(root, ctx) {
     chargeTrack.appendChild(chargeFill);
 
     const hudTelem = el('div', { class: 'pwr-hud-telemetry' });
-    const freq = pw.ratio >= 1 ? '50.00 Hz (极度稳定)' : '46.80 Hz (过载欠频警报)';
-    hudTelem.textContent = `储电蓄能率: ${chargePct}% · 电网母线频率: ${freq} · 谐振损耗: <0.01%`;
-
-    diagBtn.onclick = () => {
-      playPing();
-      const phases = ['0.01°', '0.03°', '0.00°', '0.02°'];
-      const p = phases[Math.floor(Math.random() * phases.length)];
-      hudTelem.textContent = `微电网相角差: ${p} · 导能环网母线阻抗趋近 0 Ω · 全星区相位锁相已校准`;
-      hudTelem.style.color = '#34d399';
-      setTimeout(() => { hudTelem.style.color = '#94a3b8'; }, 2000);
-    };
+    hudTelem.textContent = `储电蓄能率: ${chargePct}%（${fmtNum(pw.storage)} / ${fmtNum(pw.storageMax)}） · 充放速率: ${fmtRate(pw.storageRate)}/s`;
 
     gridHud.append(hudHead, chargeTrack, hudTelem);
     panel.appendChild(gridHud);
