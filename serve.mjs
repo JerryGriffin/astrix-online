@@ -1,3 +1,12 @@
+// ⚠️ 已废弃（v0.2.3）：本文件是早期的简易静态服务器，**当前无任何代码引用**。
+// 项目实际入口是 server.mjs（start_online.bat → launch.mjs → server.mjs）。
+//
+// 请勿用它对外提供服务：它保留了 server.mjs 已修复的三处缺陷 ——
+//   ① 无静态资源白名单 ⇒ 项目下所有文件（含 .git/config 的内嵌凭据）都可被下载；
+//   ② decodeURIComponent 未做保护 ⇒ 畸形编码请求（如 `/%`）会抛错并终止进程；
+//   ③ startsWith(ROOT) 前缀判定可被相邻目录绕过。
+// 修复方案见 docs/SERVER_HARDENING.md。若确认无人依赖，建议直接删除本文件。
+
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';

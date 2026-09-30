@@ -18,5 +18,7 @@ Hardcore Sci-Fi Real-time Multiplayer Space Strategy Game.
 > 「Creating a Space that runs on compute (Gradio or Docker) requires a paid plan.
 > This includes converting an existing Static Space to Gradio or Docker.」
 > 因此在免费额度下只能维持 `static`（**单机 + NPC 星系**可玩；在线集市 / 公频 / 攻防不生效）。
-> 服务器的持久化与联机能力已完整实现并自检通过，迁移到任何能跑 Node 的容器主机即可启用，
-> 见 `docs/HF_ONLINE_FEASIBILITY.md` 与 `docs/HF_STATE_PERSISTENCE.md`。
+> 服务器的持久化与联机能力已完整实现并自检通过，迁移到任何能跑 Node 的容器主机即可启用
+> —— `server.mjs` 同源托管静态资源与 API，前端**零改动**。对外部署前请先读：
+> `docs/HF_ONLINE_FEASIBILITY.md`（可行性实测）、`docs/HF_STATE_PERSISTENCE.md`（全服状态持久化）、
+> `docs/SERVER_HARDENING.md`（暴露面收敛，含"必须修完才可对外"的两处缺陷）。

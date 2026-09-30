@@ -28,6 +28,46 @@ const MIME = {
 };
 
 // ============================================================================
+// 静态资源白名单
+// ----------------------------------------------------------------------------
+// 公开站点只应暴露客户端真正需要的文件。此前是「命中即发」（ROOT 下任何文件都能下载），
+// 实测在局域网/公网上可以直接取到：
+//   /.git/config             —— 内含带内嵌凭据的 remote URL（令牌泄漏，最严重）
+//   /.workbuddy/memory/*.md  —— 项目内部记忆
+//   /server.mjs /docs/*      —— 服务端源码与内部文档
+//   /data/online-state.json  —— 全服快照（配好磁盘持久化后真实存在）
+//   /node.exe                —— 67 MB 便携运行时
+// 故改为白名单。客户端实测只需要 index.html 与 js/、css/ 两个目录：
+// index.html 仅引用 css/*.css 与 js/main.js，js/ 内部全部为相对导入。
+const PUBLIC_FILES = new Set(['/index.html']);
+const PUBLIC_DIR_PREFIXES = ['/js/', '/css/'];
+
+// 畸形百分号编码（如 `/%`、`/%E4%B8`）会让 decodeURIComponent 抛 URIError。
+// 返回 null 表示「非法路径」，由调用方回 404，绝不把异常抛给上层。
+function safeDecodePath(raw) {
+  try {
+    return decodeURIComponent(raw);
+  } catch (e) {
+    return null;
+  }
+}
+
+// 把请求路径解析为可公开访问的真实文件路径；不可公开访问一律返回 null。
+function resolvePublicFile(pathname) {
+  if (!PUBLIC_FILES.has(pathname) && !PUBLIC_DIR_PREFIXES.some((p) => pathname.startsWith(p))) {
+    return null;
+  }
+  const decoded = safeDecodePath(pathname);
+  if (decoded === null || decoded.includes('\0')) return null;
+  const fullPath = path.resolve(ROOT, `.${decoded}`);
+  // 包含性判定必须用 path.relative，不能只做字符串前缀比较：ROOT 为 `…/astra` 时，
+  // `…/astra-evil` 也能通过 startsWith，等于绕开守卫读到相邻目录。
+  const rel = path.relative(ROOT, fullPath);
+  if (!rel || rel.startsWith('..') || path.isAbsolute(rel)) return null;
+  return fullPath;
+}
+
+// ============================================================================
 // 全服在线数据结构（运行时驻留内存；持久化由下方「全服状态持久化」区块负责）
 // ============================================================================
 const ONLINE_STORE = {
@@ -677,9 +717,27 @@ async function handleApi(req, res, pathname) {
 // ============================================================================
 // 静态文件与服务器主干
 // ============================================================================
-const server = http.createServer(async (req, res) => {
-  const urlObj = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
-  const pathname = urlObj.pathname;
+const server = http.createServer((req, res) => {
+  // 请求处理整体包在 try/catch 里。处理器是 async 的，任何同步抛错都会升级成
+  // 「未处理的 Promise 拒绝」，而 Node 22 默认据此终止进程 —— 即一个畸形请求就能
+  // 打挂全服（实测 `GET /%` 触发的 URIError 正是如此，单请求远程 DoS）。
+  // 对外服务绝不能让单个请求的异常升级为进程退出。
+  handleRequest(req, res).catch((e) => {
+    console.error(`[http] 请求处理异常 ${req.method} ${req.url}: ${(e && e.message) || e}`);
+    if (!res.headersSent) res.writeHead(500, { 'Content-Type': 'text/plain; charset=utf-8' });
+    if (!res.writableEnded) res.end('500 Internal Server Error');
+  });
+});
+
+async function handleRequest(req, res) {
+  let pathname;
+  try {
+    pathname = new URL(req.url, `http://${req.headers.host || 'localhost'}`).pathname;
+  } catch (e) {
+    res.writeHead(400, { 'Content-Type': 'text/plain; charset=utf-8' });
+    res.end('400 Bad Request');
+    return;
+  }
 
   // 拦截 API
   if (pathname.startsWith('/api/')) {
@@ -690,22 +748,38 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // 静态文件托管
+  // 静态文件托管（白名单 + 正确的包含性判定）
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
 
-  let filePath = pathname === '/' ? '/index.html' : pathname;
-  const fullPath = path.join(ROOT, decodeURIComponent(filePath));
+  const fullPath = resolvePublicFile(pathname === '/' ? '/index.html' : pathname);
+  let stat = null;
+  try {
+    stat = fullPath ? fs.statSync(fullPath) : null;
+  } catch (e) {
+    stat = null;
+  }
 
-  if (!fullPath.startsWith(ROOT) || !fs.existsSync(fullPath) || fs.statSync(fullPath).isDirectory()) {
+  if (!fullPath || !stat || stat.isDirectory()) {
     res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
     res.end('404 Not Found');
     return;
   }
 
   const ext = path.extname(fullPath);
-  res.writeHead(200, { 'Content-Type': MIME[ext] || 'application/octet-stream' });
+  res.writeHead(200, { 'Content-Type': MIME[ext] || 'application/octet-stream', 'Content-Length': stat.size });
   fs.createReadStream(fullPath).pipe(res);
+}
+
+// 最后一道保险：任何逃逸出来的异常只记录、不退出进程。
+// 对外服务的可用性优先于 fail-fast —— 全服世界不该因为某个坏请求而整体消失。
+// 正常情况下不会走到这里（请求级已有 try/catch），一旦触发说明有真实缺陷待修。
+process.on('unhandledRejection', (e) => {
+  console.error(`[guard] 未处理的 Promise 拒绝（已忽略，服务继续）: ${(e && e.message) || e}`);
+});
+process.on('uncaughtException', (e) => {
+  console.error(`[guard] 未捕获异常（已忽略，服务继续）: ${(e && e.stack) || e}`);
 });
 
 // 先选定持久化后端并尝试恢复上一次的全服快照，再开始监听（避免首次请求打到空世界）
