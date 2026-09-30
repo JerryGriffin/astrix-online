@@ -14,17 +14,17 @@
 
 import {
   ensureReady, cloudStatus, cloudUser,
-  signInWithPassword, sendEmailOtp, verifyEmailOtp, signOutCloud,
+  signInWithPassword, signUpWithPassword, astrixEmailOf, signOutCloud,
   listPublicPlanets, publishMyPlanet, postIncident, fetchInbox, markIncidentResolved,
-} from '../core/cloud.js?v=20.15';
-import { currentAccount, getPlanetInstance, ownedOf, spendOwned } from '../core/state.js?v=20.15';
-import { ensureEntry } from '../core/production.js?v=20.15';
-import { listFleets, fleetPowerOf, defenseBonusOf } from '../core/fleet.js?v=20.15';
-import { totalArmyPowerOf, listArmies, disbandArmy, resolveBattle } from '../core/army.js?v=20.15';
+} from '../core/cloud.js?v=20.16';
+import { currentAccount, getPlanetInstance, ownedOf, spendOwned } from '../core/state.js?v=20.16';
+import { ensureEntry } from '../core/production.js?v=20.16';
+import { listFleets, fleetPowerOf, defenseBonusOf } from '../core/fleet.js?v=20.16';
+import { totalArmyPowerOf, listArmies, disbandArmy, resolveBattle } from '../core/army.js?v=20.16';
 // v0.2.1：内嵌殖民地管理（含内联报告），取代在线模式独立的「星球选择」tab
-import { renderColony } from './colony.js?v=20.15';
-import { PLANETS } from '../data/planets.js?v=20.15';
-import { fmtNum } from '../core/format.js?v=20.15';
+import { renderColony } from './colony.js?v=20.16';
+import { PLANETS } from '../data/planets.js?v=20.16';
+import { fmtNum } from '../core/format.js?v=20.16';
 
 function el(tag, cls, text) {
   const e = document.createElement(tag);
@@ -66,9 +66,12 @@ function buildSnapshot(acc, ctx) {
   const code = ctx.planetCode || (acc && acc.homePlanetCode) || 'syl';
   const inst = getPlanetInstance(code);
   const p = PLANETS.find((x) => x.code === code);
+  // v0.2.10：在线模式星球编号全局唯一 —— 追加账号短码（交互按 owner_id，编号仅展示）
+  const u = cloudUser();
+  const tag = (u && u.id) ? String(u.id).replace(/[^a-zA-Z0-9]/g, '').slice(-6).toLowerCase() : '';
   return {
     ownerName: (acc && acc.name) || '深空旅人',
-    planetCode: code,
+    planetCode: code + (tag ? '-' + tag : ''),
     planetNameCn: (p && p.nameCn) || '母星',
     faction: '殖民者',
     summary: {
@@ -117,6 +120,7 @@ function renderShell(body, ctx, rerender) {
   const acc = ctx.account || currentAccount();
   ensureAllianceFields(acc);   // v0.2.10 结盟字段兜底
   const u = cloudUser();
+  const myName = u ? (((u.email || '').split('@')[0]) || u.id) : '';   // v0.2.10：显示账号名而非邮箱
   body.innerHTML = '';
 
   // ---- 1. 顶部状态栏 ----
@@ -124,10 +128,10 @@ function renderShell(body, ctx, rerender) {
   const idBox = el('div', 'gx-id');
   const callsign = el('div', 'gx-callsign');
   callsign.appendChild(el('span', null, (acc && acc.name) || '深空旅人'));
-  if (u) callsign.appendChild(el('span', 'gx-tag', u.email || u.id));
+  if (u) callsign.appendChild(el('span', 'gx-tag', '账号：' + myName));
   idBox.appendChild(callsign);
   idBox.appendChild(el('div', 'gx-email' + (u ? '' : ' unbound'),
-    u ? ('邮箱 ' + (u.email || u.id)) : '未登录（无法查看其他玩家星球）'));
+    u ? ('账号 ' + myName) : '未登录（无法查看其他玩家星球）'));
   header.appendChild(idBox);
 
   const actions = el('div', 'gx-actions');
@@ -251,55 +255,36 @@ function openLoginModal(ctx, rerender) {
   const openModal = ctx.openModal;
   if (!openModal) return;
   const wrap = el('div');
-  // —— 密码登录 ——
-  wrap.appendChild(el('div', 'section-title', '密码登录'));
+  // v0.2.10：账号名 + 密码登录 / 注册（不强制邮箱；账号名映射为合成邮箱）
+  wrap.appendChild(el('div', 'section-title', '账号登录 / 注册'));
   const f1 = el('div', 'galaxy-form');
-  const email1 = document.createElement('input');
-  email1.type = 'email'; email1.placeholder = '邮箱';
+  const name1 = document.createElement('input');
+  name1.type = 'text'; name1.placeholder = '账号名';
   const pw1 = document.createElement('input');
   pw1.type = 'password'; pw1.placeholder = '密码';
-  const btn1 = el('button', 'btn btn-primary', '登录');
+  const btn1 = el('button', 'btn btn-primary', '登录 / 注册');
   const msg1 = el('div', 'muted');
   btn1.addEventListener('click', async () => {
+    const n = name1.value.trim();
+    if (!n) { msg1.textContent = '请输入账号名。'; return; }
+    if (!pw1.value || pw1.value.length < 4) { msg1.textContent = '密码至少 4 位。'; return; }
     msg1.textContent = '登录中…';
-    const r = await signInWithPassword(email1.value, pw1.value);
-    msg1.textContent = r.ok ? '成功' : (r.reason || '失败');
-    if (r.ok) { ctx.closeModal && ctx.closeModal(); rerender(); }
+    const email = astrixEmailOf(n);
+    let r = await signInWithPassword(email, pw1.value);
+    if (!r.ok) {
+      msg1.textContent = '账号不存在或密码错误，尝试注册…';
+      const su = await signUpWithPassword(email, pw1.value);
+      if (!su.ok) { msg1.textContent = '注册失败：' + (su.reason || '未知错误'); return; }
+      r = await signInWithPassword(email, pw1.value);
+      if (!r.ok) { msg1.textContent = '注册成功但登录失败：' + (r.reason || ''); return; }
+    }
+    msg1.textContent = '欢迎，' + n + '！';
+    ctx.closeModal && ctx.closeModal();
+    rerender();
   });
-  f1.appendChild(email1); f1.appendChild(pw1); f1.appendChild(btn1);
+  f1.appendChild(name1); f1.appendChild(pw1); f1.appendChild(btn1);
   wrap.appendChild(f1); wrap.appendChild(msg1);
-
-  // —— 验证码登录 / 注册 ——
-  wrap.appendChild(el('div', 'section-title', '验证码登录 / 注册'));
-  const f2 = el('div', 'galaxy-form');
-  const email2 = document.createElement('input');
-  email2.type = 'email'; email2.placeholder = '邮箱';
-  const code2 = document.createElement('input');
-  code2.type = 'text'; code2.placeholder = '验证码'; code2.style.display = 'none';
-  const pw2 = document.createElement('input');
-  pw2.type = 'password'; pw2.placeholder = '设置密码（新账号必填）'; pw2.style.display = 'none';
-  const btnSend = el('button', 'btn', '获取验证码');
-  const btnGo = el('button', 'btn btn-primary', '提交');
-  btnGo.style.display = 'none';
-  const msg2 = el('div', 'muted');
-  btnSend.addEventListener('click', async () => {
-    msg2.textContent = '发送中…';
-    const r = await sendEmailOtp(email2.value);
-    if (!r.ok) { msg2.textContent = r.reason || '发送失败'; return; }
-    msg2.textContent = r.isExistingUser ? '验证码已发送，请查收邮箱。' : '新账号：验证码已发送，请设置密码后提交。';
-    code2.style.display = ''; btnGo.style.display = '';
-    if (!r.isExistingUser) pw2.style.display = '';
-    btnSend.disabled = true;
-  });
-  btnGo.addEventListener('click', async () => {
-    msg2.textContent = '提交中…';
-    const r = await verifyEmailOtp(code2.value, pw2.value);
-    msg2.textContent = r.ok ? '成功' : (r.reason || '验证失败');
-    if (r.ok) { ctx.closeModal && ctx.closeModal(); rerender(); }
-  });
-  f2.appendChild(email2); f2.appendChild(btnSend); f2.appendChild(code2); f2.appendChild(pw2); f2.appendChild(btnGo);
-  wrap.appendChild(f2); wrap.appendChild(msg2);
-  openModal({ title: '云账号（邮箱）', body: wrap });
+  openModal({ title: '云账号（账号名 + 密码）', body: wrap });
 }
 
 // ============================================================================

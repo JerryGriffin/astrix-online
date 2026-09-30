@@ -19,7 +19,7 @@
 //   → 「打别人 / 贸易别人」= 插入一条 target_uid 指向对方的事件；
 //     对方上线后在收件箱本地结算，并把回执（战报/贸易结算）作为新事件发回。
 
-import { CACHE_TAG } from '../version.js?v=20.15';
+import { CACHE_TAG } from '../version.js?v=20.16';
 
 const CLOUD_ENDPOINT = 'https://astrix.app.workbuddy.host';
 const CLOUD_PUBLISHABLE_KEY = 'wbpk_a83qn1S1YtnqmhL6Wb2oF3_dIuTVZ1qLa1Ph94JTqQhmspVf2q27z14';
@@ -465,4 +465,31 @@ export async function upsertSharedWarehouseRow(mat, qty) {
   }
   if (!(await bridgeEnsureReady())) return { ok: false, reason: state.error || '云服务不可用' };
   return bridgeRpc('upsertSharedWarehouseRow', [m, q]);
+}
+
+// ============================================================================
+// 账号名登录（v0.2.10：不强制邮箱 —— 账号名映射为合成邮箱，密码注册 / 登录）
+//   * 云后端身份是邮箱形：账号名 → 'p' + hash(账号名) + '@astrix.game'（对玩家透明）
+//   * 同名账号哈希相同；登录失败（不存在）时 UI 侧自动走 signUp 注册再登录
+// ============================================================================
+export function astrixEmailOf(name) {
+  const s = String(name || '').trim().toLowerCase();
+  let h = 5381;
+  for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) >>> 0;
+  return 'p' + h.toString(16) + '@astrix.game';
+}
+
+export async function signUpWithPassword(email, password) {
+  if (isNative()) {
+    if (!(await nativeEnsureReady()) || !state.client) return { ok: false, reason: state.error || '云服务不可用' };
+    try {
+      if (typeof state.client.auth.signUp !== 'function') return { ok: false, reason: '云服务暂不支持密码注册' };
+      const { data, error } = await state.client.auth.signUp({ email: String(email || '').trim(), password: String(password || '') });
+      if (error) return { ok: false, reason: error.message || '注册失败' };
+      state.user = data && data.user ? { id: data.user.id, email: data.user.email || '' } : null;
+      return { ok: true, user: state.user };
+    } catch (e) { return { ok: false, reason: (e && e.message) || String(e) }; }
+  }
+  if (!(await bridgeEnsureReady())) return { ok: false, reason: state.error || '云服务不可用' };
+  return bridgeRpc('signUpWithPassword', [email, password]);
 }

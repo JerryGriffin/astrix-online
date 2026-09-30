@@ -1,9 +1,9 @@
 // 应用入口：路由、全局模态层与启动（Astrix）
-import { STATE, loadState, createAccount, currentAccount, saveState, tick, settleOffline, OFFLINE_RATIO } from './core/state.js?v=20.15';
-import { renderStart, openAccountPicker } from './ui/start.js?v=20.15';
-import { renderPlanet } from './ui/planet.js?v=20.15';
+import { STATE, loadState, createAccount, currentAccount, saveState, tick, settleOffline, OFFLINE_RATIO } from './core/state.js?v=20.16';
+import { renderStart, openAccountPicker } from './ui/start.js?v=20.16';
+import { renderPlanet } from './ui/planet.js?v=20.16';
 // v0.2.1：在线模式前置 —— 进入游戏前必须先绑定邮箱（验证码登录 / 注册）
-import { sendEmailOtp, verifyEmailOtp, cloudUser, signInWithPassword, ensureReady } from './core/cloud.js?v=20.15';
+import { cloudUser, signInWithPassword, signUpWithPassword, astrixEmailOf, ensureReady } from './core/cloud.js?v=20.16';
 
 const root = document.getElementById('app');
 const modalRoot = document.getElementById('modal-root');
@@ -182,46 +182,46 @@ function onEnterOnlineGame() {
 // 邮箱绑定模态：验证码登录 / 注册（复用 cloud.js 的 sendEmailOtp / verifyEmailOtp）。
 // 成功后回调 onBound（进入在线模式）。
 function openOnlineBindModal(onBound) {
+  // v0.2.10：登录改「账号名 + 密码」，不强制邮箱 —— 账号名映射为合成邮箱后走密码注册 / 登录
   const wrap = document.createElement('div');
   wrap.appendChild(el('p', 'modal-tip',
-    '在线模式需先绑定邮箱（验证码登录 / 注册）。绑定后身份与云端关联，可跨端同步、浏览其他玩家星球并发起贸易 / 进攻。'));
+    '在线模式 · 登录 / 注册：输入账号名与密码即可（无需邮箱）。账号与云端关联，可跨端同步、浏览其他玩家星球并贸易 / 结盟 / 进攻。'));
 
   const f = document.createElement('div');
   f.className = 'galaxy-form';
-  const email = document.createElement('input');
-  email.type = 'email'; email.placeholder = '邮箱';
-  const code = document.createElement('input');
-  code.type = 'text'; code.placeholder = '验证码'; code.style.display = 'none';
+  const name = document.createElement('input');
+  name.type = 'text'; name.placeholder = '账号名'; name.autocomplete = 'username';
   const pw = document.createElement('input');
-  pw.type = 'password'; pw.placeholder = '设置密码（新账号必填）'; pw.style.display = 'none';
-  const btnSend = el('button', 'btn', '获取验证码');
-  const btnGo = el('button', 'btn btn-primary', '提交并进入');
-  btnGo.style.display = 'none';
+  pw.type = 'password'; pw.placeholder = '密码'; pw.autocomplete = 'current-password';
+  const btnGo = el('button', 'btn btn-primary', '登录 / 注册');
   const msg = el('div', 'muted');
-  f.append(email, btnSend, code, pw, btnGo);
+  f.append(name, pw, btnGo);
   wrap.appendChild(f);
   wrap.appendChild(msg);
-
-  btnSend.addEventListener('click', async () => {
-    msg.textContent = '发送中…';
-    const r = await sendEmailOtp(email.value);
-    if (!r.ok) { msg.textContent = r.reason || '发送失败'; return; }
-    msg.textContent = r.isExistingUser
-      ? '验证码已发送，请查收邮箱后填写并提交。'
-      : '新账号：验证码已发送，请设置密码后提交。';
-    code.style.display = ''; btnGo.style.display = '';
-    if (!r.isExistingUser) pw.style.display = '';
-    btnSend.disabled = true;
-  });
-  btnGo.addEventListener('click', async () => {
-    msg.textContent = '提交中…';
-    const r = await verifyEmailOtp(code.value, pw.value);
-    if (!r.ok) { msg.textContent = r.reason || '验证失败'; return; }
+  const go = async () => {
+    const n = name.value.trim();
+    if (!n) { msg.textContent = '请输入账号名。'; return; }
+    if (!pw.value || pw.value.length < 4) { msg.textContent = '密码至少 4 位。'; return; }
+    msg.textContent = '登录中…';
+    const email = astrixEmailOf(n);
+    let r = await signInWithPassword(email, pw.value);
+    if (!r.ok) {
+      msg.textContent = '账号不存在或密码错误，尝试注册…';
+      const su = await signUpWithPassword(email, pw.value);
+      if (!su.ok) { msg.textContent = '注册失败：' + (su.reason || '未知错误'); return; }
+      r = await signInWithPassword(email, pw.value);
+      if (!r.ok) { msg.textContent = '注册成功但登录失败：' + (r.reason || '未知错误'); return; }
+      msg.textContent = '注册成功，欢迎，' + n + '！';
+    }
     closeModal();
     onBound && onBound();
-  });
+  };
+  btnGo.addEventListener('click', go);
+  pw.addEventListener('keydown', (e) => { if (e.key === 'Enter') go(); });
+  name.addEventListener('keydown', (e) => { if (e.key === 'Enter') go(); });
 
-  openModal({ title: '在线模式 · 绑定邮箱', body: wrap, sheet: true });
+  openModal({ title: '在线模式 · 登录 / 注册', body: wrap, sheet: true });
+
 }
 
 // 小工具：建元素（与 ui 模块同款，避免为 main 单独 import）
