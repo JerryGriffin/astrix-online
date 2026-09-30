@@ -113,3 +113,266 @@ for (const n of HOI_NATIONS) HOI_BY_ID[n.id] = n;
 
 export const HOI_SCENARIO_ID = 'hoi1936';
 export const HOI_SCENARIO_NAME = '1936 剧本 · 风暴前夜';
+
+// ============================================================================
+// v0.2.6 深化：人口基准 / 编制 / 历史舰队 / 阵营 / 生产线侧重 / 国策
+// ============================================================================
+// 人口：德国 = 80000（设计者给定），其他国家按真实人口比例放缩
+export const GER_POP_BASE = 80000;
+export const POP_SCALE = GER_POP_BASE / 69.3;   // ≈ 1154.4 人/百万
+
+export function popOf(nation) {
+  const n = typeof nation === 'string' ? HOI_BY_ID[nation] : nation;
+  if (!n) return 0;
+  return Math.max(1000, Math.round(n.popM * POP_SCALE));
+}
+
+// 每支军队 500 人（设计者给定）
+export const ARMY_MEN = 500;
+
+// 阵营（参考 HOI4 1936 局势）：axis 柏林-罗马轴心 / allies 同盟国 / comintern 共产国际 / neutral 中立
+export const BLOC_NAME = {
+  axis: '柏林—罗马轴心',
+  allies: '同盟国',
+  comintern: '共产国际',
+  neutral: '不结盟',
+};
+
+// 各国深化设定：
+//   armyName  本国编制名（师/军编制，参考历史）
+//   atkMul/defMul 编制侧重（攻击型 / 防御型 / 均衡）
+//   blocs     所属阵营
+//   fleets    历史舰队名（按海军实力分配规模）
+//   lines     侧重生产线（buildingId + 配方 + 工位数）
+//   gear      独特装备流水线（军用部件 + 材料）
+//   foci      国策（HOI4 风格三支六策）
+export const HOI_DEEP = {
+  ger: {
+    armyName: '装甲掷弹兵师', atkMul: 1.35, defMul: 0.95, bloc: 'axis',
+    fleets: [{ nameCn: '公海舰队', share: 1 }],
+    lines: [
+      { buildingId: 'blast_furnace', recipeId: 'r_refine_steel', workers: 12 },
+      { buildingId: 'blast_furnace', recipeId: 'r_bf_iron', workers: 8 },
+      { buildingId: 'chem_lab', recipeId: 'r_chem_aluminum_alloy', workers: 6 },
+      { buildingId: 'chem_lab', recipeId: 'r_chem_plastic', workers: 6 },
+      { buildingId: 'furnace', recipeId: 'r_furnace_ceramic', workers: 4 },
+    ],
+    gear: [{ partId: 'ap_armor_composite', material: '钢', qty: 40 }, { partId: 'ap_wpn_hmg', material: '钢', qty: 30 }],
+    foci: [
+      { id: 'ger_i1', branch: '工业', nameCn: '四年计划', days: 120, desc: '全面动员工业：+40% 科研点，钢产线提速。', effect: { research: 20000, lineMul: 1.15 } },
+      { id: 'ger_i2', branch: '工业', nameCn: '鲁尔扩产', days: 150, desc: '鲁尔区扩建：大量钢铁与铝入库。', effect: { goods: { 钢: 8000, 铝: 3000 } } },
+      { id: 'ger_m1', branch: '军事', nameCn: '闪电战理论', days: 180, desc: '装甲突击：全军攻击 +25%。', effect: { armyAtkMul: 1.25 } },
+      { id: 'ger_m2', branch: '军事', nameCn: '空军扩充', days: 150, desc: '空军扩编：获得空军加成与装备。', effect: { armyDefMul: 1.1, gear: [{ partId: 'ap_wpn_rifle', material: '钢', qty: 200 }] } },
+      { id: 'ger_d1', branch: '外交', nameCn: '柏林—罗马轴心', days: 90, desc: '与意大利结盟（同阵营自动盟友）。', effect: { allyBloc: 'axis' } },
+      { id: 'ger_d2', branch: '外交', nameCn: '德奥合并', days: 200, desc: '和平并入奥地利：人口与工业大增。', effect: { pop: 3000, research: 8000 } },
+    ],
+  },
+  ita: {
+    armyName: '阿尔卑斯山地师', atkMul: 1.0, defMul: 1.1, bloc: 'axis',
+    fleets: [{ nameCn: '皇家海军（意）', share: 1 }],
+    lines: [
+      { buildingId: 'blast_furnace', recipeId: 'r_refine_steel', workers: 8 },
+      { buildingId: 'furnace', recipeId: 'r_furnace_ceramic', workers: 6 },
+      { buildingId: 'chem_lab', recipeId: 'r_chem_plastic', workers: 4 },
+    ],
+    gear: [{ partId: 'ap_armor_light', material: '钢', qty: 30 }, { partId: 'ap_mob_wheel', material: '钢', qty: 25 }],
+    foci: [
+      { id: 'ita_i1', branch: '工业', nameCn: '南方开发', days: 120, desc: '开发南方工业：+科研点与陶瓷。', effect: { research: 12000, goods: { 陶瓷: 2000 } } },
+      { id: 'ita_i2', branch: '工业', nameCn: '菲亚特扩产', days: 150, desc: '汽车工业扩产：装备大量入库。', effect: { gear: [{ partId: 'ap_mob_wheel', material: '钢', qty: 150 }] } },
+      { id: 'ita_m1', branch: '军事', nameCn: '地中海舰队', days: 150, desc: '海军扩建：舰只与海军战力提升。', effect: { navy: 6 } },
+      { id: 'ita_m2', branch: '军事', nameCn: '山地战训练', days: 120, desc: '山地部队训练：全军防御 +20%。', effect: { armyDefMul: 1.2 } },
+      { id: 'ita_d1', branch: '外交', nameCn: '柏林—罗马轴心', days: 90, desc: '与德国结盟（同阵营自动盟友）。', effect: { allyBloc: 'axis' } },
+      { id: 'ita_d2', branch: '外交', nameCn: '入侵阿比西尼亚', days: 180, desc: '殖民扩张：属地资源与人口增加。', effect: { pop: 1500, goods: { 有机质: 4000 } } },
+    ],
+  },
+  eng: {
+    armyName: '远征军步兵师', atkMul: 0.95, defMul: 1.25, bloc: 'allies',
+    fleets: [{ nameCn: '本土舰队', share: 0.6 }, { nameCn: '地中海舰队', share: 0.4 }],
+    lines: [
+      { buildingId: 'blast_furnace', recipeId: 'r_refine_steel', workers: 10 },
+      { buildingId: 'chem_lab', recipeId: 'r_chem_rubber', workers: 8 },
+      { buildingId: 'furnace', recipeId: 'r_furnace_ceramic', workers: 5 },
+      { buildingId: 'electrolyzer', recipeId: 'r_el_water', workers: 4 },
+    ],
+    gear: [{ partId: 'ap_frame_light', material: '钢', qty: 40 }, { partId: 'ap_sup_radar', material: '钢', qty: 20 }],
+    foci: [
+      { id: 'eng_i1', branch: '工业', nameCn: '帝国资源整合', days: 120, desc: '整合殖民地资源：橡胶与有机质大增。', effect: { goods: { 橡胶: 3000, 有机质: 6000 } } },
+      { id: 'eng_i2', branch: '工业', nameCn: '影子工厂计划', days: 180, desc: '影子工厂：产线生产率提升。', effect: { lineMul: 1.2 } },
+      { id: 'eng_m1', branch: '军事', nameCn: '海峡防空', days: 120, desc: '本土防空网：全军防御 +20%。', effect: { armyDefMul: 1.2 } },
+      { id: 'eng_m2', branch: '军事', nameCn: '皇家海军扩建', days: 180, desc: '造舰计划：舰只增加。', effect: { navy: 10 } },
+      { id: 'eng_d1', branch: '外交', nameCn: '英法协约', days: 90, desc: '与法国结盟（同阵营自动盟友）。', effect: { allyBloc: 'allies' } },
+      { id: 'eng_d2', branch: '外交', nameCn: '绥靖的终结', days: 150, desc: '全面备战：科研点与装备。', effect: { research: 15000, gear: [{ partId: 'ap_wpn_rifle', material: '钢', qty: 200 }] } },
+    ],
+  },
+  fra: {
+    armyName: '要塞步兵师', atkMul: 1.0, defMul: 1.3, bloc: 'allies',
+    fleets: [{ nameCn: '地中海舰队（法）', share: 0.6 }, { nameCn: '大西洋舰队（法）', share: 0.4 }],
+    lines: [
+      { buildingId: 'blast_furnace', recipeId: 'r_refine_steel', workers: 9 },
+      { buildingId: 'chem_lab', recipeId: 'r_chem_rubber', workers: 6 },
+      { buildingId: 'furnace', recipeId: 'r_furnace_ceramic', workers: 5 },
+    ],
+    gear: [{ partId: 'ap_armor_light', material: '钢', qty: 35 }, { partId: 'ap_wpn_rifle', material: '钢', qty: 60 }],
+    foci: [
+      { id: 'fra_i1', branch: '工业', nameCn: '国有化军工厂', days: 120, desc: '军工国有化：产线提速。', effect: { lineMul: 1.15 } },
+      { id: 'fra_i2', branch: '工业', nameCn: '殖民地经济', days: 120, desc: '北非资源开发：物资入库。', effect: { goods: { 有机质: 5000, 铁: 3000 } } },
+      { id: 'fra_m1', branch: '军事', nameCn: '马奇诺防线', days: 180, desc: '要塞防线：全军防御 +30%。', effect: { armyDefMul: 1.3 } },
+      { id: 'fra_m2', branch: '军事', nameCn: '装甲重整', days: 150, desc: '装甲部队整编：全军攻击 +15%。', effect: { armyAtkMul: 1.15 } },
+      { id: 'fra_d1', branch: '外交', nameCn: '英法协约', days: 90, desc: '与英国结盟（同阵营自动盟友）。', effect: { allyBloc: 'allies' } },
+      { id: 'fra_d2', branch: '外交', nameCn: '东欧同盟体系', days: 150, desc: '扶持东欧盟友：科研与人口。', effect: { research: 12000, pop: 1200 } },
+    ],
+  },
+  sov: {
+    armyName: '步兵军', atkMul: 1.1, defMul: 1.15, bloc: 'comintern',
+    fleets: [{ nameCn: '波罗的海舰队', share: 0.6 }, { nameCn: '黑海舰队', share: 0.4 }],
+    lines: [
+      { buildingId: 'blast_furnace', recipeId: 'r_refine_steel', workers: 16 },
+      { buildingId: 'blast_furnace', recipeId: 'r_bf_iron', workers: 10 },
+      { buildingId: 'chem_lab', recipeId: 'r_chem_plastic', workers: 6 },
+      { buildingId: 'electrolyzer', recipeId: 'r_el_water', workers: 6 },
+    ],
+    gear: [{ partId: 'ap_wpn_rifle', material: '钢', qty: 120 }, { partId: 'ap_frame_light', material: '钢', qty: 60 }],
+    foci: [
+      { id: 'sov_i1', branch: '工业', nameCn: '第二个五年计划', days: 150, desc: '重工业跃进：产线生产率 +20%。', effect: { lineMul: 1.2 } },
+      { id: 'sov_i2', branch: '工业', nameCn: '乌拉尔工业区', days: 180, desc: '东部工业区：钢铁储量剧增。', effect: { goods: { 钢: 12000, 铁: 8000 } } },
+      { id: 'sov_m1', branch: '军事', nameCn: '大纵深作战', days: 180, desc: '纵深防御理论：攻防各 +15%。', effect: { armyAtkMul: 1.15, armyDefMul: 1.15 } },
+      { id: 'sov_m2', branch: '军事', nameCn: '红军扩编', days: 150, desc: '红军扩编：人口与装备。', effect: { pop: 5000, gear: [{ partId: 'ap_frame_light', material: '钢', qty: 200 }] } },
+      { id: 'sov_d1', branch: '外交', nameCn: '共产国际', days: 90, desc: '强化共产国际（同阵营自动盟友）。', effect: { allyBloc: 'comintern' } },
+      { id: 'sov_d2', branch: '外交', nameCn: '集体安全', days: 150, desc: '集体安全体系：科研点与人口。', effect: { research: 18000, pop: 2000 } },
+    ],
+  },
+  jap: {
+    armyName: '海军陆战师', atkMul: 1.3, defMul: 1.0, bloc: 'neutral',
+    fleets: [{ nameCn: '联合舰队', share: 1 }],
+    lines: [
+      { buildingId: 'blast_furnace', recipeId: 'r_bf_aluminum', workers: 10 },
+      { buildingId: 'furnace', recipeId: 'r_furnace_ceramic', workers: 6 },
+      { buildingId: 'chem_lab', recipeId: 'r_chem_plastic', workers: 5 },
+    ],
+    gear: [{ partId: 'ap_armor_light', material: '铝', qty: 30 }, { partId: 'ap_wpn_rifle', material: '钢', qty: 60 }],
+    foci: [
+      { id: 'jap_i1', branch: '工业', nameCn: '产业振兴', days: 120, desc: '财阀产业振兴：产线提速。', effect: { lineMul: 1.15 } },
+      { id: 'jap_i2', branch: '工业', nameCn: '资源自给', days: 150, desc: '合成燃料与铝：物资入库。', effect: { goods: { 铝: 3000, 塑料: 2000 } } },
+      { id: 'jap_m1', branch: '军事', nameCn: '海军航空兵', days: 180, desc: '海航精锐：全军攻击 +25%。', effect: { armyAtkMul: 1.25 } },
+      { id: 'jap_m2', branch: '军事', nameCn: '联合舰队决战', days: 150, desc: '舰队决战思想：舰只增加。', effect: { navy: 8 } },
+      { id: 'jap_d1', branch: '外交', nameCn: '三国同盟交涉', days: 120, desc: '与德国接近：结盟倾向（同阵营）。', effect: { research: 8000 } },
+      { id: 'jap_d2', branch: '外交', nameCn: '南方资源圈', days: 180, desc: '南进政策：属地资源大增。', effect: { goods: { 橡胶: 2500, 有机质: 4000 } } },
+    ],
+  },
+  usa: {
+    armyName: '机械化步兵师', atkMul: 1.15, defMul: 1.1, bloc: 'neutral',
+    fleets: [{ nameCn: '太平洋舰队', share: 0.6 }, { nameCn: '大西洋舰队', share: 0.4 }],
+    lines: [
+      { buildingId: 'blast_furnace', recipeId: 'r_refine_steel', workers: 20 },
+      { buildingId: 'blast_furnace', recipeId: 'r_bf_aluminum', workers: 12 },
+      { buildingId: 'chem_lab', recipeId: 'r_chem_plastic', workers: 10 },
+      { buildingId: 'chem_lab', recipeId: 'r_chem_rubber', workers: 6 },
+    ],
+    gear: [{ partId: 'ap_mob_wheel', material: '钢', qty: 80 }, { partId: 'ap_frame_light', material: '钢', qty: 60 }],
+    foci: [
+      { id: 'usa_i1', branch: '工业', nameCn: '新政工业', days: 120, desc: '新政拉动工业：产线生产率 +20%。', effect: { lineMul: 1.2 } },
+      { id: 'usa_i2', branch: '工业', nameCn: '底特律流水线', days: 150, desc: '汽车流水线转军工：装备大增。', effect: { gear: [{ partId: 'ap_mob_wheel', material: '钢', qty: 300 }] } },
+      { id: 'usa_m1', branch: '军事', nameCn: '两洋海军法案', days: 200, desc: '两洋海军：舰只大幅增加。', effect: { navy: 14 } },
+      { id: 'usa_m2', branch: '军事', nameCn: '陆军整备', days: 150, desc: '陆军现代化：攻防 +12%。', effect: { armyAtkMul: 1.12, armyDefMul: 1.12 } },
+      { id: 'usa_d1', branch: '外交', nameCn: '租借法案雏形', days: 150, desc: '援助同盟国：科研与人口。', effect: { research: 20000, pop: 3000 } },
+      { id: 'usa_d2', branch: '外交', nameCn: '泛美体系', days: 120, desc: '泛美合作：资源与市场。', effect: { goods: { 有机质: 8000, 橡胶: 2000 } } },
+    ],
+  },
+  chn: {
+    armyName: '步兵师（国民革命军）', atkMul: 0.85, defMul: 1.2, bloc: 'neutral',
+    fleets: [{ nameCn: '长江舰队', share: 1 }],
+    lines: [
+      { buildingId: 'blast_furnace', recipeId: 'r_bf_iron', workers: 8 },
+      { buildingId: 'furnace', recipeId: 'r_furnace_ceramic', workers: 6 },
+      { buildingId: 'electrolyzer', recipeId: 'r_el_water', workers: 5 },
+    ],
+    gear: [{ partId: 'ap_wpn_rifle', material: '铁', qty: 100 }, { partId: 'ap_frame_light', material: '铁', qty: 50 }],
+    foci: [
+      { id: 'chn_i1', branch: '工业', nameCn: '实业计划', days: 150, desc: '实业建国：科研点与产能。', effect: { research: 10000, lineMul: 1.1 } },
+      { id: 'chn_i2', branch: '工业', nameCn: '后方工业内迁', days: 180, desc: '工业内迁：换取安全与产能。', effect: { lineMul: 1.2 } },
+      { id: 'chn_m1', branch: '军事', nameCn: '持久抗战', days: 180, desc: '以空间换时间：全军防御 +30%。', effect: { armyDefMul: 1.3 } },
+      { id: 'chn_m2', branch: '军事', nameCn: '整军备战', days: 150, desc: '整编部队：装备与人口。', effect: { pop: 6000, gear: [{ partId: 'ap_wpn_rifle', material: '铁', qty: 300 }] } },
+      { id: 'chn_d1', branch: '外交', nameCn: '争取外援', days: 120, desc: '争取国际援助：科研与物资。', effect: { research: 8000, goods: { 钢: 2000 } } },
+      { id: 'chn_d2', branch: '外交', nameCn: '民族统一战线', days: 150, desc: '统一战线：人口与工业动员。', effect: { pop: 8000, research: 6000 } },
+    ],
+  },
+  pol: {
+    armyName: '步兵师（波）', atkMul: 0.95, defMul: 1.15, bloc: 'allies',
+    fleets: [{ nameCn: '波兰海军', share: 1 }],
+    lines: [
+      { buildingId: 'blast_furnace', recipeId: 'r_refine_steel', workers: 6 },
+      { buildingId: 'furnace', recipeId: 'r_furnace_ceramic', workers: 4 },
+    ],
+    gear: [{ partId: 'ap_wpn_rifle', material: '钢', qty: 50 }, { partId: 'ap_frame_light', material: '钢', qty: 30 }],
+    foci: [
+      { id: 'pol_i1', branch: '工业', nameCn: '中央工业区', days: 150, desc: '中央工业区建设：产能与钢。', effect: { lineMul: 1.15, goods: { 钢: 3000 } } },
+      { id: 'pol_i2', branch: '工业', nameCn: '军备现代化', days: 180, desc: '军备现代化：装备入库。', effect: { gear: [{ partId: 'ap_wpn_rifle', material: '钢', qty: 150 }] } },
+      { id: 'pol_m1', branch: '军事', nameCn: '西方盟约', days: 120, desc: '依托西方盟约：研究与防御。', effect: { armyDefMul: 1.15, research: 6000 } },
+      { id: 'pol_m2', branch: '军事', nameCn: '骑兵与装甲', days: 150, desc: '骑兵旅与装甲营：攻击 +15%。', effect: { armyAtkMul: 1.15 } },
+      { id: 'pol_d1', branch: '外交', nameCn: '英法保证', days: 90, desc: '争取英法保证（同阵营）。', effect: { allyBloc: 'allies' } },
+      { id: 'pol_d2', branch: '外交', nameCn: '海间联盟', days: 150, desc: '海间同盟构想：人口与外交筹码。', effect: { pop: 1000, research: 5000 } },
+    ],
+  },
+  spa: {
+    armyName: '山地旅', atkMul: 1.0, defMul: 1.05, bloc: 'neutral',
+    fleets: [{ nameCn: '西班牙舰队', share: 1 }],
+    lines: [
+      { buildingId: 'blast_furnace', recipeId: 'r_bf_iron', workers: 6 },
+      { buildingId: 'furnace', recipeId: 'r_furnace_ceramic', workers: 4 },
+    ],
+    gear: [{ partId: 'ap_wpn_rifle', material: '铁', qty: 40 }, { partId: 'ap_frame_light', material: '铁', qty: 20 }],
+    foci: [
+      { id: 'spa_i1', branch: '工业', nameCn: '矿业振兴', days: 150, desc: '铁矿与钨砂开发：物资入库。', effect: { goods: { 铁: 4000, 碳化钨: 300 } } },
+      { id: 'spa_i2', branch: '工业', nameCn: '工业重建', days: 180, desc: '战后工业重建：产线提速。', effect: { lineMul: 1.2 } },
+      { id: 'spa_m1', branch: '军事', nameCn: '外籍军团', days: 150, desc: '精锐外籍军团：全军攻击 +20%。', effect: { armyAtkMul: 1.2 } },
+      { id: 'spa_m2', branch: '军事', nameCn: '山地要塞', days: 150, desc: '比利牛斯防线：防御 +25%。', effect: { armyDefMul: 1.25 } },
+      { id: 'spa_d1', branch: '外交', nameCn: '不干涉与平衡', days: 120, desc: '在两大阵营间平衡：科研点。', effect: { research: 8000 } },
+      { id: 'spa_d2', branch: '外交', nameCn: '收复直布罗陀构想', days: 200, desc: '战略咽喉：海军扩张。', effect: { navy: 4, research: 6000 } },
+    ],
+  },
+  tur: {
+    armyName: '安纳托利亚军', atkMul: 1.0, defMul: 1.2, bloc: 'neutral',
+    fleets: [{ nameCn: '土耳其舰队', share: 1 }],
+    lines: [
+      { buildingId: 'blast_furnace', recipeId: 'r_refine_steel', workers: 5 },
+      { buildingId: 'furnace', recipeId: 'r_furnace_ceramic', workers: 4 },
+    ],
+    gear: [{ partId: 'ap_wpn_rifle', material: '钢', qty: 40 }, { partId: 'ap_armor_light', material: '钢', qty: 15 }],
+    foci: [
+      { id: 'tur_i1', branch: '工业', nameCn: '国家工业化', days: 150, desc: '国家工业化：产线与资源。', effect: { lineMul: 1.15, goods: { 钢: 2500 } } },
+      { id: 'tur_i2', branch: '工业', nameCn: '海峡经济', days: 120, desc: '海峡经济区：贸易与研究。', effect: { research: 7000 } },
+      { id: 'tur_m1', branch: '军事', nameCn: '海峡要塞群', days: 180, desc: '海峡要塞：防御 +30%。', effect: { armyDefMul: 1.3 } },
+      { id: 'tur_m2', branch: '军事', nameCn: '军队现代化', days: 150, desc: '军队现代化：攻击 +15%。', effect: { armyAtkMul: 1.15 } },
+      { id: 'tur_d1', branch: '外交', nameCn: '多方平衡外交', days: 120, desc: '平衡外交：科研与人口。', effect: { research: 6000, pop: 800 } },
+      { id: 'tur_d2', branch: '外交', nameCn: '巴尔干协约', days: 150, desc: '巴尔干协约：地区影响与资源。', effect: { goods: { 陶瓷: 1500, 有机质: 2500 } } },
+    ],
+  },
+  bra: {
+    armyName: '远征步兵师（巴）', atkMul: 0.9, defMul: 1.0, bloc: 'neutral',
+    fleets: [{ nameCn: '巴西海军', share: 1 }],
+    lines: [
+      { buildingId: 'blast_furnace', recipeId: 'r_bf_iron', workers: 5 },
+      { buildingId: 'chem_lab', recipeId: 'r_chem_rubber', workers: 4 },
+      { buildingId: 'furnace', recipeId: 'r_furnace_carbon', workers: 3 },
+    ],
+    gear: [{ partId: 'ap_wpn_rifle', material: '铁', qty: 30 }, { partId: 'ap_frame_light', material: '铁', qty: 20 }],
+    foci: [
+      { id: 'bra_i1', branch: '工业', nameCn: '咖啡与铁矿经济', days: 120, desc: '资源出口：物资与科研。', effect: { goods: { 铁: 3000, 有机质: 4000 } } },
+      { id: 'bra_i2', branch: '工业', nameCn: '重工业起步', days: 180, desc: '重工业起步：产线提速。', effect: { lineMul: 1.2 } },
+      { id: 'bra_m1', branch: '军事', nameCn: '亚马逊防务', days: 150, desc: '内陆防务：防御 +20%。', effect: { armyDefMul: 1.2 } },
+      { id: 'bra_m2', branch: '军事', nameCn: '海军重整', days: 150, desc: '海军重整：舰只增加。', effect: { navy: 4 } },
+      { id: 'bra_d1', branch: '外交', nameCn: '泛美团结', days: 120, desc: '泛美团结：科研与人口。', effect: { research: 7000, pop: 1500 } },
+      { id: 'bra_d2', branch: '外交', nameCn: '南美领导权', days: 180, desc: '争取南美领导权：人口与工业。', effect: { pop: 2000, research: 6000 } },
+    ],
+  },
+};
+
+// 海域（HOI4 风格战区海域；navyStr = 巡航需要的综合实力基准）
+export const HOI_SEAS = [
+  { id: 'north_sea', nameCn: '北海', base: 400 },
+  { id: 'baltic', nameCn: '波罗的海', base: 300 },
+  { id: 'med', nameCn: '地中海', base: 500 },
+  { id: 'atlantic', nameCn: '大西洋', base: 900 },
+  { id: 'pacific_w', nameCn: '西太平洋', base: 800 },
+  { id: 'japan_sea', nameCn: '日本海', base: 350 },
+];

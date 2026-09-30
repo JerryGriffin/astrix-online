@@ -15,41 +15,45 @@
 //    开局自带 1 座建筑工厂（设计者：「开局有一个建筑工厂」）。
 // 5. 施工队列由 tick 推进：速度 = 建筑工有效人力（受建筑工厂工位限制），无人则为 0。
 
-import { PLANETS } from '../data/planets.js?v=26.1';
-import { HOI_NATIONS, HOI_BY_ID, HOI_SCENARIO_ID } from '../data/hoi1936.js?v=26.1';   // v0.2.6 官方 mod 1936 剧本
-import { BUILDING_BY_ID, buildingCost } from '../data/buildings.js?v=26.1';
-import { TECH_BY_ID, canResearch, missingPrereqs, missingBuilding } from '../data/techs.js?v=26.1';
-import { UPGRADES, upgradeCost } from '../data/upgrades.js?v=26.1';
+import { PLANETS } from '../data/planets.js?v=26.2';
+import { HOI_NATIONS, HOI_BY_ID, HOI_SCENARIO_ID } from '../data/hoi1936.js?v=26.2';   // v0.2.6 官方 mod 1936 剧本
+import {
+  setHoiDeps, popOf, setupArmies, setupNavy, setupLines, setupBloc,
+  ensureFocus, tickFocus, ensureSeas, scenarioDateOf, gameDaysOf,
+} from './hoi1936.js?v=26.2';
+import { BUILDING_BY_ID, buildingCost } from '../data/buildings.js?v=26.2';
+import { TECH_BY_ID, canResearch, missingPrereqs, missingBuilding } from '../data/techs.js?v=26.2';
+import { UPGRADES, upgradeCost } from '../data/upgrades.js?v=26.2';
 import {
   createPopulation, tickPopulation, getAvailable, gatherLaborByLayer, jobsOfBuilding, getIntensity,
   consumptionPerSec, jobOutput,
   JOBS, freeSlots,
-} from './population.js?v=26.1';
-import { buildRateOf, buildBlockReason } from './construction.js?v=26.1';
-import { tickShip, defaultBlueprints, createShip, shipBuildTick } from './shipyard.js?v=26.1';
+} from './population.js?v=26.2';
+import { buildRateOf, buildBlockReason } from './construction.js?v=26.2';
+import { tickShip, defaultBlueprints, createShip, shipBuildTick } from './shipyard.js?v=26.2';
 // v0.0.6：电力系统与配方生产。
 // 注意这两个模块**不反向 import 本文件**（否则形成循环依赖），
 // 它们只从传入的 inst 上读 buildings / pop / inventory / recipes。
-import { energyOf, computePower, tickPower } from './power.js?v=26.1';
+import { energyOf, computePower, tickPower } from './power.js?v=26.2';
 // v0.0.91：efficiencyBonus 由 production.js 导出（建筑总座数效率乘数），
 //   这里沿用既有的 state→production 单向边引入，不反向让 production import state，避免循环依赖。
-import { tickProduction, productionRates, ensureLines, lineWorkersTotal, efficiencyBonus, ensureEntry, addLine as addProductionLine, lineSlotInfo } from './production.js?v=26.1';
+import { tickProduction, productionRates, ensureLines, lineWorkersTotal, efficiencyBonus, ensureEntry, addLine as addProductionLine, lineSlotInfo } from './production.js?v=26.2';
 // v0.0.92：星际航行与殖民（管理模式 / 独立倾向 / 随机星球）
-import { tickIndependence, outputMulOf, happinessDeltaOf, ensureDiscoveredDefaults, discoverPlanet, capturePlanet, purgeShopColonies, tickManagedColonies, SHOP_PLANET_CODE } from './planetgen.js?v=26.1';
+import { tickIndependence, outputMulOf, happinessDeltaOf, ensureDiscoveredDefaults, discoverPlanet, capturePlanet, purgeShopColonies, tickManagedColonies, SHOP_PLANET_CODE } from './planetgen.js?v=26.2';
 // v0.1.2（需求 18/19）：永久升级的「效果」改乘方，唯一实现在 data/upgrades.js#upgradeMul
 // （UI 的 research.js 也用它，别在别处再写一套公式）。
 // 此前 upg_collect/refine/power/labor/research/build 六项付了钱却没有任何效果。
-import { upgradeMul } from '../data/upgrades.js?v=26.1';
-import { tickFleetMissions, ensureFleets } from './fleet.js?v=26.1';
-import { ensureArmies, armyBuildTick, advanceTraining, ARMY_LABOR_PER_BARRACKS } from './army.js?v=26.1';   // v0.2.0 军队
+import { upgradeMul } from '../data/upgrades.js?v=26.2';
+import { tickFleetMissions, ensureFleets } from './fleet.js?v=26.2';
+import { ensureArmies, armyBuildTick, advanceTraining, ARMY_LABOR_PER_BARRACKS } from './army.js?v=26.2';   // v0.2.0 军队
 // v0.1.0：电脑账号（离线存档里的 NPC 势力）与其交易池联动。
 //   注意 npc.js 是叶子模块（只 import 数据表），shop.js 与 state.js 互为函数级引用、无顶层副作用。
-import { ensureNpcs, tickNpcs } from './npc.js?v=26.1';
+import { ensureNpcs, tickNpcs } from './npc.js?v=26.2';
 import {
   priceOf as shopPriceOf, suggestPriceOf as shopSuggestPriceOf,
   tickShop as shopTick,
-} from './shop.js?v=26.1';
-import { tickAuctions, tickNpcAuctionSpawner } from './auction.js?v=26.1';   // v0.2.6 拍卖行；v0.2.10 NPC 挂单
+} from './shop.js?v=26.2';
+import { tickAuctions, tickNpcAuctionSpawner } from './auction.js?v=26.2';   // v0.2.6 拍卖行；v0.2.10 NPC 挂单
 
 const SAVE_PREFIX = 'astrix.save.';
 const INDEX_KEY = SAVE_PREFIX + 'index';
@@ -895,6 +899,9 @@ export function buyUpgrade(upgradeId) {
 }
 
 // 取/建星球实例（按 code，如 'syl'）；首次访问自动建实例并写入初始物资
+// v0.2.6：给 1936 剧本模块注入依赖（取实例 / 建产线）—— 避免循环导入
+setHoiDeps({ getInst: (code) => getPlanetInstance(code), addLine: (inst, b, r, o) => addProductionLine(inst, b, r, o) });
+
 export function getPlanetInstance(code) {
   let inst = STATE.planets.find((p) => p.code === code);
   if (!inst) {
@@ -1152,6 +1159,14 @@ export function tick(dt = 1) {
     try { tickAuctions(acc, dt, { getInst: () => getPlanetInstance(acc.homePlanetCode) }); } catch (e) { /* 忽略 */ }
     // v0.2.10 NPC 拍卖挂单：拍卖行实时出现电脑势力的挂单
     try { tickNpcAuctionSpawner(acc); } catch (e) { /* 忽略 */ }
+    // v0.2.6：1936 剧本 —— 国策按游戏天数推进 + 产线加成同步到星球
+    try {
+      if (acc.scenario === 'hoi1936') {
+        tickFocus(acc, dt);
+        const lm = (acc.hoiFocus && acc.hoiFocus.buffs && acc.hoiFocus.buffs.lineMul) || 1;
+        for (const pl of STATE.planets) if (pl) pl.hoiLineMul = lm;
+      }
+    } catch (e) { /* 忽略 */ }
     // v0.1.1 舰队持续任务（需求 3/19）：explore/transport/patrol 计时到期结算，defense 驻留。
     // discoverPlanet 必须注入：探索发现要走 acc.discovered 新契约（fleet 内置降级是旧版直接占领）。
     ensureFleets(acc);
@@ -1404,8 +1419,15 @@ function apply1936Start(acc, inst, countryId) {
   }
   inst.facilityStock = Object.assign({}, inst.facilityStock, { battery_m: 4, solar_m: 3, wind_m: 3, thermal_m: 2 });
 
-  // 5) 人口 / 国库 / 军用装备（按师数铺）
-  if (inst.pop) inst.pop.total = Math.max(300, Math.round(n.popM * 8));
+  // 5) 人口：德国 80000，其他国家按真实人口比例放缩（v0.2.6 深化）
+  if (inst.pop) {
+    inst.pop.total = popOf(n);
+    // 缩放人口的营养消耗（80000 人按原口径会瞬间吃空库存）：按 1/650 计
+    inst.pop.consumeScale = 1 / 650;
+  }
+  acc.scenarioStartedAt = Date.now();   // 剧本时钟：1 真实秒 = 1 游戏天，起点 1936-01-01
+  ensureFocus(acc);
+  ensureSeas(acc);
   acc.ascoin = Math.round(ic * 4000 + n.divisions * 600);
   inst.equipment = inst.equipment || {};
   const gear = {
@@ -1424,23 +1446,17 @@ function apply1936Start(acc, inst, countryId) {
     inst.equipment[key] = e;
   }
 
-  // 6) 军队：师数 → 集团军（战力按师数与装备水平折算）
-  acc.armies = [];
-  const armies = Math.max(2, Math.min(14, Math.round(n.divisions / 6)));
-  const perPower = Math.max(60, Math.round(n.divisions * 11));
-  for (let i = 0; i < armies; i++) {
-    acc.armies.push({
-      id: 'army_' + n.id + '_' + i,
-      nameCn: n.nameCn + ' 第' + (i + 1) + '集团军',
-      blueprintId: 'ab_ranger',
-      men: 105, exp: 0, bonusAtk: 0, bonusDef: 0,
-      stats: { atk: Math.round(perPower * 0.5), def: Math.round(perPower * 0.42), speed: 8 },
-      power: perPower,
-    });
-  }
+  // 6) 军队：每支 500 人，按本国编制与侧重生成（v0.2.6 深化）
+  setupArmies(acc, n);
   acc.blueprints = defaultBlueprints();
   acc.blueprint = acc.blueprints[0];
-  acc.ships = acc.ships || [];   // 1936 开局不送飞船（海军计入数据，船在游戏内造）
+
+  // 6b) 历史舰队：按 1936 真实海军实力造舰，以史实舰队名编队
+  try { setupNavy(acc, n, createShip, defaultBlueprints); } catch (e) { acc.ships = acc.ships || []; }
+
+  // 6c) 侧重生产线与独特装备流水线（各国不同）+ 阵营（德意同盟等）
+  try { setupLines(inst, n); } catch (e) { /* 忽略 */ }
+  try { setupBloc(acc, n); } catch (e) { /* 忽略 */ }
 
   // 7) 属地星球：第二颗星球（历史属地命名，资源按属地类型倾斜）
   try {
@@ -1454,7 +1470,10 @@ function apply1936Start(acc, inst, countryId) {
         const inst2 = getPlanetInstance(d.planet.code);
         if (inst2) {
           inst2.nameCn = n.colony.name;
-          if (inst2.pop) inst2.pop.total = Math.max(120, Math.round((inst.pop ? inst.pop.total : 400) * 0.35));
+          if (inst2.pop) {
+            inst2.pop.total = Math.max(200, Math.round((inst.pop ? inst.pop.total : 400) * 0.35));
+            inst2.pop.consumeScale = 1 / 650;
+          }
           inst2.buildings = { mine_shallow: 3, mine_deep: 2, farm: 2, house: 4, workshop: 1, storage_plant: 1 };
           const colBundle = {
             有机质: Math.round(n.popM * 300), 水: Math.round(n.popM * 300),

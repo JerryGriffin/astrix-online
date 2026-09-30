@@ -33,7 +33,7 @@
 // 人口变化：H > 0.5 增长、H < 0.3 下降，否则持平。
 // 各项系数都在下方常量区，改一个数就能调平衡。
 
-import { BUILDING_BY_ID } from '../data/buildings.js?v=26.1';
+import { BUILDING_BY_ID } from '../data/buildings.js?v=26.2';
 
 // ============================================================================
 // 可调常量（集中放这里，方便策划调参）
@@ -482,7 +482,10 @@ function metabolismScale(pop) {
 // 当前每秒消耗：{ oxygen, organic, water }（v0.2.11：含管理模式乘数，读 pop.manageMode）
 export function consumptionPerSec(pop) {
   const { total, extra } = metabolismScale(pop);
-  const personSec = total + extra;
+  // v0.2.6：consumeScale —— 1936 剧本人口按国家规模放大（德国 80000），
+  //   每人消耗同步缩放，否则一秒钟就能吃空整仓库
+  const cs = Math.max(1e-6, Number(pop && pop.consumeScale) || 1);
+  const personSec = (total + extra) * cs;
   const mm = manageModeOf(pop);
   const out = {};
   for (const k of NUTRIENT_KEYS) out[k] = personSec * BASE_CONSUME[k] * manageConsumeMul(mm, k);
@@ -492,7 +495,8 @@ export function consumptionPerSec(pop) {
 // 当前每秒代谢产出：{ co2, methane, ammonia }
 export function metabolitePerSec(pop) {
   const { total, extra } = metabolismScale(pop);
-  const personSec = total + extra;
+  const cs = Math.max(1e-6, Number(pop && pop.consumeScale) || 1);
+  const personSec = (total + extra) * cs;
   const out = {};
   for (const k of METABOLITE_KEYS) out[k] = personSec * BASE_PRODUCE[k];
   return out;

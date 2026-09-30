@@ -63,11 +63,11 @@ const aOk = stepA.hasSelect && stepA.optionCount === 12 && stepA.infoHasData;
 const resB = await page.evaluate(async () => {
   const chain = new Proxy({}, { get: (t, p) => (p === 'then' ? undefined : (..._a) => chain) });
   window.WorkBuddyCloud = { createWorkBuddyCloud: () => ({ auth: { getSession: async () => ({ data: null, error: null }) }, database: chain }) };
-  const S = await import('/js/core/state.js?v=26.1');
+  const S = await import('/js/core/state.js?v=26.2');
   S.STATE.adapter = { get: () => null, set: () => {}, del: () => {} };
   const acc = S.createAccount('冒烟德国', 'hoi1936', { countryId: 'ger' });
   S.STATE.mode = 'online';
-  const G = await import('/js/ui/galaxy.js?v=26.1');
+  const G = await import('/js/ui/galaxy.js?v=26.2');
   const root = document.createElement('div');
   document.body.appendChild(root);
   G.renderGalaxy(root, { account: acc, planetCode: acc.homePlanetCode, openModal: () => () => {}, closeModal: () => {}, onEnterPlanet: () => {} });
@@ -81,9 +81,31 @@ const resB = await page.evaluate(async () => {
   };
 });
 console.log('B. 场景国家星球:', JSON.stringify(resB));
+
+// ---- C. 国策面板（国策树 + 海域 + 剧本日历到天） ----
+const resC = await page.evaluate(async () => {
+  const S = await import('/js/core/state.js?v=26.2');
+  const acc = S.currentAccount();
+  const H = await import('/js/ui/hoi.js?v=26.2');
+  const root = document.createElement('div');
+  document.body.appendChild(root);
+  H.renderHoi(root, { account: acc, planetCode: acc.homePlanetCode, openModal: () => () => {}, closeModal: () => {} });
+  await new Promise((r) => setTimeout(r, 500));
+  const txt = root.textContent;
+  return {
+    date: /1936年\d+月\d+日/.test(txt),
+    focusTree: txt.includes('国策') && txt.includes('工业线') && txt.includes('军事线') && txt.includes('外交线'),
+    sixFocus: ['四年计划', '鲁尔扩产', '闪电战理论', '柏林—罗马轴心'].filter((x) => txt.includes(x)).length,
+    seas: ['北海', '波罗的海', '地中海', '大西洋', '西太平洋', '日本海'].filter((x) => txt.includes(x)).length,
+    hasRecruit: txt.includes('巡航争夺'),
+  };
+});
+console.log('C. 国策面板:', JSON.stringify(resC));
+const cOk = resC.date && resC.focusTree && resC.sixFocus >= 3 && resC.seas === 6 && resC.hasRecruit;
 console.log('页面异常:', errs.length ? errs.slice(0, 3) : '无');
 await browser.close();
 server.close();
 const bOk = resB.npcNations === 4 && resB.hasDataCard && resB.hasWarBtn && resB.noGermanSelf;
-console.log(aOk && bOk && !errs.length ? '冒烟通过' : '冒烟失败');
-process.exit(aOk && bOk && !errs.length ? 0 : 1);
+const allOk = aOk && bOk && cOk && !errs.length;
+console.log(allOk ? '冒烟通过' : '冒烟失败');
+process.exit(allOk ? 0 : 1);
