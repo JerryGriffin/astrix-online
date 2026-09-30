@@ -13,23 +13,24 @@
 // 3. **新增人数输入栏**：每行都有 −/输入框/＋/满员，方便大规模分配（人数很多时不用点几百次）。
 // 4. 顶部营养区改为 3 消耗（氧气/有机质/水）+ 3 产出（二氧化碳/甲烷/氨气）。
 
-import { fmtNum, fmtRate } from '../core/format.js?v=20.17';
-import { BUILDINGS, BUILDING_BY_ID } from '../data/buildings.js?v=20.17';
+import { fmtNum, fmtRate } from '../core/format.js?v=20.18';
+import { BUILDINGS, BUILDING_BY_ID } from '../data/buildings.js?v=20.18';
 import {
   createPopulation, assignWorkers, setJobIntensity, getIntensity,
   getTotalLabor, getAssigned, getAvailable, consumptionPerSec, metabolitePerSec,
   JOBS, JOBS_BY_BUILDING, WORK_INTENSITY,
   assignedToBuilding, freeSlots, jobCapacity, hiddenJobCount, getJobCount,
-} from '../core/population.js?v=20.17';
-import { getBuildingCounts, currentAccount } from '../core/state.js?v=20.17';
-import { ARMY_BP_BY_ID } from '../data/army_parts.js?v=20.17';   // v0.2.0 军队组装线命名
+  MANAGE_MODES, manageModeOf,
+} from '../core/population.js?v=20.18';
+import { getBuildingCounts, currentAccount } from '../core/state.js?v=20.18';
+import { ARMY_BP_BY_ID } from '../data/army_parts.js?v=20.18';   // v0.2.0 军队组装线命名
 // v0.1.1（需求 20）：殖民管理模式——判断本星球是否由电脑接管发展
-import { modeOf } from '../core/planetgen.js?v=20.17';
+import { modeOf } from '../core/planetgen.js?v=20.18';
 // v0.2.3（需求）：殖民地报告历史已从人力页移除 —— 报告只在「星球选择 / 星际」的
 //   每颗星球行内联展示（colony.js），不再在人力页保留历史副本。
 // v0.0.7：生产线接口（核心模块正在实现中）。用命名空间导入 + 函数存在性守卫，
 //   若接口尚未落地（addLine 等不是函数），本文件不会报错，也不渲染生产线区块。
-import * as PR from '../core/production.js?v=20.17';
+import * as PR from '../core/production.js?v=20.18';
 
 // 取/建星球上的人口对象（挂在 planet.pop，首次访问惰性创建）
 function ensurePop(planet) {
@@ -97,6 +98,12 @@ const PANEL_CSS = `
   .pop-job select { min-height: 40px; border-radius: 8px; background: #2d3e50; color: #fff; border: none; padding: 0 6px; }
   .pop-hint { font-size: 12px; opacity: .6; padding: 4px 2px 10px; line-height: 1.6; }
   .pop-unassigned { padding: 10px 12px; background: #14202b; border-radius: 10px; font-weight: 600; }
+  /* v0.2.11 管理模式 */
+  .pop-mode-row { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0; }
+  .pop-mode-btn { min-height: 44px; border-radius: 8px; background: #2d3e50; color: #fff; border: none; cursor: pointer; padding: 0 12px; font-weight: 600; }
+  .pop-mode-btn.active { background: #2a5a4d; outline: 2px solid #9FE1CB; }
+  .pop-mode-desc { font-size: 12px; line-height: 1.9; padding: 6px 2px; }
+  .pop-mode-desc .cur { color: #9FE1CB; }
 `;
 
 // 渲染人力面板到 root 容器
@@ -120,6 +127,33 @@ export function renderPopulation(root, planet) {
   root.appendChild(el('style', { text: PANEL_CSS }));
 
   const panel = el('div', { class: 'pop-panel' });
+
+  // ---- 管理模式（v0.2.11）：写在最上方，每种模式的效果一目了然 ----
+  {
+    const cur = manageModeOf(planet);
+    const box = el('div', { class: 'pop-card' });
+    box.appendChild(el('div', { class: 'section-title', text: '管理模式' }));
+    const row = el('div', { class: 'pop-mode-row' });
+    for (const m of MANAGE_MODES) {
+      const b = el('button', { class: 'pop-mode-btn' + (m.id === cur.id ? ' active' : ''), text: m.icon + ' ' + m.nameCn });
+      b.addEventListener('click', () => {
+        planet.manageMode = m.id;
+        if (planet.pop) planet.pop.manageMode = m.id;   // 立即同步消耗展示
+        renderPopulation(root, planet);
+      });
+      row.appendChild(b);
+    }
+    box.appendChild(row);
+    const list = el('div', { class: 'pop-mode-desc' });
+    for (const m of MANAGE_MODES) {
+      const line = el('div', { class: m.id === cur.id ? 'cur' : '' });
+      line.appendChild(el('b', { text: m.icon + ' ' + m.nameCn }));
+      line.appendChild(document.createTextNode('　' + m.desc + (m.id === cur.id ? '　◀ 当前' : '')));
+      list.appendChild(line);
+    }
+    box.appendChild(list);
+    panel.appendChild(box);
+  }
 
   // ---- 顶部四个数字 ----
   panel.appendChild(el('div', { class: 'pop-stats' }, [

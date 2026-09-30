@@ -13,17 +13,17 @@
 //   * 不修改 state.js / ui/* / data/buildings.js / data/materials.js / data/facilities.js /
 //     data/techs.js / version.js / index.html。
 
-import { RECIPES, RECIPE_BY_ID, recipesOfBuilding, getRecipe } from '../data/recipes.js?v=20.17';
-import { jobsOfBuilding, getIntensity, getAvailable, buildingSlots, jobOutput } from './population.js?v=20.17';
-import { MATERIALS } from '../data/materials.js?v=20.17';
-import { PART_BY_ID, MATERIAL_SLOTS, craftableParts, craftWorkOf } from '../data/ship_parts.js?v=20.17';
-import { ARMY_PART_BY_ID, ARMY_BP_BY_ID, ARMY_SLOT_BY_CAT, craftableArmyParts } from '../data/army_parts.js?v=20.17';   // v0.2.0 军事部件
-import { POWER_FACILITY_BY_ID } from '../data/facilities.js?v=20.17';
+import { RECIPES, RECIPE_BY_ID, recipesOfBuilding, getRecipe } from '../data/recipes.js?v=20.18';
+import { jobsOfBuilding, getIntensity, getAvailable, buildingSlots, jobOutput, manageOutputMulOf } from './population.js?v=20.18';
+import { MATERIALS } from '../data/materials.js?v=20.18';
+import { PART_BY_ID, MATERIAL_SLOTS, craftableParts, craftWorkOf } from '../data/ship_parts.js?v=20.18';
+import { ARMY_PART_BY_ID, ARMY_BP_BY_ID, ARMY_SLOT_BY_CAT, craftableArmyParts } from '../data/army_parts.js?v=20.18';   // v0.2.0 军事部件
+import { POWER_FACILITY_BY_ID } from '../data/facilities.js?v=20.18';
 // v0.0.92：殖民管理模式对产出的倍率（自由 1.25 / 剥削 1.60 / 领土 0.85 …）
-import { outputMulOf } from './planetgen.js?v=20.17';
-import { addEquipment } from './shipyard.js?v=20.17';
+import { outputMulOf } from './planetgen.js?v=20.18';
+import { addEquipment } from './shipyard.js?v=20.18';
 // v0.1.2（需求 18/19）：永久升级「冶炼 / 人力」的乘方效果，唯一实现在 data/upgrades.js#upgradeMul
-import { upgradeMul } from '../data/upgrades.js?v=20.17';
+import { upgradeMul } from '../data/upgrades.js?v=20.18';
 
 // nameCn → 材料对象（供 derivedStatsOf 查属性，纯查表不读 inst）
 const MATERIAL_BY_NAME = Object.fromEntries(MATERIALS.map((m) => [m.nameCn, m]));
@@ -746,7 +746,7 @@ export function lineRateOf(inst, line, powerRatio) {
   if (!(workers > 0)) return 0;
   let labor = workers * intensityMulOf(inst, line);
   // 造船线由 shipyard.js 结算（不乘效率/殖民倍率），展示口径保持不变
-  if (line.buildingId !== 'dock') labor *= efficiencyBonus(inst) * outputMulOf(inst);
+  if (line.buildingId !== 'dock') labor *= efficiencyBonus(inst) * outputMulOf(inst) * manageOutputMulOf(inst);
   const cached = Number(line._ratio);
   const supplyRatio = Number.isFinite(cached) ? cached : 1;   // 未跑过 tick 的新线按满速预估
   return (labor * ratio * supplyRatio) / Math.max(1, Number(recipe.work) || 1);
@@ -917,7 +917,7 @@ export function tickProduction(inst, dt, powerRatio, acc = null) {
     if (!(workers > 0)) continue;                              // 没人的线不运转
 
     // 产出倍率 = 全局强度 × 建筑数量效率 × 该星球的殖民管理模式
-    const labor = workers * intensityMulOf(inst, line) * efficiencyBonus(inst) * outputMulOf(inst) * upg.labor;
+    const labor = workers * intensityMulOf(inst, line) * efficiencyBonus(inst) * outputMulOf(inst) * manageOutputMulOf(inst) * upg.labor;
     if (!(labor > 0)) continue;
     // 产出速率 = 有效人力 × powerRatio / recipe.work（次/秒）
     // v0.1.2 R16：生产线（非农田）产出速率统一 ×5（V012_LINE_RATE_MUL）；农田不在此路径，不会叠加成 ×25。
@@ -1064,7 +1064,7 @@ export function productionRates(inst, powerRatio, acc = null) {
     if (built && labor > 0 && powerRatio > 0) {
       // v0.1.1（需求 15）：与 tickProduction 完全同口径——
       //   效率 × 殖民管理模式 × tick 缓存的断供缩减比，净增长与展示不再高估。
-      let eff = labor * efficiencyBonus(inst) * outputMulOf(inst) * upg.labor;
+      let eff = labor * efficiencyBonus(inst) * outputMulOf(inst) * manageOutputMulOf(inst) * upg.labor;
       const cached = Number(line._ratio);
       if (Number.isFinite(cached)) eff *= cached;
       rate = (eff * powerRatio * upg.refine * V012_LINE_RATE_MUL) / Math.max(1, Number(recipe.work) || 1);

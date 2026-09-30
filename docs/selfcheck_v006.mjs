@@ -21,16 +21,16 @@ globalThis.localStorage = {
   clear: () => _ls.clear(),
 };
 
-const S = await import('../js/core/state.js?v=20.17');
-const V = await import('../js/version.js?v=20.17');
-const P = await import('../js/core/power.js?v=20.17');
-const PR = await import('../js/core/production.js?v=20.17');
-const RC = await import('../js/data/recipes.js?v=20.17');
-const F = await import('../js/data/facilities.js?v=20.17');
-const PL = await import('../js/data/planets.js?v=20.17');
-const SHOP = await import('../js/core/shop.js?v=20.17');
-const AUC = await import('../js/core/auction.js?v=20.17');
-const MAT = await import('../js/data/materials.js?v=20.17');
+const S = await import('../js/core/state.js?v=20.18');
+const V = await import('../js/version.js?v=20.18');
+const P = await import('../js/core/power.js?v=20.18');
+const PR = await import('../js/core/production.js?v=20.18');
+const RC = await import('../js/data/recipes.js?v=20.18');
+const F = await import('../js/data/facilities.js?v=20.18');
+const PL = await import('../js/data/planets.js?v=20.18');
+const SHOP = await import('../js/core/shop.js?v=20.18');
+const AUC = await import('../js/core/auction.js?v=20.18');
+const MAT = await import('../js/data/materials.js?v=20.18');
 
 // ----- 计数器 -----
 let pass = 0, fail = 0;
@@ -498,7 +498,7 @@ function feedPop(inst) {
 //   任意数目的原料，任意比例合成一种新材料，你根据比例和材料推算新材料数值，
 //   精细加工厂可以选择任一种固体材料进行二合一。」
 console.log('\n===== E. 复合资源 / 自定义材料 / 通用精炼 =====');
-const MT = await import('../js/data/materials.js?v=20.17');
+const MT = await import('../js/data/materials.js?v=20.18');
 const MAT_BY_NAME = Object.fromEntries(MT.MATERIALS.map((m) => [m.nameCn, m]));
 const GASES = new Set(['氮气', '氧气', '氨气', '甲烷', '二氧化碳', '氢气']);
 
@@ -716,7 +716,7 @@ for (const c of COMPOSITES) {
 //   ② 四位小数会把小于 5e-5 的值四舍五入成 0.0000，显示成「+0/s」
 //      （粗金这类丰度 1e-7 的资源就落在这一档）。
 console.log('\n===== F. 速率显示精度 =====');
-const FMT = await import('../js/core/format.js?v=20.17');
+const FMT = await import('../js/core/format.js?v=20.18');
 {
   const cases = [
     [0.0523, '+0.0523', '普通小数保留 4 位'],
@@ -769,7 +769,7 @@ const FMT = await import('../js/core/format.js?v=20.17');
 // 3) 开局不给氧气，氧气直接扣星球储量
 // 4) 科研里取消舰船 MKI~MKIII 与 a/b/c/d（已在 selfcheck_v005 第六节覆盖）
 console.log('\n===== G. v0.0.61（跨层储量 / 净增长 / 氧气）=====');
-const POP = await import('../js/core/population.js?v=20.17');
+const POP = await import('../js/core/population.js?v=20.18');
 {
   // ---- G1：同名资源跨层各自成条，储量分开 ----
   // v0.0.91：原「地下」拆成「浅层(underground)」与「深层(deep)」两条，故石头现在是
@@ -915,7 +915,7 @@ console.log('\n===== H. 缓存版本串（v0.0.62 防回归）=====');
 //   战损比落在 0~1、掠夺只在胜利时非零、旧数字签名兼容。
 console.log('\n===== I. 钢铁雄心式交战（v0.2.2）=====');
 {
-  const ARMY = await import('../js/core/army.js?v=20.17');
+  const ARMY = await import('../js/core/army.js?v=20.18');
   const seed = 123456789;
   // 单位契约与 galaxy.js 发送的一致：{ nameCn, power, stats:{atk, def} }
   const mk = (nameCn, atk, def, power) => ({ nameCn, power, stats: { atk, def } });
@@ -990,8 +990,8 @@ console.log('\n===== I. 钢铁雄心式交战（v0.2.2）=====');
 // =====================================================================
 console.log('\n===== J. 军队材料/编制/训练（v0.2.4）=====');
 {
-  const ARMY = await import('../js/core/army.js?v=20.17');
-  const AP = await import('../js/data/army_parts.js?v=20.17');
+  const ARMY = await import('../js/core/army.js?v=20.18');
+  const AP = await import('../js/data/army_parts.js?v=20.18');
 
   // 1. 材料实装：武器用钛合金（强）应比铁攻更高；机动底盘用重材减速、轻材加速
   const rifleIron = ARMY.resolveArmyPart('ap_wpn_rifle', '铁');

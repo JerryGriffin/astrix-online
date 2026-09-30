@@ -16,15 +16,15 @@ import {
   ensureReady, cloudStatus, cloudUser,
   loginWithName, registerWithName, signOutCloud,
   listPublicPlanets, publishMyPlanet, postIncident, fetchInbox, markIncidentResolved,
-} from '../core/cloud.js?v=20.17';
-import { currentAccount, getPlanetInstance, ownedOf, spendOwned } from '../core/state.js?v=20.17';
-import { ensureEntry } from '../core/production.js?v=20.17';
-import { listFleets, fleetPowerOf, defenseBonusOf } from '../core/fleet.js?v=20.17';
-import { totalArmyPowerOf, listArmies, disbandArmy, resolveBattle } from '../core/army.js?v=20.17';
+} from '../core/cloud.js?v=20.18';
+import { currentAccount, getPlanetInstance, ownedOf, spendOwned } from '../core/state.js?v=20.18';
+import { ensureEntry } from '../core/production.js?v=20.18';
+import { listFleets, fleetPowerOf, defenseBonusOf } from '../core/fleet.js?v=20.18';
+import { totalArmyPowerOf, listArmies, disbandArmy, resolveBattle } from '../core/army.js?v=20.18';
 // v0.2.1：内嵌殖民地管理（含内联报告），取代在线模式独立的「星球选择」tab
-import { renderColony } from './colony.js?v=20.17';
-import { PLANETS } from '../data/planets.js?v=20.17';
-import { fmtNum } from '../core/format.js?v=20.17';
+import { renderColony } from './colony.js?v=20.18';
+import { PLANETS } from '../data/planets.js?v=20.18';
+import { fmtNum } from '../core/format.js?v=20.18';
 
 function el(tag, cls, text) {
   const e = document.createElement(tag);

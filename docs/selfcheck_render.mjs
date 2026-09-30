@@ -156,13 +156,13 @@ const app = byId.app;
 
 // 用动态 import 真正跑一遍 main.js（含启动、渲染开始界面、注册心跳）
 step('加载 main.js（启动 + 渲染开始界面）', () => {});
-await import('../js/main.js?v=20.17');
+await import('../js/main.js?v=20.18');
 
-const S = await import('../js/core/state.js?v=20.17');
-const Y = await import('../js/core/shipyard.js?v=20.17');
-const POP = await import('../js/core/population.js?v=20.17');
+const S = await import('../js/core/state.js?v=20.18');
+const Y = await import('../js/core/shipyard.js?v=20.18');
+const POP = await import('../js/core/population.js?v=20.18');
 // v0.1.2（需求 19-2）：造船除装备外还要按部件扣**材料**，测试要先把材料备齐
-const SYU = await import('../js/ui/shipyard.js?v=20.17');
+const SYU = await import('../js/ui/shipyard.js?v=20.18');
 
 const allEls = () => walkAll(app).concat(app.children);
 const findButtons = () => allEls().filter((e) => e.tagName === 'BUTTON');
@@ -286,6 +286,11 @@ step('人力面板：只显示可分配岗位 + 数字输入栏 + 三消耗三�
   if (!gnames.some((t) => t.includes('建筑工厂'))) throw new Error('开局自带建筑工厂，应出现其分组');
   if (gnames.some((t) => t.includes('熔炉') || t.includes('科研所') || t.includes('船坞'))) {
     throw new Error('未建成 / 未解锁的建筑不应出现在人力面板里');
+  }
+  // v0.2.11 管理模式：面板顶部应有模式卡（五种模式 + 效果说明）
+  const popTxt = walkAll(byId['app']).map((e) => e.textContent).join(' ');
+  if (!popTxt.includes('管理模式') || !popTxt.includes('鼓励生育') || !popTxt.includes('富国强兵')) {
+    throw new Error('人力面板缺少管理模式区块（v0.2.11）');
   }
 
   const ins = popInputs();
@@ -590,7 +595,7 @@ step('切回主界面再进星球（验证返回导航）', () => {
 
 // 存档往返
 step('存档落盘并重载', async () => {
-  const S = await import('../js/core/state.js?v=20.17');
+  const S = await import('../js/core/state.js?v=20.18');
   S.saveState();
   const before = _ls.size;
   const raw = _ls.get('astrix.save.' + S.STATE.currentAccountId);
@@ -607,7 +612,7 @@ await Promise.all(pending);
 // 验证：电力面板渲染 / 造出船坞后「星球选择」tab / 星球选择含 7 星 nameCn
 // （本段只读取已有作用域：tabBtns / allText / step / PLANETS，不改动其它步骤）
 // =====================================================================
-const PL = await import('../js/data/planets.js?v=20.17');
+const PL = await import('../js/data/planets.js?v=20.18');
 
 // ⚠ 这段追加在「存档落盘并重载」之后，而它前面那一步是「返回主界面 → 点离线模式」。
 //   v0.0.6（需求 R6）之后，点「离线模式」**总是先弹存档选择界面**（不再直接进游戏），
@@ -728,7 +733,7 @@ step('v0.0.6 星球选择：进入不崩溃且遵循「已发现才可见」门�
 //   合并代码路径不崩；同时假 SDK 的 db 链一律返回空结果，避免任何真实网络调用。
 // ============================================================================
 step('v0.2.1 在线模式：导入 galaxy.js 并渲染「星际」', () => {});
-const G = await import('../js/ui/galaxy.js?v=20.17');
+const G = await import('../js/ui/galaxy.js?v=20.18');
 // 最小假云端：createWorkBuddyCloud 返回带 database 链的对象；getSession 返回无用户
 //   注意：db 链必须「非 thenable」，否则 `await db()...` 会卡在微任务里永不落定。
 const _chain = new Proxy({}, {

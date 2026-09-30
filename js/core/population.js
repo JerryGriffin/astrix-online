@@ -33,7 +33,7 @@
 // 人口变化：H > 0.5 增长、H < 0.3 下降，否则持平。
 // 各项系数都在下方常量区，改一个数就能调平衡。
 
-import { BUILDING_BY_ID } from '../data/buildings.js?v=20.17';
+import { BUILDING_BY_ID } from '../data/buildings.js?v=20.18';
 
 // ============================================================================
 // 可调常量（集中放这里，方便策划调参）
@@ -105,6 +105,44 @@ export const NUTRI_DEFICIT_PENALTY = 0.5;    // 断粮时的直接惩罚系数�
 export const NEUTRAL_HAPPINESS = 0.5;   // 人口持平的幸福度（生育率 = 0）
 export const GROWTH_RATE = 3e-5;        // f = +1 时的每秒增长率（约 +11%/小时）
 export const DECLINE_RATE = 6e-5;       // f = −1 时的每秒衰减率（约 −19%/小时，比增长快一倍）
+
+// ============================================================================
+// 管理模式（v0.2.11）：每种模式一套「人口增长 / 有机质·水消耗 / 产出」乘数
+//   * 存储在星球实例上：inst.manageMode（未设置 = normal）
+//   * growthMul 只放大增长（f ≥ 0），衰减不受影响
+//   * organicMul / waterMul 作用在消耗上；氧气不参与（走大气层储量）
+//   * outputMul 作用在产线劳动产出上（production.js 三处调用点）
+// ============================================================================
+export const MANAGE_MODES = [
+  { id: 'normal', nameCn: '常规管理', icon: '⚙', growthMul: 1, organicMul: 1, waterMul: 1, outputMul: 1,
+    desc: '标准管理：人口、消耗、产出均中性。' },
+  { id: 'rich_strong', nameCn: '富国强兵', icon: '⚔', growthMul: 0.5, organicMul: 1.15, waterMul: 1.15, outputMul: 1.15,
+    desc: '全员增产 +15%，但劳动强度大：人口增长放缓（×0.5），有机质 / 水消耗 +15%。' },
+  { id: 'rest', nameCn: '休养生息', icon: '🌿', growthMul: 1.3, organicMul: 0.9, waterMul: 0.9, outputMul: 0.9,
+    desc: '节衣缩食、轻徭薄赋：有机质 / 水消耗 −10%，人口增长 +30%，产出 −10%。' },
+  { id: 'birth_limit', nameCn: '计划生育', icon: '📋', growthMul: 0.25, organicMul: 0.7, waterMul: 0.7, outputMul: 1,
+    desc: '配给制：有机质 / 水消耗 −30%，人口增长大幅放缓（×0.25）。' },
+  { id: 'birth_boost', nameCn: '鼓励生育', icon: '👶', growthMul: 3, organicMul: 2.5, waterMul: 2.5, outputMul: 0.95,
+    desc: '人口快速增长（×3），但有机质消耗极多（×2.5，水同），产出 −5%（抚育挤占工时）。' },
+];
+
+/** 取星球实例（或 pop 对象）的管理模式；未设置 = 常规 */
+export function manageModeOf(inst) {
+  const id = inst && inst.manageMode;
+  return MANAGE_MODES.find((m) => m.id === id) || MANAGE_MODES[0];
+}
+
+/** 管理模式的产线产出乘数（production.js 调用） */
+export function manageOutputMulOf(inst) {
+  return manageModeOf(inst).outputMul;
+}
+
+/** 某类营养的管理模式消耗乘数 */
+function manageConsumeMul(mm, k) {
+  if (k === 'organic') return mm.organicMul;
+  if (k === 'water') return mm.waterMul;
+  return 1;
+}
 
 // 庇护富余加成（v0.0.91 设计者要求）：「庇护远大于人数时，人数增速加快一些」。
 //   口径：shelterRatio = 庇护总量 / 人口（不封顶；≤1 视为无富余）。
@@ -441,12 +479,13 @@ function metabolismScale(pop) {
   return { total: Number(pop.total) || 0, extra };
 }
 
-// 当前每秒消耗：{ oxygen, organic, water }
+// 当前每秒消耗：{ oxygen, organic, water }（v0.2.11：含管理模式乘数，读 pop.manageMode）
 export function consumptionPerSec(pop) {
   const { total, extra } = metabolismScale(pop);
   const personSec = total + extra;
+  const mm = manageModeOf(pop);
   const out = {};
-  for (const k of NUTRIENT_KEYS) out[k] = personSec * BASE_CONSUME[k];
+  for (const k of NUTRIENT_KEYS) out[k] = personSec * BASE_CONSUME[k] * manageConsumeMul(mm, k);
   return out;
 }
 
@@ -508,6 +547,11 @@ export function tickPopulation(pop, dt, supply, opts = {}) {
   const empty = { ratio: 1, consumed: {}, produced: {} };
   if (dt === 0) return empty;
   supply = supply || {};
+
+  // v0.2.11：管理模式 —— 调用方经 opts.manageMode 传 inst.manageMode（id），
+  //   写回 pop.manageMode 供 consumptionPerSec / 物品栏展示同步
+  const mm = manageModeOf({ manageMode: opts.manageMode || pop.manageMode });
+  pop.manageMode = mm.id;
 
   // v0.0.94：**在本 tick 扣粮之前**记录「有没有食物」。
   //   若在扣完之后再判断，那么刚好把最后一口吃完的那一秒会被误判成断粮，
@@ -581,7 +625,8 @@ export function tickPopulation(pop, dt, supply, opts = {}) {
   const growthBonus = shelterGrowthBonus(shelterRatio);
 
   const f = (pop.happiness - NEUTRAL_HAPPINESS) / (1 - NEUTRAL_HAPPINESS);
-  pop.total += pop.total * (f >= 0 ? f * GROWTH_RATE * growthBonus : f * DECLINE_RATE) * dt;
+  // v0.2.11：管理模式放大增长（仅 f ≥ 0；衰减不受影响）
+  pop.total += pop.total * (f >= 0 ? f * GROWTH_RATE * growthBonus * mm.growthMul : f * DECLINE_RATE) * dt;
   pop.total = Math.max(0, pop.total);
 
   return { ratio, consumed, produced };
