@@ -21,7 +21,7 @@ const page = await (await browser.newContext()).newPage();
 await page.goto('http://127.0.0.1:8779/index.html', { waitUntil: 'load' });
 await page.waitForTimeout(1000);
 const res = await page.evaluate(async () => {
-  const C = await import('/js/core/cloud.js?v=27.1');
+  const C = await import('/js/core/cloud.js?v=28.1');
   await C.ensureReady();
   return await C.listPublicPlanets();
 });

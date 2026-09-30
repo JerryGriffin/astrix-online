@@ -10,10 +10,10 @@
 //   * HOI4 风格国策（三支六策，按天推进）               → focus 系列
 //   * 海域（制海权争夺 + 海战）                          → sea 系列
 import { HOI_NATIONS, HOI_BY_ID, HOI_DEEP, HOI_SEAS, ARMY_MEN, popOf, BLOC_NAME, HOI_SCENARIO_ID,
-  workforceOf, ARMY_POWER_PER_DIV, NAVY_MUL, GEAR_PARTS, SHIP_NAMES, ARMY_BP_NAME, HOI_BG, SHIP_CLASSES, POST_WAR_OPTIONS, GER_PUPPETS, ARMY_BP_LINE, warshipTonnageOf } from '../data/hoi1936.js?v=27.1';
-import { BUILDING_BY_ID } from '../data/buildings.js?v=27.1';
-import { JOBS_BY_BUILDING, assignWorkers, jobCapacity, getAvailable } from './population.js?v=27.1';
-import { ELITE_DIVISIONS, ELITE_MUL } from '../data/hoi1936.js?v=27.1';
+  workforceOf, ARMY_POWER_PER_DIV, NAVY_MUL, GEAR_PARTS, SHIP_NAMES, ARMY_BP_NAME, HOI_BG, SHIP_CLASSES, POST_WAR_OPTIONS, GER_PUPPETS, ARMY_BP_LINE, warshipTonnageOf } from '../data/hoi1936.js?v=28.1';
+import { BUILDING_BY_ID } from '../data/buildings.js?v=28.1';
+import { JOBS_BY_BUILDING, assignWorkers, jobCapacity, getAvailable } from './population.js?v=28.1';
+import { ELITE_DIVISIONS, ELITE_MUL } from '../data/hoi1936.js?v=28.1';
 
 // 依赖注入（避免与 state.js / production.js 形成循环导入）
 let _getInst = null;
@@ -766,14 +766,17 @@ export function reinforceArmy(acc, inst, armyId, days) {
  *   注意不用真正的 Infinity —— 它 JSON 化会变成 null，会毁掉存档。
  */
 export const INFINITE_STOCK = 1e15;
-export function applyInfiniteStock(inst) {
+/**
+ * v0.2.8 修正：**只有储量无限** —— 星球矿藏剩余（remaining）与储藏上限（reserve）置满，
+ *   **物品栏持有（owned）不动**（按各国历史产量推算的起始库存，靠采集/生产增长）。
+ */
+export function applyInfiniteReserve(inst) {
   if (!inst) return 0;
   let n = 0;
   for (const e of (inst.inventory || [])) {
     if (!e) continue;
-    e.owned = INFINITE_STOCK;
     e.reserve = Math.max(Number(e.reserve) || 0, INFINITE_STOCK);
-    if (Number(e.remaining) > 0) e.remaining = INFINITE_STOCK;
+    if (Number(e.remaining) > 0) e.remaining = INFINITE_STOCK;   // 矿藏永不枯竭
     n++;
   }
   return n;

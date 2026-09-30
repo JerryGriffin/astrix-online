@@ -1,9 +1,9 @@
 // 开始界面：标题、离线/在线模式、账号选择、各次要入口模态层（Astrix）
-import {  STATE, createAccount, switchAccount, deleteAccount, currentAccount, START_MODES, switchPool  } from '../core/state.js?v=27.1';
-import { HOI_NATIONS } from '../data/hoi1936.js?v=27.1';   // v0.2.6 官方 mod 1936 剧本
-import { fmtNum, fmtTime } from '../core/format.js?v=27.1';
+import {  STATE, createAccount, switchAccount, deleteAccount, currentAccount, START_MODES, switchPool  } from '../core/state.js?v=28.1';
+import { HOI_NATIONS } from '../data/hoi1936.js?v=28.1';   // v0.2.6 官方 mod 1936 剧本
+import { fmtNum, fmtTime } from '../core/format.js?v=28.1';
 // 版本号与更新日志的唯一来源：任何地方要显示版本都从这里取，改版本只改 js/version.js 一处
-import { VERSION, VERSIONS } from '../version.js?v=27.1';
+import { VERSION, VERSIONS } from '../version.js?v=28.1';
 
 // 创建元素的小工具
 function el(tag, cls, text) {
@@ -320,7 +320,7 @@ function openTips(ctx) {
     '<b>星际股市</b>　商店星每种资源随时买卖，价格随成交**买涨卖跌**并自然回归；原矿类极度贬值，精加工品才值钱——低级货建议先加工再卖。',
     '<b>拍卖行</b>　出售资产（资源 / 装备 / 飞船）的唯一途径：15 秒竞价，价高者得，流拍原样退还。离线由「星际买家」NPC 兜底出价；电脑势力也会实时挂单，记得去捡漏。',
     '<b>在线模式</b>　邮箱验证码登录，存档按邮箱分开、登录一次永久免登；星系无迷雾：所有玩家与电脑势力星球全部可见，可贸易、进攻或**结盟**（互不侵犯 + 盟友购买价 9 折）。GitHub 版与正式版同属一个星系；**商店星仓库全服共用**，所有人的买卖实时增减同一个池子。',
-    '<b>1936 剧本（官方 mod）</b>　新建存档选「1936 剧本」（**在线模式下仅开发者可用**）→ 从 12 国中选一个开局（真实 1936 数据：人口 / 工业 / 陆军师 / 海军 / 空军），**本土 + 属地两颗星球**起步，其他国家是模拟国家星球（可贸易 / 结盟 / 宣战）。',
+    '<b>1936 剧本（官方 mod）</b>　新建存档选「风暴前夜」（**在线模式下仅开发者可用**）→ 从 12 国中选一个开局（真实 1936 数据：人口 / 工业 / 陆军师 / 海军 / 空军），**本土 + 属地两颗星球**起步，其他国家是模拟国家星球（可贸易 / 结盟 / 宣战）。',
     '<b>战争</b>　在模拟国家星球卡上「宣战」即进入**持续战争**（跨会话保留，不会自动结束）；进攻获胜积累战争分数，**分数 ≥ 60 可迫降签约**（拿赔款），也可「我方投降」付赔款结束 —— 只有投降签约才能终止战争。',
     '<b>离线结算</b>　关屏也在推进，回来一次性结算；收益上限 12 小时，长挂不如定时收一次。',
   ];
@@ -361,13 +361,13 @@ function openMod(ctx) {
   const box = el('div', 'fac-group');
   box.appendChild(el('div', 'res-section-title', '官方 mod'));
   const item = el('div', 'pop-card');
-  item.appendChild(el('b', null, '🎖 1936 剧本 · 风暴前夜'));
+  item.appendChild(el('b', null, '🎖 风暴前夜（1936 剧本）'));
   const d = el('p', 'muted', '参考《钢铁雄心 4》1936 开局的星际模拟：先选择国家（12 国，真实 1936 数据：'
     + '人口 / 工业 / 陆军师 / 海军 / 空军），获取「本土星球 + 属地星球」两颗星球与一支国家军队，'
     + '与其他模拟国家贸易、结盟、宣战——战争是持续过程，只有投降签约才能结束。');
   d.style.cssText = 'font-size:12px;line-height:1.8;margin:6px 0;';
   item.appendChild(d);
-  item.appendChild(el('p', 'muted', '启用方式：新建存档 → 开局模式选「1936 剧本」→ 选择国家。'
+  item.appendChild(el('p', 'muted', '启用方式：新建存档 → 开局模式选「风暴前夜」→ 选择国家。'
     + '（在线模式下 1936 剧本仅开发者可用：设置 → 开发者模式 → 输入密码 astrix。）'));
   box.appendChild(item);
   body.appendChild(box);

@@ -1,9 +1,9 @@
 // 应用入口：路由、全局模态层与启动（Astrix）
-import { STATE, loadState, createAccount, currentAccount, saveState, tick, settleOffline, OFFLINE_RATIO } from './core/state.js?v=27.1';
-import { renderStart, openAccountPicker } from './ui/start.js?v=27.1';
-import { renderPlanet } from './ui/planet.js?v=27.1';
+import { STATE, loadState, createAccount, currentAccount, saveState, tick, settleOffline, OFFLINE_RATIO } from './core/state.js?v=28.1';
+import { renderStart, openAccountPicker } from './ui/start.js?v=28.1';
+import { renderPlanet } from './ui/planet.js?v=28.1';
 // v0.2.1：在线模式前置 —— 进入游戏前必须先绑定邮箱（验证码登录 / 注册）
-import { cloudUser, loginWithName, registerWithName, ensureReady } from './core/cloud.js?v=27.1';
+import { cloudUser, loginWithName, registerWithName, ensureReady } from './core/cloud.js?v=28.1';
 
 const root = document.getElementById('app');
 const modalRoot = document.getElementById('modal-root');

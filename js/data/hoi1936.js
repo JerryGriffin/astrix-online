@@ -112,7 +112,7 @@ export const HOI_BY_ID = {};
 for (const n of HOI_NATIONS) HOI_BY_ID[n.id] = n;
 
 export const HOI_SCENARIO_ID = 'hoi1936';
-export const HOI_SCENARIO_NAME = '1936 剧本 · 风暴前夜';
+export const HOI_SCENARIO_NAME = '风暴前夜';
 
 // ============================================================================
 // v0.2.6 深化：人口基准 / 编制 / 历史舰队 / 阵营 / 生产线侧重 / 国策

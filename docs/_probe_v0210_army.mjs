@@ -1,7 +1,7 @@
 // v0.2.10 军队专项探针：飞船编入（6:4+25%）、互斥、科技门槛、老存档科技迁移
 // army.js 为纯算法模块（不碰存储 adapter），直接用内存对象测。
 import { ensureArmies, attachShipToArmy, detachShipFromArmy, shipEligibleForArmy, shipArmyOf,
-  armyEffStats, armyPowerOfInstance, armyToUnit, listArmies, armyStatsOfBp, armyPowerOf } from '../js/core/army.js?v=27.1';
+  armyEffStats, armyPowerOfInstance, armyToUnit, listArmies, armyStatsOfBp, armyPowerOf } from '../js/core/army.js?v=28.1';
 
 let pass = 0, fail = 0;
 function ok(cond, msg) {
