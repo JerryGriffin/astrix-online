@@ -19,7 +19,7 @@
 //   → 「打别人 / 贸易别人」= 插入一条 target_uid 指向对方的事件；
 //     对方上线后在收件箱本地结算，并把回执（战报/贸易结算）作为新事件发回。
 
-import { CACHE_TAG } from '../version.js?v=20.13';
+import { CACHE_TAG } from '../version.js?v=20.14';
 
 const CLOUD_ENDPOINT = 'https://astrix.app.workbuddy.host';
 const CLOUD_PUBLISHABLE_KEY = 'wbpk_a83qn1S1YtnqmhL6Wb2oF3_dIuTVZ1qLa1Ph94JTqQhmspVf2q27z14';

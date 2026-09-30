@@ -16,15 +16,15 @@ import {
   ensureReady, cloudStatus, cloudUser,
   signInWithPassword, sendEmailOtp, verifyEmailOtp, signOutCloud,
   listPublicPlanets, publishMyPlanet, postIncident, fetchInbox, markIncidentResolved,
-} from '../core/cloud.js?v=20.13';
-import { currentAccount, getPlanetInstance, ownedOf, spendOwned } from '../core/state.js?v=20.13';
-import { ensureEntry } from '../core/production.js?v=20.13';
-import { listFleets, fleetPowerOf, defenseBonusOf } from '../core/fleet.js?v=20.13';
-import { totalArmyPowerOf, listArmies, disbandArmy, resolveBattle } from '../core/army.js?v=20.13';
+} from '../core/cloud.js?v=20.14';
+import { currentAccount, getPlanetInstance, ownedOf, spendOwned } from '../core/state.js?v=20.14';
+import { ensureEntry } from '../core/production.js?v=20.14';
+import { listFleets, fleetPowerOf, defenseBonusOf } from '../core/fleet.js?v=20.14';
+import { totalArmyPowerOf, listArmies, disbandArmy, resolveBattle } from '../core/army.js?v=20.14';
 // v0.2.1：内嵌殖民地管理（含内联报告），取代在线模式独立的「星球选择」tab
-import { renderColony } from './colony.js?v=20.13';
-import { PLANETS } from '../data/planets.js?v=20.13';
-import { fmtNum } from '../core/format.js?v=20.13';
+import { renderColony } from './colony.js?v=20.14';
+import { PLANETS } from '../data/planets.js?v=20.14';
+import { fmtNum } from '../core/format.js?v=20.14';
 
 function el(tag, cls, text) {
   const e = document.createElement(tag);
@@ -160,14 +160,16 @@ function renderShell(body, ctx, rerender) {
   header.appendChild(actions);
   body.appendChild(header);
 
-  // ---- 2. 搜索栏（过滤玩家星球网格）----
+  // ---- 2. 搜索栏（过滤玩家 / 电脑势力星球网格）----
   let query = '';
+  const npcGrid = el('div', 'gx-grid');
   const searchWrap = el('div', 'gx-search');
   const searchInput = document.createElement('input');
   searchInput.type = 'text';
   searchInput.placeholder = '搜索玩家星球 / 指挥官 / 星球代号…';
   searchInput.addEventListener('input', () => {
     query = searchInput.value.trim().toLowerCase();
+    renderNpcGrid(npcGrid, ctx, rerender, acc, query);
     renderPlanetGrid(planetGrid, ctx, rerender, u, acc, query);
   });
   searchWrap.appendChild(searchInput);
@@ -187,6 +189,15 @@ function renderShell(body, ctx, rerender) {
       if (code && code !== ctx.planetCode && typeof ctx.onEnterPlanet === 'function') ctx.onEnterPlanet(code);
     },
   });
+
+  // ---- 3.5 电脑势力星球（v0.2.10：独立区块 + 同步渲染，不依赖云端请求，永远可见）----
+  const npcSec = el('div', 'gx-section');
+  npcSec.appendChild(el('div', 'section-title', '电脑势力星球'));
+  npcSec.appendChild(el('div', 'muted', '即时交易 / 进攻 / 结盟（盟友购买价 9 折、互不侵犯）。'));
+  npcGrid.id = 'gx-npc-grid';
+  npcSec.appendChild(npcGrid);
+  body.appendChild(npcSec);
+  renderNpcGrid(npcGrid, ctx, rerender, acc, '');
 
   // ---- 4. 我的殖民地快照说明 / 收件箱 / 玩家星球网格 ----
   const snapNote = el('div', 'muted', '说明：进入本页会自动把你的殖民地概况（人口 / 建筑 / 防御）'
@@ -570,15 +581,22 @@ function npcGarrison(f) {
   }));
 }
 
-async function renderPlanetGrid(grid, ctx, rerender, u, acc, query) {
-  ensureAllianceFields(acc);   // v0.2.10 结盟字段兜底
+/** 电脑势力星球网格（v0.2.10：独立同步渲染，不依赖云端） */
+function renderNpcGrid(grid, ctx, rerender, acc, query) {
+  ensureAllianceFields(acc);
   grid.innerHTML = '';
-  // v0.2.4：电脑势力星球常驻网格（查看不需登录，交互需要云账号）
   const npcs = NPC_FACTIONS.filter((f) => !query
     || (f.nameCn + f.owner + f.code).toLowerCase().includes(query));
   for (const f of npcs) grid.appendChild(buildNpcCard(f, ctx, rerender, acc));
+  if (!npcs.length) grid.appendChild(el('div', 'muted', '没有匹配「' + query + '」的电脑势力星球。'));
+}
+
+async function renderPlanetGrid(grid, ctx, rerender, u, acc, query) {
+  ensureAllianceFields(acc);   // v0.2.10 结盟字段兜底
+  grid.innerHTML = '';
+  // v0.2.10：电脑势力星球已拆到独立区块（renderNpcGrid），此处只渲染玩家星球
   if (!u) {
-    grid.appendChild(el('div', 'muted', '登录云账号后可与其他玩家的星球交易 / 交战；电脑势力星球随时可以交互。'));
+    grid.appendChild(el('div', 'muted', '登录云账号后可与其他玩家贸易 / 结盟 / 交战；电脑势力星球在上方独立区块，随时交互。'));
     return;
   }
   grid.appendChild(el('div', 'muted', '读取星系中…'));

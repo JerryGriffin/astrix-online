@@ -25,12 +25,12 @@ const res = await page.evaluate(async () => {
   const out = { logs: [] };
   const log = (m) => out.logs.push(m);
   // 1) 模块是否正常导入 & isNative 语义
-  const C = await import('/js/core/cloud.js?v=20.13');
+  const C = await import('/js/core/cloud.js?v=20.14');
   log('cloud 导入 ok, status=' + JSON.stringify(C.cloudStatus()));
   // 2) 手动复刻 iframe 链路
   const ifr = document.createElement('iframe');
   ifr.style.display = 'none';
-  ifr.src = 'https://astrix.app.workbuddy.host/cloud-bridge.html?origin=' + encodeURIComponent(location.origin) + '&v=20.13';
+  ifr.src = 'https://astrix.app.workbuddy.host/cloud-bridge.html?origin=' + encodeURIComponent(location.origin) + '&v=20.14';
   log('contentWindow 存在=' + !!ifr.contentWindow);
   const got = await new Promise((resolve) => {
     let done = false;
