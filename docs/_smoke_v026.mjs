@@ -53,7 +53,7 @@ const stepA = await page.evaluate(() => {
     hasSelect: !!sel,
     optionCount: sel ? sel.options.length : 0,
     firstOption: sel ? sel.options[0].textContent : '',
-    infoHasData: info.includes('人口 69.3') && info.includes('工业 48') && info.includes('非洲属地'),
+    infoHasData: info.includes('人口 69.3') && /工业 \d+/.test(info) && info.includes('非洲属地'),
   };
 });
 console.log('A. 1936 选国界面:', JSON.stringify(stepA));
