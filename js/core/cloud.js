@@ -124,11 +124,11 @@ function ensureBridge() {
       bridge.starting = null;
       resolve(ok);
     }
-    // 桩环境（Node 自检的假 DOM）没有 contentWindow：真实浏览器里 iframe 创建即带
-    // about:blank 的 contentWindow。此时快速失败，恢复「直连不可用」的旧行为，
-    // 避免卡 15 秒拖死后续调用（render 自检曾在此卡死）。
-    if (!ifr.contentWindow) { settle(false); return; }
+    // 真实浏览器：插入 DOM 后同步创建 about:blank frame，contentWindow 立即可用；
+    // 桩环境（Node 自检的假 DOM）插入后仍无 contentWindow → 快速失败，
+    // 恢复「直连不可用」的旧行为，避免卡 15 秒拖死后续调用（render 自检曾在此卡死）。
     (document.body || document.documentElement).appendChild(ifr);
+    if (!ifr.contentWindow) { settle(false); return; }
   });
   return bridge.starting;
 }
