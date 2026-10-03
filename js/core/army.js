@@ -317,7 +317,7 @@ export function armyBuildTick(inst, blueprintId, labor, dt, powerRatio, acc) {
       }
       // 成军：命名 = 蓝图名 No.N
       const arr = listArmies(acc);
-      const serial = arr.filter((a) => a && a.blueprintId === blueprint.id).length + 1;
+      const serial = arr.filter((a) => a && a.blueprintId === bp.id).length + 1;
       const stats = armyStatsOfBp(bp);
       arr.push({
         id: genArmyId(),

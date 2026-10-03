@@ -380,9 +380,11 @@ export function getTotalLabor(pop) {
 
 // 已分配人力总数（所有职业 count 之和）
 export function getAssigned(pop) {
+  if (!pop) return 0;
   ensureRemovedJobsCleared(pop);   // v0.1.1：幽灵岗位不占人力（老存档兼容）
+  const asg = (pop.assignments && typeof pop.assignments === 'object') ? pop.assignments : {};
   let s = 0;
-  for (const id in pop.assignments) s += pop.assignments[id].count || 0;
+  for (const id in asg) s += (asg[id] && asg[id].count) || 0;
   return s;
 }
 
@@ -408,10 +410,13 @@ export function buildingSlots(buildingId, counts) {
 // 已指派到该建筑的人数（该建筑下所有职业的 count 之和）
 export function assignedToBuilding(pop, buildingId) {
   if (!pop) return 0;
+  // v0.3.3：老档/云端合并进来的 pop 可能没有 assignments，直接索引会抛
+  //   TypeError 并中断整个 tick（表现为电力/产线/舰队页一起打不开）。
+  const asg = (pop.assignments && typeof pop.assignments === 'object') ? pop.assignments : {};
   let s = 0;
   const jobs = JOBS_BY_BUILDING[buildingId] || [];
   for (const j of jobs) {
-    const a = pop.assignments[j.id];
+    const a = asg[j.id];
     if (a && a.count > 0) s += a.count;
   }
   return s;
@@ -426,7 +431,8 @@ export function freeSlots(pop, buildingId, counts) {
 export function jobCapacity(pop, jobId, counts) {
   const job = getJob(jobId);
   if (!job) return 0;
-  const a = pop.assignments[jobId];
+  const asg = (pop.assignments && typeof pop.assignments === 'object') ? pop.assignments : {};
+  const a = asg[jobId];
   const old = a ? a.count : 0;
   let max = old + getAvailable(pop);
   if (counts && job.buildingId) {
@@ -452,6 +458,7 @@ export function hiddenJobCount(counts) {
 export function assignWorkers(pop, jobId, count, counts) {
   const job = getJob(jobId);
   if (!job) return 0;
+  if (!pop.assignments || typeof pop.assignments !== 'object') pop.assignments = {};
   if (!pop.assignments[jobId]) pop.assignments[jobId] = { count: 0, intensityId: 'standard' };
   const a = pop.assignments[jobId];
   const max = jobCapacity(pop, jobId, counts);
@@ -463,6 +470,7 @@ export function assignWorkers(pop, jobId, count, counts) {
 // 设置某职业的工作强度档位（不分配人，只改档位；无分配记录时新建）
 export function setJobIntensity(pop, jobId, intensityId) {
   if (!getJob(jobId) || !getIntensity(intensityId)) return;
+  if (!pop.assignments || typeof pop.assignments !== 'object') pop.assignments = {};
   if (!pop.assignments[jobId]) pop.assignments[jobId] = { count: 0, intensityId: 'standard' };
   pop.assignments[jobId].intensityId = intensityId;
 }
@@ -474,9 +482,10 @@ export function setJobIntensity(pop, jobId, intensityId) {
 // 返回 { total: 总人数, extra: Σ 上工人数 ×(消耗倍率−1) }
 function metabolismScale(pop) {
   ensureRemovedJobsCleared(pop);   // v0.1.1：幽灵岗位不参与代谢放大（老存档兼容）
+  const asg = (pop.assignments && typeof pop.assignments === 'object') ? pop.assignments : {};
   let extra = 0;
-  for (const id in pop.assignments) {
-    const a = pop.assignments[id];
+  for (const id in asg) {
+    const a = asg[id];
     if (!a || !(a.count > 0)) continue;
     extra += a.count * (getIntensity(a.intensityId).consumeMul - 1);
   }
@@ -645,14 +654,18 @@ export function tickPopulation(pop, dt, supply, opts = {}) {
 // 某职业当前的有效产出系数 = 人数 × 强度产出倍率（未分配人 → 0）
 // 说明：本函数只给「劳动系数」；真正产出还需生产层结合建筑与星球储藏判定。
 export function jobOutput(pop, jobId) {
-  const a = pop.assignments[jobId];
+  // v0.3.3：与 assignedToBuilding/getAssigned 同理，assignments 缺失时按「无人」处理，
+  //   避免老档渲染时抛 TypeError。
+  const asg = (pop && pop.assignments && typeof pop.assignments === 'object') ? pop.assignments : {};
+  const a = asg[jobId];
   if (!a || a.count <= 0) return 0;
   return a.count * getIntensity(a.intensityId).outputMul;
 }
 
 // 便捷：取某职业已分配人数
 export function getJobCount(pop, jobId) {
-  const a = pop.assignments[jobId];
+  const asg = (pop && pop.assignments && typeof pop.assignments === 'object') ? pop.assignments : {};
+  const a = asg[jobId];
   return a ? a.count : 0;
 }
 

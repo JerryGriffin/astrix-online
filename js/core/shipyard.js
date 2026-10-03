@@ -547,6 +547,9 @@ export function createShip(bp, ctx = {}) {
       type: ev.type,
       grade: ev.grade,
       strength: ev.strength,
+      // v0.3.3：fleet.js#isFreighter / #fleetCargoCells 按 ship.blueprintId 反查 acc.blueprints
+      //   判定运输船身份与货舱容量；缺失会让运输任务恒判「编队里没有运输船」。
+      blueprintId: bp.id,
       blueprint: JSON.parse(JSON.stringify(bp)),
       stats: {
         capacity: ev.capacity, footprint: ev.footprint, slots: ev.slots, slotsUsed: ev.slotsUsed,
