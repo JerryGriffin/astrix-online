@@ -1,6 +1,6 @@
 // v0.2.6 深化探针：人口比例 / 500 人编制 / 史实舰队 / 侧重生产线 / 阵营 / 国策 / 海域
 import { STATE, createAccount, getPlanetInstance } from '../js/core/state.js?v=32.1';
-import { HOI_NATIONS, HOI_BY_ID, HOI_DEEP, popOf, GER_POP_BASE, ARMY_MEN, HOI_SEAS } from '../js/data/hoi1936.js?v=32.1';
+import { HOI_MAIN_NATIONS as HOI_NATIONS, HOI_BY_ID, HOI_DEEP, popOf, GER_POP_BASE, ARMY_MEN, HOI_SEAS } from '../js/data/hoi1936.js?v=32.1';
 import { scenarioDateOf, ensureFocus, startFocus, tickFocus, focusOptionsOf, contestSea, ensureSeas, enemySeaPressure, blocNameOf, deepOf } from '../js/core/hoi1936.js?v=32.1';
 import { consumptionPerSec } from '../js/core/population.js?v=32.1';
 import { listFleets } from '../js/core/fleet.js?v=32.1';
@@ -135,12 +135,47 @@ tickFocus(g3, 91);
 const o4 = focusOptionsOf(g3);
 ok(!!o4.find((x) => x.id === 'ger_d2').locked, '外交线两策互斥（' + o4.find((x) => x.id === 'ger_d2').locked + '）');
 
-// 外交 AI：多次判定应出现宣战或结盟
-const g4 = createAccount('柏林4', 'hoi1936', { countryId: 'pol' });   // 波兰较弱 → 易被宣战
-let ev = 0;
-for (let i = 0; i < 40; i++) { g4.hoiDiploDays = 0; if (tickDiploAI(g4, 31)) ev++; }
-ok(ev > 0, '外交 AI 有行动（' + ev + ' 次：宣战或结盟）');
-ok(g4.wars.length + g4.npcAllies.length > 0, 'AI 行动已写入战争 / 盟友（战争 ' + g4.wars.length + ' / 盟友 ' + g4.npcAllies.length + '）');
+// —— v0.3.3：外交 AI 改为「按历史时间表」，不再随机宣战 ——
+// 旧断言「多次判定必出现宣战或结盟」与新需求直接冲突（需求：不要随便乱宣战），
+// 故改为验证历史门控本身：非节点期不得开战，到了节点才开打。
+function accAtDay(countryId, day) {
+  const a = createAccount('历史-' + countryId + '-' + day, 'hoi1936', { countryId });
+  // GAME_DAYS_PER_SEC = 1（1 真实秒 = 1 游戏天），故回拨 day 秒即可令 gameDaysOf ≈ day
+  a.scenarioStartedAt = Date.now() - day * 1000;
+  a.hoiDiploDays = 0;
+  return a;
+}
+// ① 非战争节点期（如开局第 10 天）反复判定，不应产生任何战争
+{
+  const a = accAtDay('pol', 10);
+  let fired = 0;
+  for (let i = 0; i < 40; i++) { a.hoiDiploDays = 0; tickDiploAI(a, 31); if (a.wars.length) fired++; }
+  ok(fired === 0, '非历史节点期不宣战（1936-01-11 跑 40 次，战争 ' + a.wars.length + ' 场）');
+}
+// ② 到了「德国入侵波兰」节点（day 973）应触发对德宣战
+{
+  const a = accAtDay('pol', 973);
+  for (let i = 0; i < 5 && !a.wars.length; i++) { a.hoiDiploDays = 0; tickDiploAI(a, 31); }
+  ok(a.wars.length > 0, '历史节点日（1939-09-01）触发宣战（战争 ' + a.wars.length + ' 场）');
+  ok(a.wars.length === 1, '同一节点只触发一次（战争 ' + a.wars.length + ' 场）');
+  const tgt = a.wars[0] ? String(a.wars[0].targetId).replace(/^hoi_/, '') : '';
+  ok(tgt === 'ger', '宣战对象为史实交战国（' + tgt + '）');
+}
+// ③ 玩家为德国时，同一节点应触发对波兰的战争
+{
+  const a = accAtDay('ger', 973);
+  for (let i = 0; i < 5 && !a.wars.length; i++) { a.hoiDiploDays = 0; tickDiploAI(a, 31); }
+  ok(a.wars.length > 0, '德国在 1939-09-01 对波兰开战（战争 ' + a.wars.length + ' 场）');
+  const tgt = a.wars[0] ? String(a.wars[0].targetId).replace(/^hoi_/, '') : '';
+  ok(tgt === 'pol', '对象为波兰（' + tgt + '）');
+}
+// ④ 玩家为日本时，1937 年节点应对中国开战，而非 1936 年就打美国
+{
+  const a = accAtDay('jap', 462);
+  for (let i = 0; i < 5 && !a.wars.length; i++) { a.hoiDiploDays = 0; tickDiploAI(a, 31); }
+  const tgt = a.wars[0] ? String(a.wars[0].targetId).replace(/^hoi_/, '') : '';
+  ok(tgt === 'chn', '日本在 1937-06-07 对中国开战（对象 ' + tgt + '）');
+}
 
 // 战时总动员（全存档可用）
 const mob = MANAGE_MODES.find((x) => x.id === 'mobilize');

@@ -32,62 +32,66 @@ export const ARMY_CATS = {
 //   inputs 固定投料（材料名 → 份数），材料全部来自 materials.js 真实材料
 //   atk/def/speed 部件对战力的贡献（army.js#armyStatsOf 求和）
 // ---------------------------------------------------------------------------
+// v0.3.3：全部 ap_* 的 work 统一 ×100（制造速率降为原来的 1/100）。
+//   速率公式见 production.js#tickProduction：rate = labor × powerRatio ÷ recipe.work，
+//   work 越大速率越低。旧值区间 300~2800 → 新值 30000~280000。
+// ---------------------------------------------------------------------------
 export const ARMY_PARTS = [
   // —— 框架（t_m1 起就有基础框架，更重型框架随后续科技解锁）——
-  { id: 'ap_frame_light', nameCn: '轻型框架', cat: 'frame', slot: 'hull', tech: 't_m1', mass: 80, work: 420, cap: 10,
+  { id: 'ap_frame_light', nameCn: '轻型框架', cat: 'frame', slot: 'hull', tech: 't_m1', mass: 80, work: 42000, cap: 10,
     inputs: { '铝': 150, '塑料': 30 },
     atk: 0, def: 10, speed: 0, desc: '班组成的基础承载结构，轻便但单薄。' },
-  { id: 'ap_frame_heavy', nameCn: '重型框架', cat: 'frame', slot: 'hull', tech: 't_m2', mass: 260, work: 1100, cap: 14,
+  { id: 'ap_frame_heavy', nameCn: '重型框架', cat: 'frame', slot: 'hull', tech: 't_m2', mass: 260, work: 110000, cap: 14,
     inputs: { '钛合金': 90, '钢': 100, '橡胶': 30 },
     atk: 0, def: 30, speed: -4, desc: '装甲载具级框架，承载重装部件，代价是机动性。' },
 
   // —— 机动底盘（t_m1 轮式起步，t_m2 悬浮/履带/装甲车）——
-  { id: 'ap_mob_hover', nameCn: '悬浮底盘', cat: 'mobility', slot: 'engine', tech: 't_m2', mass: 120, work: 700,
+  { id: 'ap_mob_hover', nameCn: '悬浮底盘', cat: 'mobility', slot: 'engine', tech: 't_m2', mass: 120, work: 70000,
     inputs: { '钛合金': 50, '石墨烯': 30, '氢气': 70 },
     atk: 0, def: 4, speed: 18, desc: '气垫悬浮，全地形高速机动。' },
-  { id: 'ap_mob_track', nameCn: '履带底盘', cat: 'mobility', slot: 'engine', tech: 't_m2', mass: 210, work: 780,
+  { id: 'ap_mob_track', nameCn: '履带底盘', cat: 'mobility', slot: 'engine', tech: 't_m2', mass: 210, work: 78000,
     inputs: { '钢': 110, '橡胶': 60 },
     atk: 0, def: 10, speed: 6, desc: '重装履带，慢但稳，适合正面推进。' },
-  { id: 'ap_mob_wheel', nameCn: '轮式底盘', cat: 'mobility', slot: 'engine', tech: 't_m1', mass: 140, work: 620,
+  { id: 'ap_mob_wheel', nameCn: '轮式底盘', cat: 'mobility', slot: 'engine', tech: 't_m1', mass: 140, work: 62000,
     inputs: { '铝': 90, '橡胶': 50 },
     atk: 0, def: 5, speed: 13, desc: '公路轮式底盘，性价比最高的机动方案。' },
-  { id: 'ap_mob_apc', nameCn: '装甲车底盘', cat: 'mobility', slot: 'engine', tech: 't_m2', mass: 300, work: 1300,
+  { id: 'ap_mob_apc', nameCn: '装甲车底盘', cat: 'mobility', slot: 'engine', tech: 't_m2', mass: 300, work: 130000,
     inputs: { '钢': 160, '钛合金': 60, '橡胶': 70 },
     atk: 0, def: 22, speed: 8, desc: '装甲运兵载具底盘，防护与机动兼顾，机械化部队的中坚。' },
 
   // —— 武器（t_m1 步枪，t_m2 机炮/火炮/激光器，t_m3 高能激光炮）——
-  { id: 'ap_wpn_rifle', nameCn: '突击步枪', cat: 'weapon', slot: 'weapon', tech: 't_m1', mass: 12, work: 300,
+  { id: 'ap_wpn_rifle', nameCn: '突击步枪', cat: 'weapon', slot: 'weapon', tech: 't_m1', mass: 12, work: 30000,
     inputs: { '钢': 50, '塑料': 20 },
     atk: 14, def: 0, speed: 0, desc: '班组制式步枪，成本低、火力可靠。' },
-  { id: 'ap_wpn_hmg', nameCn: '重机枪', cat: 'weapon', slot: 'weapon', tech: 't_m2', mass: 45, work: 560,
+  { id: 'ap_wpn_hmg', nameCn: '重机枪', cat: 'weapon', slot: 'weapon', tech: 't_m2', mass: 45, work: 56000,
     inputs: { '钢': 100, '铜': 40, '炸药粉': 20 },
     atk: 32, def: 0, speed: -2, desc: '压制性持续火力，阵地战核心。' },
-  { id: 'ap_wpn_howitzer', nameCn: '榴弹炮', cat: 'weapon', slot: 'weapon', tech: 't_m2', mass: 380, work: 1800,
+  { id: 'ap_wpn_howitzer', nameCn: '榴弹炮', cat: 'weapon', slot: 'weapon', tech: 't_m2', mass: 380, work: 180000,
     inputs: { '碳化钨': 70, '钢': 150, '炸药粉': 60 },
     atk: 85, def: 0, speed: -8, desc: '远程压制火炮，单发毁伤惊人，依赖观测校射。' },
-  { id: 'ap_wpn_laser', nameCn: '激光器', cat: 'weapon', slot: 'weapon', tech: 't_m2', mass: 70, work: 900,
+  { id: 'ap_wpn_laser', nameCn: '激光器', cat: 'weapon', slot: 'weapon', tech: 't_m2', mass: 70, work: 90000,
     inputs: { '铜': 80, '石墨烯': 50, '银': 20 },
     atk: 55, def: 0, speed: -1, desc: '聚焦激光束，无弹药后勤负担，高级部队的中坚火力。' },
-  { id: 'ap_wpn_helaser', nameCn: '高能激光炮', cat: 'weapon', slot: 'weapon', tech: 't_m3', mass: 420, work: 2800,
+  { id: 'ap_wpn_helaser', nameCn: '高能激光炮', cat: 'weapon', slot: 'weapon', tech: 't_m3', mass: 420, work: 280000,
     inputs: { '石墨烯': 120, '银': 60, '纳米碳合金': 40, '钛合金': 100 },
     atk: 135, def: 0, speed: -8, desc: '舰载级高能激光炮，单发汽化装甲，超级部队的招牌重火。' },
 
   // —— 装甲（t_m1 轻甲，t_m2 复合，t_m3 力场）——
-  { id: 'ap_armor_light', nameCn: '轻型护甲', cat: 'armor', slot: 'armor', tech: 't_m1', mass: 60, work: 480,
+  { id: 'ap_armor_light', nameCn: '轻型护甲', cat: 'armor', slot: 'armor', tech: 't_m1', mass: 60, work: 48000,
     inputs: { '铝': 110, '陶瓷': 30 },
     atk: 0, def: 16, speed: -1, desc: '插板式轻甲，防破片与流弹。' },
-  { id: 'ap_armor_composite', nameCn: '复合装甲', cat: 'armor', slot: 'armor', tech: 't_m2', mass: 190, work: 980,
+  { id: 'ap_armor_composite', nameCn: '复合装甲', cat: 'armor', slot: 'armor', tech: 't_m2', mass: 190, work: 98000,
     inputs: { '钛合金': 80, '陶瓷': 70, '纳米碳合金': 20 },
     atk: 0, def: 42, speed: -5, desc: '陶艺复合层，正面抗穿甲。' },
-  { id: 'ap_armor_force', nameCn: '力场装甲', cat: 'armor', slot: 'armor', tech: 't_m3', mass: 260, work: 2100,
+  { id: 'ap_armor_force', nameCn: '力场装甲', cat: 'armor', slot: 'armor', tech: 't_m3', mass: 260, work: 210000,
     inputs: { '石墨烯': 90, '纳米碳合金': 60, '银': 40 },
     atk: 0, def: 72, speed: -4, desc: '偏导力场发生器，将动能与热能偏转，接近免疫常规弹幕。' },
 
   // —— 支援（t_m3）——
-  { id: 'ap_sup_radar', nameCn: '观测雷达', cat: 'support', slot: 'hull', tech: 't_m3', mass: 90, work: 860,
+  { id: 'ap_sup_radar', nameCn: '观测雷达', cat: 'support', slot: 'hull', tech: 't_m3', mass: 90, work: 86000,
     inputs: { '钢': 60, '银': 20, '玻璃': 40 },
     atk: 18, def: 0, speed: -2, desc: '校射观测，显著提升远程命中（atk 增益）。' },
-  { id: 'ap_sup_supply', nameCn: '补给单元', cat: 'support', slot: 'hull', tech: 't_m3', mass: 110, work: 700,
+  { id: 'ap_sup_supply', nameCn: '补给单元', cat: 'support', slot: 'hull', tech: 't_m3', mass: 110, work: 70000,
     inputs: { '铝': 70, '塑料': 50, '橡胶': 30 },
     atk: 0, def: 14, speed: 2, desc: '弹药油料随队补给，延长持续作战（def 增益）。' },
 ];

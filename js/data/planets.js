@@ -1737,7 +1737,7 @@ export const PLANETS = [
           abundance: 0.0015,
         },
         {
-          name: '冰/水',
+          name: '水',
           amount: 5e9,
           abundance: 5,
         },
@@ -1799,7 +1799,7 @@ export const PLANETS = [
           abundance: 1.25,
         },
         {
-          name: '冰/水',
+          name: '水',
           amount: 2e9,
           abundance: 2.5,
         },
@@ -1871,7 +1871,7 @@ export const PLANETS = [
           abundance: 1.875,
         },
         {
-          name: '冰/水',
+          name: '水',
           amount: 3e9,
           abundance: 3.75,
         },
@@ -1938,7 +1938,7 @@ export const PLANETS = [
           abundance: 0.1125,
         },
         {
-          name: '冰/水',
+          name: '水',
           amount: 1e10,
           abundance: 12.5,
         },

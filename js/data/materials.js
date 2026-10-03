@@ -766,20 +766,6 @@ export const MATERIALS = [
     description: '钨锰铁矿（即「黑钨矿」），钨的主要矿石，熔炼产出钨。'
   },
   {
-    id: 'icewater',
-    nameCn: '冰/水',
-    nameEn: 'Ice/Water',
-    category: 'natural',
-    strength: 0.05,
-    durability: 0.1,
-    density: 1.0,
-    fineness: 1,
-    molarHeatCapacity: 75.3,
-    meltingPointK: 273,
-    special: '无',
-    description: '极寒星球表层的冰水混合态，与「水」同源。（熔点为冰点）'
-  },
-  {
     id: 'coal',
     nameCn: '标准煤',
     nameEn: 'Coal',

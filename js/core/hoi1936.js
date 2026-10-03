@@ -9,12 +9,16 @@
 //   * 游玩时显示时间到天                                → scenarioDateOf()
 //   * HOI4 风格国策（三支六策，按天推进）               → focus 系列
 //   * 海域（制海权争夺 + 海战）                          → sea 系列
-import { HOI_NATIONS, HOI_BY_ID, HOI_DEEP, HOI_SEAS, ARMY_MEN, popOf, BLOC_NAME, HOI_SCENARIO_ID,
-  workforceOf, ARMY_POWER_PER_DIV, NAVY_MUL, GEAR_PARTS, SHIP_NAMES, ARMY_BP_NAME, HOI_BG, SHIP_CLASSES, POST_WAR_OPTIONS, GER_PUPPETS, ARMY_BP_LINE, warshipTonnageOf, WAR_LINE, EXTRA_FOCUS_TEMPLATE, JUSTIFY_DAYS, NATION_SEA_REGION, SEA_INITIAL_CONTROL, NAVAL_INVASION_CONTROL } from '../data/hoi1936.js?v=32.1';
+import { HOI_NATIONS, HOI_BY_ID, HOI_MAIN_NATIONS, HOI_MAIN_BY_ID, HOI_DEEP, HOI_SEAS, ARMY_MEN, popOf, BLOC_NAME, HOI_SCENARIO_ID,
+  workforceOf, ARMY_POWER_PER_DIV, NAVY_MUL, GEAR_PARTS, SHIP_NAMES, ARMY_BP_NAME, HOI_BG, SHIP_CLASSES, POST_WAR_OPTIONS, GER_PUPPETS, ARMY_BP_LINE, warshipTonnageOf, WAR_LINE, EXTRA_FOCUS_TEMPLATE, JUSTIFY_DAYS, NATION_SEA_REGION, SEA_INITIAL_CONTROL, NAVAL_INVASION_CONTROL,
+  // v0.3.3：历史事件时间表（「战争按历史来，不要随便乱宣战」）
+  HIST_TIMELINE, histEventsAt, histWarBetween, histWarTargetsFor } from '../data/hoi1936.js?v=32.1';
 import { BUILDING_BY_ID } from '../data/buildings.js?v=32.1';
 import { ARMY_BP_BY_ID, ARMY_BLUEPRINTS } from '../data/army_parts.js?v=32.1';
 import { JOBS_BY_BUILDING, assignWorkers, jobCapacity, getAvailable } from './population.js?v=32.1';
 import { ELITE_DIVISIONS, ELITE_MUL } from '../data/hoi1936.js?v=32.1';
+// v0.3.3：战争槽位上限（与 core/war.js 同源；war.js 不 import 本文件，无循环依赖）
+import { WAR_MAX_ACTIVE } from './war.js?v=32.1';
 
 // 依赖注入（避免与 state.js / production.js 形成循环导入）
 let _getInst = null;
@@ -583,10 +587,17 @@ export function setupBloc(acc, nation) {
 }
 
 /**
- * 外交 AI（v0.2.6 rev3）：AI 国家会主动行动 ——
- *   · 每 30 游戏天判定一次：非盟友、非交战国可能「向我方宣战」（我方越弱越可能）
- *   · 也可能「提议结盟」（我方越强、战争越少越可能）
- *   · 结果写入 acc.wars / acc.npcAllies 与 warLog（战争面板可见）
+ * 外交 AI（v0.3.3 重写）：**严格按历史时间表推进，不再随机宣战**
+ *
+ * 旧实现（v0.2.6 rev3）的问题：每 30 游戏天用 `Math.random()` 从 11 国里随机抽一个，
+ * 只要「我方较弱 × 0.85」且 `Math.random() < 0.35` 就立刻宣战 —— 全程不看日期，
+ * 于是 1936 年 1 月就可能和美苏开战。
+ *
+ * 现在改为查表驱动（data/hoi1936.js#HIST_TIMELINE）：
+ *   ① 只有当今日**落在某个历史节点窗口内**（day ± window）才可能触发；
+ *   ② 触发对象只能是该节点 actors 里与玩家交战的那一方；
+ *   ③ 每个节点每场只触发一次（acc.hoiHistFired 记录已触发 key），不会重复刷屏；
+ *   ④ 节点未到时，AI 最多只会「提议结盟」（同 bloc 或史实友好方），不会开火。
  */
 export function tickDiploAI(acc, dtSec) {
   if (!acc || acc.scenario !== HOI_SCENARIO_ID) return null;
@@ -594,35 +605,61 @@ export function tickDiploAI(acc, dtSec) {
   acc.hoiDiploDays = (Number(acc.hoiDiploDays) || 0) + days;
   if (acc.hoiDiploDays < 30) return null;
   acc.hoiDiploDays = 0;
-  const mine = HOI_BY_ID[acc.nation];
+
+  const mine = HOI_MAIN_BY_ID[acc.nation];
   if (!mine) return null;
-  const allied = Array.isArray(acc.npcAllies) ? acc.npcAllies : [];
+  if (!acc.hoiHistFired || typeof acc.hoiHistFired !== 'object') acc.hoiHistFired = {};
+
+  const today = Math.floor(gameDaysOf(acc));
   const wars = Array.isArray(acc.wars) ? acc.wars.filter((w) => w && w.status === 'active') : [];
-  const atWarNames = wars.map((w) => w.targetName);
-  const others = HOI_NATIONS.filter((x) => x.id !== acc.nation && allied.indexOf(x.nameCn) < 0 && atWarNames.indexOf(x.nameCn) < 0);
-  if (!others.length) return null;
-  // 我方国力（工业 + 师数/2 + 海军/2）与候选国比较
-  const myPower = mine.ic + mine.divisions / 2 + mine.navy / 2;
-  const pick = others[Math.floor(Math.random() * others.length)];
-  const theirPower = pick.ic + pick.divisions / 2 + pick.navy / 2;
-  const weak = myPower < theirPower * 0.85;
-  // 战争过多时不再主动开战
-  const warRoom = wars.length < 3;
-  if (weak && warRoom && Math.random() < 0.35) {
+  const atWarIds = new Set(wars.map((w) => String(w.targetId || '').replace(/^hoi_/, '')));
+  const allied = Array.isArray(acc.npcAllies) ? acc.npcAllies : [];
+
+  // ===== ① 战争：只在历史节点窗口内、且对象是史实交战方 =====
+  const myTargets = histWarTargetsFor(acc.nation, today);
+  for (const t of myTargets) {
+    const key = 'w:' + t.event.day + ':' + t.foe;
+    if (acc.hoiHistFired[key]) continue;
+    if (atWarIds.has(t.foe)) continue;               // 已在交战
+    if (wars.length >= WAR_MAX_ACTIVE) continue;     // 战争槽位已满
+    acc.hoiHistFired[key] = 1;
+    const foe = HOI_BY_ID[t.foe];
+    if (!foe) continue;
     const w = {
-      id: 'war_ai_' + Date.now().toString(36), kind: 'npc', targetId: 'hoi_' + pick.id,
-      targetName: pick.nameCn, startedAt: Date.now(), myScore: 0, theirScore: 10,
-      battles: 0, status: 'active', endedAt: 0, treaty: null,
-      log: [{ at: Date.now(), text: pick.nameCn + ' 判断我方虚弱，主动向我方宣战！' }],
+      id: 'war_hist_' + t.event.day + '_' + t.foe + '_' + Date.now().toString(36),
+      kind: 'npc', targetId: 'hoi_' + t.foe,
+      targetName: foe.nameCn, startedAt: Date.now(), myScore: 0, theirScore: 10,
+      battles: 0, status: 'active', endedAt: 0, treaty: null, progress: 0,
+      histKey: t.event.day + ':' + t.foe,
+      log: [{ at: Date.now(), text: t.event.desc + '（' + foe.nameCn + ' 对我方宣战）' }],
     };
     acc.wars.push(w);
-    acc.warLog.unshift({ at: Date.now(), text: pick.nameCn + ' 主动宣战（我方被动应战）' });
-    return { type: 'war', nation: pick.nameCn };
+    acc.warLog.unshift({ at: Date.now(), text: '【' + t.event.nameCn + '】' + t.event.desc });
+    return { type: 'war', nation: foe.nameCn, hist: t.event.nameCn };
   }
-  if (!weak && wars.length === 0 && Math.random() < 0.30) {
-    acc.npcAllies.push(pick.nameCn);
-    acc.warLog.unshift({ at: Date.now(), text: '与 ' + pick.nameCn + ' 缔结盟约（AI 主动示好）' });
-    return { type: 'ally', nation: pick.nameCn };
+
+  // ===== ② 结盟：同阵营自动为友；否则只在历史节点窗口内缔结（低概率）=====
+  const candidates = HOI_MAIN_NATIONS.filter((x) =>
+    x.id !== acc.nation && allied.indexOf(x.nameCn) < 0 && !atWarIds.has(x.id));
+  if (!candidates.length) return null;
+
+  const myBloc = (HOI_DEEP[acc.nation] || {}).bloc;
+  const sameBloc = candidates.filter((x) => myBloc && (HOI_DEEP[x.id] || {}).bloc === myBloc);
+  if (sameBloc.length && allied.indexOf(sameBloc[0].nameCn) < 0) {
+    // 同阵营：立即缔约（史实轴心/同盟国的天然盟友关系）
+    const p = sameBloc[0];
+    acc.npcAllies.push(p.nameCn);
+    acc.warLog.unshift({ at: Date.now(), text: '与 ' + p.nameCn + ' 缔结盟约（同阵营）' });
+    return { type: 'ally', nation: p.nameCn };
+  }
+
+  // 异阵营：仅当今日处于某个战争节点窗口内，才可能「因战时合纵」结盟（30%）
+  const inWarWindow = histEventsAt(today).some((e) => e.kind === 'war');
+  if (inWarWindow && Math.random() < 0.30) {
+    const p = candidates[Math.floor(Math.random() * candidates.length)];
+    acc.npcAllies.push(p.nameCn);
+    acc.warLog.unshift({ at: Date.now(), text: '与 ' + p.nameCn + ' 缔结盟约（战时合纵）' });
+    return { type: 'ally', nation: p.nameCn };
   }
   return null;
 }

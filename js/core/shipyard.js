@@ -14,7 +14,7 @@ import { MATERIALS } from '../data/materials.js?v=32.1';
 import {
   PART_BY_ID, HULLS, ENGINES, WEAPONS, FACILITIES, MARKS,
   MATERIAL_SLOTS, DEFAULT_MATERIAL, PART_CATEGORIES,
-  craftableParts, craftWorkOf, isPartUnlocked,
+  craftableParts, isPartUnlocked,
 } from '../data/ship_parts.js?v=32.1';
 // 军用部件（ap_*）与舰船部件共用 inst.equipment 库存（key=partId@材料），
 // 装备清单/拍卖行列装备时必须两类都能解析出中文名（v0.2.8 修复：军用装备露出英文 id）
@@ -305,7 +305,10 @@ export const GRADES = [
 export function typeOf(bp, agg) {
   if (agg.hangarSlots > 0) return '母舰';
   if (agg.damage >= 150) return '战舰';
-  if (agg.crewMax >= 60) return '殖民船';
+  // v0.3.3：乘员仓由 20 人/座提高到 60 人/座，故殖民船门槛同步由 60 提到 180
+  //   （旧口径下 60 = 3 座乘员仓；新口径下 180 = 3 座）。若沿用 60，
+  //   只要装 1 座乘员仓就会被判成殖民船。
+  if (agg.crewMax >= 180) return '殖民船';
   if (agg.cargoVol > 0) return '运输船'; // v0.1.1（需求 10b）：有任何货舱（cargoVol>0）即运输船
   return '探索船';
 }
@@ -862,18 +865,31 @@ export function findBlueprint(acc, blueprintId) {
 }
 
 // 一张蓝图的总工作量（人·秒）。
-// v0.0.8：在「外壳 + 各引擎 + 各部件」单件工作量之和的基础上，再叠加
-//   「基础 6000 + 外壳容量 × 12」（容量越大越久）与「部件总工作量 × 1.5」，
-//   让大型飞船明显更久。公式：6000 + capacity×12 + 部件总 work×1.5。
+// v0.0.8：公式 = 基础 6000 + capacity×12 + 部件总 work×1.5。
+// v0.3.3：部件 work 口径重定 —— ship_parts.js#CRAFT_WORK 已被整体上调
+//   （外壳 ×1000、其余 ×100）以满足「制造速率大幅下调」的需求。若造船仍直接吃
+//   craftWorkOf，总量会从 ~1 万暴涨到 ~100 万（60 人力要 290 分钟/艘，不可玩）。
+//   故这里改用**独立的造船系数** SHIP_CRAFT_WORK：它只表达「装一艘船要多少装配工时」，
+//   与产线造零件的速率解耦。这样零件变慢、而造船总时长仍可控可控地增长。
+//   取值按「单艘约 40~90 分钟（20~60 人力）」量级标定。
+const SHIP_CRAFT_WORK = { hull: 3000, engine: 1200, weapon: 900, facility: 700 };
+
+function shipPartWorkOf(partId) {
+  const base = PART_BY_ID[partId];
+  if (!base) return 0;
+  return SHIP_CRAFT_WORK[base.category] || 0;
+}
+
 export function blueprintBuildCost(bp) {
   if (!bp) return 0;
   const hull = PART_BY_ID[bp.hullId];
   const cap = hull ? hull.capacity : 0;
   let partWork = 0;
-  if (bp.hullId) partWork += craftWorkOf(bp.hullId);
-  for (const e of (bp.engines || [])) partWork += craftWorkOf(e.id);
-  for (const p of (bp.parts || [])) partWork += craftWorkOf(p.id);
-  return Math.round(6000 + cap * 12 + partWork * 1.5);
+  if (bp.hullId) partWork += shipPartWorkOf(bp.hullId);
+  for (const e of (bp.engines || [])) partWork += shipPartWorkOf(e.id);
+  for (const p of (bp.parts || [])) partWork += shipPartWorkOf(p.id);
+  // v0.3.3：基础项由 6000 抬到 42000（造船总时长整体增长约 3~5 倍）
+  return Math.round(42000 + cap * 12 + partWork * 1.5);
 }
 
 // 蓝图所需的电力设施清单（{ facilityId: 数量 }）。

@@ -299,7 +299,30 @@ export function armyBuildTick(inst, blueprintId, labor, dt, powerRatio, acc) {
 
   if (target >= 1) {
     const chk = armyBuildCheck(inst, bp);
-    if (chk.ok) {
+    // v0.3.3：无 acc 时绝不进入成军提交。listArmies(null) 会返回一个**临时空数组**，
+    //   push 进去的军队随函数返回即被丢弃 —— 旧写法「扣装备 → push → 清进度」在这种
+    //   情况下会逐 tick 静默扣光全部装备却一支军队都不产出（且被上层 try/catch 吞掉，
+    //   玩家只看到进度卡在 1−ε）。
+    if (chk.ok && acc) {
+      // ---- 提交前先算齐全部派生数据：任何一步抛错都发生在扣装备之前 ----
+      const stats = armyStatsOfBp(bp);          // 可能抛（自定义蓝图 parts 缺失）
+      const arr = listArmies(acc);              // 真实数组（acc 非空已保证）
+      const serial = arr.filter((a) => a && a.blueprintId === bp.id).length + 1;
+      const army = {
+        id: genArmyId(),
+        nameCn: bp.nameCn + ' No.' + serial,
+        blueprintId: bp.id,
+        // v0.2.4：自定义蓝图存完整对象（armyStatsOfBp 重算需要）；默认蓝图只存 id
+        blueprint: (ARMY_BP_BY_ID[bp.id] ? null : bp),
+        men: stats.men,
+        bonusAtk: 0, bonusDef: 0, exp: 0,   // v0.2.4：训练场经验/加成
+        power: armyPowerOf(stats),
+        stats,
+        mission: null,
+        lastResult: null,
+        createdAt: Date.now(),
+      };
+      // ---- 数据齐备后才提交：扣件与成军必须同生共死 ----
       // 扣部件（按 key 聚合数量逐笔扣，同一部件可能分布在多个材料 key 上）
       const need = armyBpPartNeeds(bp);
       for (const partId in need) {
@@ -315,24 +338,7 @@ export function armyBuildTick(inst, blueprintId, labor, dt, powerRatio, acc) {
           left -= take;
         }
       }
-      // 成军：命名 = 蓝图名 No.N
-      const arr = listArmies(acc);
-      const serial = arr.filter((a) => a && a.blueprintId === bp.id).length + 1;
-      const stats = armyStatsOfBp(bp);
-      arr.push({
-        id: genArmyId(),
-        nameCn: bp.nameCn + ' No.' + serial,
-        blueprintId: bp.id,
-        // v0.2.4：自定义蓝图存完整对象（armyStatsOfBp 重算需要）；默认蓝图只存 id
-        blueprint: (ARMY_BP_BY_ID[bp.id] ? null : bp),
-        men: stats.men,
-        bonusAtk: 0, bonusDef: 0, exp: 0,   // v0.2.4：训练场经验/加成
-        power: armyPowerOf(stats),
-        stats,
-        mission: null,
-        lastResult: null,
-        createdAt: Date.now(),
-      });
+      arr.push(army);
       inst.armyProgress[blueprintId] = 0;
       delta = 1 - oldProg;
     } else {

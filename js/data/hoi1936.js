@@ -106,10 +106,45 @@ export const HOI_NATIONS = [
     colony: { name: '亚马逊内陆', typeId: '丛林行星' },
     desc: '南美巨人：资源丰厚而工业稚嫩，远离旧大陆的烽烟，是潜在的后起之秀。',
   },
+  // —— v0.3.3：HIST_TIMELINE 引用的三个历史国家 ——
+  //   它们不参与 12 国主循环（无 AI 外交、无独立宣战能力），只作为史实交战/吞并
+  //   的**对象方**存在，故 industrial/army 数值刻意压低，且不列入可结盟候选。
+  //   histOnly: true 即为「仅作历史对象方」的标记，用 HOI_MAIN_NATIONS 过滤掉。
+  {
+    id: 'eth', histOnly: true, nameCn: '埃塞俄比亚帝国', nameEn: 'Ethiopian Empire', capital: '亚的斯亚贝巴', flag: '🟫',
+    popM: 16, ic: 1, divisions: 2, navy: 0, airforce: 0,
+    sell: { '有机质': [900, 4], '咖啡因': [700, 9] },
+    buys: { '钢': 46, '陶瓷': 34 },
+    colony: { name: '东非高地', typeId: '草原行星' },
+    desc: '东非高原上的古老帝国：军力孱弱、工业空白，却在 1937 年成为意大利扩张的靶心。',
+  },
+  {
+    id: 'aut', histOnly: true, nameCn: '奥地利', nameEn: 'Austria', capital: '维也纳', flag: '⬜',
+    popM: 6.9, ic: 3, divisions: 3, navy: 0, airforce: 1,
+    sell: { '铝': [800, 22], '钢': [700, 24] },
+    buys: { '钢': 34, '橡胶': 38 },
+    colony: { name: '多瑙河谷', typeId: '温带行星' },
+    desc: '德奥合并前的奥地利：阿尔卑斯的重炮与铝土矿，1938 年将并入德国。',
+  },
+  {
+    id: 'cze', histOnly: true, nameCn: '捷克斯洛伐克', nameEn: 'Czechoslovakia', capital: '布拉格', flag: '🟦',
+    popM: 16.5, ic: 4, divisions: 8, navy: 0, airforce: 3,
+    sell: { '钢': [900, 26], '钨': [1100, 18] },
+    buys: { '铝': 32, '橡胶': 40 },
+    colony: { name: '苏台德山地', typeId: '温带行星' },
+    desc: '欧陆工业强国：斯柯达兵工厂与苏台德要塞，1938 年在慕尼黑协定中被肢解。',
+  },
 ];
 
 export const HOI_BY_ID = {};
 for (const n of HOI_NATIONS) HOI_BY_ID[n.id] = n;
+
+// v0.3.3：HOI_NATIONS 含 3 个 histOnly 国家（eth/aut/cze），它们只作为史实
+//   交战/吞并的对象方，不参与 12 国主循环（AI 外交、可结盟候选、星系归属等）。
+//   任何「遍历所有列强」的逻辑都必须用 HOI_MAIN_NATIONS，否则会多出 3 国。
+export const HOI_MAIN_NATIONS = HOI_NATIONS.filter((n) => !n.histOnly);
+export const HOI_MAIN_BY_ID = {};
+for (const n of HOI_MAIN_NATIONS) HOI_MAIN_BY_ID[n.id] = n;
 
 export const HOI_SCENARIO_ID = 'hoi1936';
 export const HOI_SCENARIO_NAME = '风暴前夜';
@@ -590,3 +625,113 @@ export const EXTRA_FOCUS_TEMPLATE = [
 ];
 // 战争正当化（HOI4 式）：默认 60 游戏天
 export const JUSTIFY_DAYS = 60;
+
+// ============================================================================
+// v0.3.3：历史事件时间表 —— 「战争按历史来，不要随便乱宣战」的数据基础
+// ============================================================================
+// 此前本剧本**没有任何带日期的事件数据**：外交 AI 每 30 游戏天用 Math.random()
+// 随机抽 11 国之一、以 35% 概率宣战（core/hoi1936.js#tickDiploAI），玩家也可随时
+// 宣战。结果是 1936 年 1 月就可能和美苏开战，与史实完全脱节。
+//
+// 现在改为**查表驱动**：战争只在对应历史日期附近才可能发生，且必须是史实中的
+// 交战双方。日期口径与 scenarioDateOf() 一致 —— day = 距 1936-01-01 的天数，
+// 即 1936-01-01 为 day 0。
+//
+// kind：
+//   'war'       轴心国与某国进入战争状态（AI 之间；玩家在该国时改为玩家参战）
+//   'ally'      两国立约（同阵营）
+//   'puppet'    德国建立傀儡政权
+//   'annex'     和平吞并（并入列强）
+//
+// 字段：
+//   day         触发日（距 1936-01-01 的天数）
+//   window      容错窗口（天）：玩家提前准备或稍晚推进仍算踩到该节点
+//   actors      交战国 id 列表（至少 2 个）；第一个视为发起方
+//   nameCn/desc 战报文案
+export const HIST_TIMELINE = [
+  // —— 1936：德意接近，轴心雏形 ——
+  { day: 0, window: 40, kind: 'ally', actors: ['ger', 'ita'], nameCn: '柏林—罗马轴心',
+    desc: '德意两国签署同盟条约，柏林—罗马轴心正式形成。' },
+
+  // —— 1937：意大利入侵埃塞俄比亚 ——
+  { day: 396, window: 45, kind: 'war', actors: ['ita', 'eth'], nameCn: '第二次意大利—埃塞俄比亚战争',
+    desc: '意大利入侵埃塞俄比亚，争夺东非殖民利益。' },
+
+  // —— 1937：全面抗战 ——
+  { day: 462, window: 45, kind: 'war', actors: ['jap', 'chn'], nameCn: '全面抗战爆发',
+    desc: '七七事变后全面战争爆发，中日进入长期消耗战。' },
+
+  // —— 1938：德奥合并 ——
+  { day: 764, window: 40, kind: 'annex', actors: ['ger', 'aut'], nameCn: '德奥合并',
+    desc: '德国吞并奥地利，兵不血刃取得奥地利的工业与人口。' },
+
+  // —— 1938：慕尼黑协定 ——
+  { day: 849, window: 30, kind: 'annex', actors: ['ger', 'cze'], nameCn: '慕尼黑协定',
+    desc: '英法绥靖，德国取得苏台德地区，捷克斯洛伐克被肢解。' },
+
+  // —— 1939：德国入侵波兰，二战全面爆发 ——
+  { day: 973, window: 45, kind: 'war', actors: ['ger', 'pol'], nameCn: '德国入侵波兰',
+    desc: '德国闪击波兰，英法对德宣战，第二次世界大战全面爆发。' },
+  // 同日：英法被动应战（若玩家为英/法，则是被卷入的一方）
+  { day: 973, window: 45, kind: 'war', actors: ['ger', 'fra'], nameCn: '西线对德宣战',
+    desc: '法国对德国宣战，西线战事爆发。' },
+  { day: 973, window: 45, kind: 'war', actors: ['ger', 'eng'], nameCn: '英国对德宣战',
+    desc: '英国对德国宣战，丘吉尔继任首相，英国全面参战。' },
+
+  // —— 1939~1940：苏德瓜分波兰 ——
+  { day: 990, window: 40, kind: 'war', actors: ['sov', 'pol'], nameCn: '苏联入侵波兰东部',
+    desc: '苏军进入波兰东部，与德军夹击瓜分波兰。' },
+
+  // —— 1940：德国进攻法国 ——
+  { day: 1213, window: 45, kind: 'war', actors: ['ger', 'fra'], nameCn: '黄色方案',
+    desc: '德军经阿登突破，绕过马奇诺防线，法国战役爆发。' },
+
+  // —— 1940：意大利参战 / 北非 ——
+  { day: 1213, window: 45, kind: 'war', actors: ['ita', 'eng'], nameCn: '意大利参战',
+    desc: '意大利对英国宣战，北非与地中海战事展开。' },
+
+  // —— 1941：巴巴罗萨 ——
+  { day: 1435, window: 45, kind: 'war', actors: ['ger', 'sov'], nameCn: '巴巴罗萨行动',
+    desc: '德军三路突进苏联边境，东线全面爆发（苏德战争）。' },
+
+  // —— 1941：美国参战 ——
+  { day: 1651, window: 40, kind: 'war', actors: ['usa', 'ger'], nameCn: '美国参战',
+    desc: '珍珠港事件后，美国对日宣战并加入同盟国阵营。' },
+  { day: 1651, window: 40, kind: 'war', actors: ['usa', 'jap'], nameCn: '太平洋战争爆发',
+    desc: '日军偷袭珍珠港，美国对日宣战，太平洋战争全面爆发。' },
+
+  // —— 1942：德国入侵英联邦 / 中日进入相持 ——
+  { day: 1894, window: 45, kind: 'war', actors: ['ger', 'bra'], nameCn: '德国宣战巴西',
+    desc: '巴西加入同盟国，德国与南美开战。' },
+];
+
+/** 查询某游戏日附近正在生效的历史节点（含 window 容错）。day 口径同 scenarioDateOf */
+export function histEventsAt(day) {
+  const d = Number(day) || 0;
+  return HIST_TIMELINE.filter((e) => {
+    const w = Number(e.window) || 0;
+    return d >= (Number(e.day) || 0) - w && d <= (Number(e.day) || 0) + w;
+  });
+}
+
+/** 某两个国家之间是否存在（当前日期附近）应开war 的历史节点 */
+export function histWarBetween(aId, bId, day) {
+  const a = String(aId || ''), b = String(bId || '');
+  if (!a || !b || a === b) return null;
+  return histEventsAt(day).find((e) => e.kind === 'war'
+    && e.actors.indexOf(a) >= 0 && e.actors.indexOf(b) >= 0) || null;
+}
+
+/** 玩家当前可主动宣战的历史目标（仅当今日附近确有史实交战节点时返回）。
+ *  用��取代「随时可宣战」：不在史实节点内则返回空数组。 */
+export function histWarTargetsFor(nationId, day) {
+  const out = [];
+  for (const e of histEventsAt(day)) {
+    if (e.kind !== 'war') continue;
+    const i = e.actors.indexOf(nationId);
+    if (i < 0) continue;
+    const foe = e.actors[i === 0 ? 1 : 0];
+    if (foe && foe !== nationId) out.push({ foe, event: e });
+  }
+  return out;
+}

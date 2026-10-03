@@ -135,10 +135,12 @@ export const HULLS = expand('hull', [
 //       故电力推进器不复用 efficiency（留给起飞燃料公式默认 0.40），只保留 powerDraw / effRatio。
 const ETHRUSTER_DEFS = [
   // size: id 片段；cn: 中文大小；thrust/mass/powerDraw/footprint/heatKW 为 mk1 基础值；
-  // work: 三档单件工作量（人·秒），随大小递增，落在 400~1200 区间。
-  { size: 's', cn: '小', thrust: 180, mass: 11, powerDraw: 38, footprint: 9, heatKW: 12, work: [450, 600, 750] },
-  { size: 'm', cn: '中', thrust: 300, mass: 24, powerDraw: 66, footprint: 16, heatKW: 20, work: [650, 850, 1050] },
-  { size: 'l', cn: '大', thrust: 540, mass: 52, powerDraw: 118, footprint: 28, heatKW: 34, work: [850, 1050, 1200] },
+  // work: 三档单件工作量（人·秒），随大小递增。
+  // v0.3.3：随 CRAFT_WORK 的引擎档（40000，即 1/100 速率）同步上调 100 倍，
+  //   否则自带 work 会绕过类别默认值，导致这批引擎速率仍是原来的 100 倍。
+  { size: 's', cn: '小', thrust: 180, mass: 11, powerDraw: 38, footprint: 9, heatKW: 12, work: [45000, 60000, 75000] },
+  { size: 'm', cn: '中', thrust: 300, mass: 24, powerDraw: 66, footprint: 16, heatKW: 20, work: [65000, 85000, 105000] },
+  { size: 'l', cn: '大', thrust: 540, mass: 52, powerDraw: 118, footprint: 28, heatKW: 34, work: [85000, 105000, 120000] },
 ];
 const ETHRUSTER_LEVELS = [
   { lv: 1, roman: 'I', scale: 1.0 },
@@ -228,8 +230,8 @@ export const FACILITIES = expand('facility', [
   //   材料影响质量（massMul）与耐热上限；老存档里 material:null 的条目会自动落到
   //   DEFAULT_MATERIAL.hull='铁'，无需迁移。
   { id: 'fac_crew', nameCn: '乘员仓', nameEn: 'Crew Quarters',
-    materialSlot: 'hull', footprint: 30, mass: 6, crew: 20, tempBandBonus: 4,
-    desc: '提供载员名额与生命维持。每座可载 20 人，并让全船的温度安全区间向两端各放宽 4 K'
+    materialSlot: 'hull', footprint: 30, mass: 6, crew: 60, tempBandBonus: 4,
+    desc: '提供载员名额与生命维持。每座可载 60 人，并让全船的温度安全区间向两端各放宽 4 K'
         + '——没有乘员仓的船在温度波动下最先死人。可选材料：轻合金减重，耐热合金提高耐受上限。' },
   // v0.1.1（需求 10b，设计者确认口径）：货舱容量按**货舱自身占地**缩放——
   //   小型货舱 cargoVol = footprint × 0.1，大型货舱 cargoVol = footprint × 0.5。
@@ -309,7 +311,16 @@ export function maxMark() {
 //   footprint     单件在储藏中占用的体积（m³）：设施/武器取其 footprint；
 //                 外壳取 capacity（代表其体量）；引擎无 footprint 字段，按 mass×2 估算占位。
 //   mass          部件质量（t），方便配方/UI 展示
-const CRAFT_WORK = { hull: 600, engine: 400, weapon: 300, facility: 250 };
+// v0.3.3：制造速率大幅下调。速率公式 production.js#tickProduction 为
+//   rate = labor × powerRatio × V012_LINE_RATE_MUL ÷ recipe.work
+// 即 **work 越大速率越低**。本次下调口径：
+//   船上设施 facility  250   → 25000    （速率降为 1/100）
+//   船外壳   hull      600   → 600000   （速率降为 1/1000）
+//   引擎     engine   400   → 40000    （速率降为 1/100）
+//   武器     weapon   300   → 30000    （速率降为 1/100）
+// 注意：craftWorkOf 同时被 shipyard.js#blueprintBuildCost 消费（造船总工作量），
+//   所以这里抬高 work 会同步拉长造船时间 —— 这是预期效果（造船也应变慢）。
+const CRAFT_WORK = { hull: 600000, engine: 40000, weapon: 30000, facility: 25000 };
 
 export function craftableParts() {
   const out = [];

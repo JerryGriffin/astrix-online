@@ -1096,10 +1096,18 @@ function deliverTributeToHome(a, fromCode, payload) {
 // （造船由 shipyard.js#shipBuildTick 结算），这里作为 tick 管线统一入口：
 //   labor 口径对齐 lineRateOf 的 dock 分支 = workers × 强度倍率（不乘建筑效率/殖民倍率）；
 //   电力降速与其它生产线一致（powerInfo.ratio）；进度满 1 由 shipBuildTick 校验并下水。
+// v0.3.3：造船改为「一个一个造」—— 同一 blueprintId 在一个 tick 内只结算一次。
+//   此前实现是对 inst.lines 逐条调用 shipBuildTick，而 shipProgress 按 blueprintId
+//   存储且 inc 被 Math.min(eff/C, 1) 钳到 1，于是「N 条同蓝图线」在同一 tick 内会
+//   连续触发 N 次 target>=1 → 一次 tick 里下水 N 艘（与建筑「逐个建造」的观感不符）。
+//   现在改为：先按 blueprintId 汇总有效人力，再每个蓝图只调一次 shipBuildTick。
+//   效果 = 同蓝图多线只是**速率叠加**，一次仍只可能产出一艘，且不丢任何产能。
 function advanceShipLines(inst, dt, acc) {
   if (!inst || !Array.isArray(inst.lines)) return;
   const ratio = Number((inst.powerInfo && inst.powerInfo.ratio) ?? 1);
   if (!(ratio > 0)) return;
+  // 按 blueprintId 汇总人力
+  const laborByBp = new Map();
   for (const line of inst.lines) {
     if (!line || line.buildingId !== 'dock' || !line.blueprintId) continue;
     const workers = Number(line.workers) || 0;
@@ -1109,8 +1117,12 @@ function advanceShipLines(inst, dt, acc) {
     const gi = getIntensity(intensityId);
     const mul = (gi && Number(gi.outputMul)) || 0;
     if (!(mul > 0)) continue;
-    try { shipBuildTick(inst, line.blueprintId, workers * mul, dt, ratio, acc); }
-    catch (e) { /* 单线异常不断全局 */ }
+    const key = line.blueprintId;
+    laborByBp.set(key, (laborByBp.get(key) || 0) + workers * mul);
+  }
+  for (const [blueprintId, labor] of laborByBp) {
+    try { shipBuildTick(inst, blueprintId, labor, dt, ratio, acc); }
+    catch (e) { console.error('[advanceShipLines] 造船线推进失败:', blueprintId, e); }
   }
 }
 
@@ -1120,16 +1132,27 @@ function advanceShipLines(inst, dt, acc) {
 // 电力降速一致（powerInfo.ratio）；进度满 1 由 armyBuildTick 校验部件库存并成军。
 function advanceArmyLines(inst, dt, acc) {
   if (!inst || !Array.isArray(inst.lines)) return;
+  // v0.3.3：缺 acc 时直接返回。否则 armyBuildTick 会拿到 null 账号，
+  //   成军结果被丢弃而装备照扣（见 army.js#armyBuildTick 注释）。
+  if (!acc) return;
   const ratio = Number((inst.powerInfo && inst.powerInfo.ratio) ?? 1);
   if (!(ratio > 0)) return;
   // v0.2.4：军营数决定建造速率 —— 每座 60 点固定建造人力，多座叠加；无军营不推进
   const barracks = (inst.buildings && Number(inst.buildings.barracks)) || 0;
   if (!(barracks > 0)) return;
   const labor = barracks * ARMY_LABOR_PER_BARRACKS;
+  // v0.3.3：与造船同理 —— 同一 armyBlueprintId 在一个 tick 内只结算一次。
+  //   否则 N 条同蓝图线会在同一 tick 内连续触发 N 次成军（一次产 N 支）。
+  //   军营人力是全局的（barracks × 60），故这里只需按蓝图去重，产能不损失。
+  const seen = new Set();
   for (const line of inst.lines) {
     if (!line || !line.armyBlueprintId) continue;
+    if (seen.has(line.armyBlueprintId)) continue;
+    seen.add(line.armyBlueprintId);
+    // 保留「单线异常不拖垮全局」的隔离，但必须留痕 —— 静默 catch 会让
+    // 「成军永远失败」这类缺陷表现为「进度卡住但没有任何报错」。
     try { armyBuildTick(inst, line.armyBlueprintId, labor, dt, ratio, acc); }
-    catch (e) { /* 单线异常不断全局 */ }
+    catch (e) { console.error('[advanceArmyLines] 组装线推进失败:', line.armyBlueprintId, e); }
   }
 }
 

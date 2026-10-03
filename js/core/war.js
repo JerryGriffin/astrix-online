@@ -45,9 +45,19 @@ function pushLog(acc, war, text) {
   if (acc.warLog.length > WARLOG_CAP) acc.warLog.length = WARLOG_CAP;
 }
 
-/** 宣战：对电脑国家（kind='npc'）或真人玩家（kind='player'） */
-export function declareWar(acc, target) {
+/** 宣战：对电脑国家（kind='npc'）或真人玩家（kind='player'）
+ *
+ *  v0.3.3：新增 opts.histGate —— 「战争按历史来」的可选门控。
+ *    传入 { ok:false, reason } 则拒绝宣战。**由调用方（1936 剧本侧）注入**，
+ *    以免 core/war.js 反向依赖 data/hoi1936.js（它服务于所有剧本，不只 1936）。
+ *    非 1936 剧本不传此参数，行为与旧版完全一致。
+ */
+export function declareWar(acc, target, opts) {
   if (!acc || !target || !target.id) return { ok: false, reason: '目标无效' };
+  const gate = opts && opts.histGate;
+  if (gate && gate.ok === false) {
+    return { ok: false, reason: gate.reason || '当前历史节点不允许对该国宣战' };
+  }
   ensureWars(acc);
   if (warWith(acc, target.id)) return { ok: false, reason: '与「' + (target.nameCn || target.id) + '」的战争已在持续中' };
   if (activeWarsOf(acc).length >= WAR_MAX_ACTIVE) {
@@ -67,6 +77,8 @@ export function declareWar(acc, target) {
     treaty: null,
     log: [],
   };
+  // v0.3.3：门控通过时记下所踩中的历史节点，便于战报与 UI 展示
+  if (gate && gate.histKey) war.histKey = gate.histKey;
   ensureWars(acc).push(war);
   pushLog(acc, war, '向「' + war.targetName + '」宣战 —— 战争开始，只有投降签约才能结束。');
   return { ok: true, war };

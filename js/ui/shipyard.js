@@ -28,7 +28,7 @@ import {
 import { BUILDING_BY_ID } from '../data/buildings.js?v=32.1';
 import { fmtNum, fmtTime } from '../core/format.js?v=32.1';
 // v0.0.5：建筑计数已迁到星球实例（inst.buildings），船坞工占用来自人力系统
-import { getPlanetInstance, getBuildingCounts } from '../core/state.js?v=32.1';
+import { getPlanetInstance, getBuildingCounts, currentAccount } from '../core/state.js?v=32.1';
 import { jobsOfBuilding, getJobCount, buildingSlots, assignedToBuilding, freeSlots, getIntensity } from '../core/population.js?v=32.1';
 // v0.1.1（需求 3）：建造按钮改为创建 dock 造船线，走生产线的工位与人力结算
 import { addLine, ensureLines, linesOf, removeLine, lineSlotInfo, freeLaborOf } from '../core/production.js?v=32.1';
@@ -394,6 +394,8 @@ export function renderShipyard(root, ctx) {
       + '</div>';
     wrap.appendChild(ph);
     root.appendChild(wrap);
+    // 门槛未达成：本页无产线可刷新，但仍需清掉上一轮可能残留的定时器
+    if (root._yardTimer) { clearInterval(root._yardTimer); root._yardTimer = null; }
     return;
   }
 
@@ -447,6 +449,27 @@ export function renderShipyard(root, ctx) {
   }
 
   root.appendChild(wrap);
+
+  // ===== v0.3.3：每秒实时刷新 =====
+  // 此前本页**完全没有 setInterval**：shipBuildTick 在后台每秒推进造船进度，
+  // 但造船页只在「打开页面 / 点按钮」时算一次，导致玩家看到「造船线不动、时间不对」。
+  // 守卫沿用 ui/army.js 的既有约定：
+  //   * 不能用 root.isConnected —— planet.js 切 tab 复用同一个 contentInner，
+  //     isConnected 恒 true，旧定时器会把本页重绘回去盖掉新 tab；
+  //     故改用本页标记（.yard-wrap）+ tab 标题双重校验。
+  //   * 先清旧定时器再建新，避免每次重绘叠加（此前 army 页出现过定时器泄漏）。
+  //   * 用户正在输入/选择时跳过，避免打断操作。
+  if (root._yardTimer) { clearInterval(root._yardTimer); root._yardTimer = null; }
+  root._yardTimer = setInterval(() => {
+    if (!root.querySelector || !root.querySelector('.yard-wrap')) {
+      clearInterval(root._yardTimer); root._yardTimer = null; return;
+    }
+    const active = typeof document !== 'undefined' ? document.activeElement : null;
+    if (active && root.contains(active) && (active.tagName === 'INPUT' || active.tagName === 'SELECT')) return;
+    const accNow = ctx.account || currentAccount();
+    if (!accNow) return;
+    renderShipyard(root, Object.assign({}, ctx, { account: accNow }));
+  }, 1000);
 }
 
 // ============================================================================
