@@ -10,20 +10,20 @@
 //   * 每支军队人数在 100 人上下（由框架数决定），列内展示。
 // 本页由 planet.js 的 showPanel 动态接入，异常只影响本 tab。
 
-import { reinforceArmy } from '../core/hoi1936.js?v=43.8';
+import { reinforceArmy } from '../core/hoi1936.js?v=44.9';
 import {
   ARMY_BLUEPRINTS, ARMY_PART_BY_ID, ARMY_SLOT_BY_CAT, ARMY_PART_COST,
   armyCapOf, armyBpPartNeeds, armyBpMaterialNeeds,
-} from '../data/army_parts.js?v=43.8';
+} from '../data/army_parts.js?v=44.9';
 import {
   armyStatsOfBp, armyPowerOf, armyPowerOfInstance, armyBuildCheck, listArmies, disbandArmy,
   getArmyBp, armyEffStats, armyPartMaterialOptions, trainArmy, cancelTraining, ARMY_LABOR_PER_BARRACKS,
   attachShipToArmy, detachShipFromArmy, shipEligibleForArmy, shipArmyOf, ARMY_SHIP_TECH,
-} from '../core/army.js?v=43.8';
-import { addLine, removeLine } from '../core/production.js?v=43.8';
-import { fmtNum, fmtTime } from '../core/format.js?v=43.8';
-import { currentAccount, getBuildingCounts } from '../core/state.js?v=43.8';
-import { TECH_BY_ID } from '../data/techs.js?v=43.8';
+} from '../core/army.js?v=44.9';
+import { addLine, removeLine } from '../core/production.js?v=44.9';
+import { fmtNum, fmtTime } from '../core/format.js?v=44.9';
+import { currentAccount, getBuildingCounts } from '../core/state.js?v=44.9';
+import { TECH_BY_ID } from '../data/techs.js?v=44.9';
 
 const ARMY_TECH = 't_m1';
 const ARMY_CATS = ['frame', 'mobility', 'weapon', 'armor', 'support'];
@@ -174,7 +174,11 @@ function renderTroops(sec, root, ctx, techSet) {
   for (const line of lines) {
     const bp = getArmyBp(acc, line.armyBlueprintId);
     const row = el('div', 'army-line-row');
-    const prog = Math.min(0.999999, Number((inst.armyProgress || {})[line.armyBlueprintId]) || 0);
+    // v0.4.4：进度键改为 line.id（同一兵种多条线各自独立推进）。
+//   旧代码读 inst.armyProgress[line.armyBlueprintId] —— 每条同蓝图线会显示同一进度。
+//   回退到 blueprintId 以兼容尚未推进过的旧存档。
+    const prog = Math.min(0.999999,
+      Number((inst.armyProgress || {})[line.id] ?? (inst.armyProgress || {})[line.armyBlueprintId]) || 0);
     const chk = armyBuildCheck(inst, bp || line.armyBlueprintId);
     const stuck = !chk.ok && prog > 0.98;
     const head = el('div', 'army-line-head');
@@ -429,13 +433,19 @@ function buildArmyRow(a, root, ctx, trainingCount) {
 
   // v0.2.6 rev9：补员（需时间 / 人力 / 装备）
   const menNow = Number(a.men) || 0;
-  if (menNow > 0 && menNow < 500) {
-    const reBtn = el('button', 'btn btn-sm', '补员 ' + Math.round(menNow) + '/500');
+  const menMax = Number(a.menMax) || 500;      // 不再写死 500，跟随实际满编数
+  if (menNow > 0 && menNow < menMax) {
+    const reBtn = el('button', 'btn btn-sm', '补员 ' + Math.round(menNow) + '/' + menMax);
+    reBtn.title = '消耗可用人力与军事装备补充兵员（每次点击 = 1 天额度）';
     reBtn.addEventListener('click', () => {
       const inst = getPlanetInstance(ctx.planetCode || acc.homePlanetCode);
       const r = reinforceArmy(acc, inst, a.id, 1);
       if (!r.ok) { alert(r.reason); return; }
-      alert('本日补充 ' + r.added + ' 人（消耗装备 ' + r.gearUsed + ' 件），当前兵力 ' + r.men + '/500');
+      // v0.4.4（需求 8）：用 core 返回的 note 如实说明装备缺口。
+      //   旧写法只报一个数，玩家看到「补充 1 人」却不知道为什么（根因是装备被折算没了）。
+      alert((r.note || ('本日补充 ' + r.added + ' 人'))
+        + '（消耗装备 ' + r.gearUsed + '/' + r.gearNeed + ' 件），当前兵力 '
+        + r.men + '/' + menMax);
       renderArmyPage(root, ctx);
     });
     row.appendChild(reBtn);

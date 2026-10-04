@@ -3,31 +3,31 @@
 // 更新：v0.1.1 五指令改为持续任务（startMission，任务行显示倒计时），
 //       新增船载仓库面板；编队 / 五指令区块挂船坞门禁；交易池区 2s 心跳局部刷新。
 
-import { fmtNum, fmtRate, fmtTime } from '../core/format.js?v=43.8';
+import { fmtNum, fmtRate, fmtTime } from '../core/format.js?v=44.9';
 import {
   listFleets, createFleet, disbandFleet, addShipToFleet, removeShipFromFleet,
   fleetSpeedOf, fleetPowerOf, executeCommand,
   startMission, cancelMission, fleetMissionLabel, defenseBonusOf,
   shipCargoOf, loadShipCargo, unloadShipCargo,
   shipCargoMassOf, shipCargoCellsOf, shipCargoCellsMax, effectiveSpeedOf,
-} from '../core/fleet.js?v=43.8';
-import { equipmentList } from '../core/shipyard.js?v=43.8';
+} from '../core/fleet.js?v=44.9';
+import { equipmentList } from '../core/shipyard.js?v=44.9';
 import {
   MANAGEMENT_MODES, MANAGEMENT_BY_ID, modeOf, setManagement,
   TERRITORY_ASSIMILATE_SEC, TERRITORY_HAPPY_THRESHOLD,
-} from '../core/planetgen.js?v=43.8';
+} from '../core/planetgen.js?v=44.9';
 import {
   SHOP_PLANET, shopPrices, sell, pendingOrders, deliverOrder, ascoinBalance,
   shopStateOf, applySharedPrice,
   marketBuy, marketSell, warehouseOf, ensureShopWarehouse,
-} from '../core/shop.js?v=43.8';
+} from '../core/shop.js?v=44.9';
 import {
   createAuction, placeBid, activeAuctions, auctionLog,
   myAuctionableResources, myAuctionableEquipment, myAuctionableShips, ensureAuctions,
-} from '../core/auction.js?v=43.8';
-import { getPlanetInstance, currentAccount, ownedOf, STATE } from '../core/state.js?v=43.8';
-import { cloudUser, fetchSharedWarehouse, upsertSharedWarehouseRow, upsertSharedPriceRow } from '../core/cloud.js?v=43.8';
-import { MATERIALS } from '../data/materials.js?v=43.8';
+} from '../core/auction.js?v=44.9';
+import { getPlanetInstance, currentAccount, ownedOf, STATE } from '../core/state.js?v=44.9';
+import { cloudUser, fetchSharedWarehouse, upsertSharedWarehouseRow, upsertSharedPriceRow } from '../core/cloud.js?v=44.9';
+import { MATERIALS } from '../data/materials.js?v=44.9';
 
 // HTML 转义（防 XSS，与其它面板一致）
 function esc(s) {
@@ -344,11 +344,22 @@ function buildAuctionSection(account, inst, planetCode, openModal, redraw) {
     refreshAuction();
   });
 
+  // v0.4.4（需求 9「起拍价标注位置错误」）：`.shop-auc-form` 是 flex + wrap，
+  //   而「标签」与「输入框」原本是**平级的兄弟节点**，换行时被拆到不同行 ——
+  //   于是「起拍价」四个字可能出现在上一行末尾、输入框落到下一行，看起来就是标注错位。
+  //   现在把每组「标签 + 控件」包进 .shop-auc-field，标签与控件永远绑在一起。
+  function field(labelText, ctrl) {
+    const w = el('div', 'shop-auc-field');
+    w.appendChild(el('span', 'shop-auc-label', labelText));
+    w.appendChild(ctrl);
+    return w;
+  }
+
   form.append(
-    labelSpan('类型'), typeSel,
-    labelSpan('资产'), itemSel,
-    labelSpan('数量'), qtyIn,
-    labelSpan('起拍价'), bidIn,
+    field('类型', typeSel),
+    field('资产', itemSel),
+    field('数量', qtyIn),
+    field('起拍价', bidIn),
     startB,
   );
   sec.appendChild(form);

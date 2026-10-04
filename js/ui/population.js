@@ -13,24 +13,24 @@
 // 3. **新增人数输入栏**：每行都有 −/输入框/＋/满员，方便大规模分配（人数很多时不用点几百次）。
 // 4. 顶部营养区改为 3 消耗（氧气/有机质/水）+ 3 产出（二氧化碳/甲烷/氨气）。
 
-import { fmtNum, fmtRate } from '../core/format.js?v=43.8';
-import { BUILDINGS, BUILDING_BY_ID } from '../data/buildings.js?v=43.8';
+import { fmtNum, fmtRate } from '../core/format.js?v=44.9';
+import { BUILDINGS, BUILDING_BY_ID } from '../data/buildings.js?v=44.9';
 import {
   createPopulation, assignWorkers, setJobIntensity, getIntensity,
   getTotalLabor, getAssigned, getAvailable, consumptionPerSec, metabolitePerSec,
   JOBS, JOBS_BY_BUILDING, WORK_INTENSITY,
   assignedToBuilding, freeSlots, jobCapacity, hiddenJobCount, getJobCount,
   MANAGE_MODES, manageModeOf,
-} from '../core/population.js?v=43.8';
-import { getBuildingCounts, currentAccount } from '../core/state.js?v=43.8';
-import { ARMY_BP_BY_ID } from '../data/army_parts.js?v=43.8';   // v0.2.0 军队组装线命名
+} from '../core/population.js?v=44.9';
+import { getBuildingCounts, currentAccount } from '../core/state.js?v=44.9';
+import { ARMY_BP_BY_ID } from '../data/army_parts.js?v=44.9';   // v0.2.0 军队组装线命名
 // v0.1.1（需求 20）：殖民管理模式——判断本星球是否由电脑接管发展
-import { modeOf } from '../core/planetgen.js?v=43.8';
+import { modeOf } from '../core/planetgen.js?v=44.9';
 // v0.2.3（需求）：殖民地报告历史已从人力页移除 —— 报告只在「星球选择 / 星际」的
 //   每颗星球行内联展示（colony.js），不再在人力页保留历史副本。
 // v0.0.7：生产线接口（核心模块正在实现中）。用命名空间导入 + 函数存在性守卫，
 //   若接口尚未落地（addLine 等不是函数），本文件不会报错，也不渲染生产线区块。
-import * as PR from '../core/production.js?v=43.8';
+import * as PR from '../core/production.js?v=44.9';
 
 // 取/建星球上的人口对象（挂在 planet.pop，首次访问惰性创建）
 function ensurePop(planet) {
@@ -415,6 +415,9 @@ function renderProductionBlock(panel, root, planet) {
     // 第一步：选建筑（已建成≥1 且可选项非空），并显示该建筑工位占用
     const builtOptions = BUILDINGS.filter((b) => {
       const n = buildingCountOf(planet, b.id);
+      // v0.4.4（需求 10）：军营等 **jobs: 0** 的建筑**不应出现在生产线的建筑下拉里** ——
+      //   它们没有产线工位可分配。军队组装线改在「军队」页按蓝图开设并单独分配人力。
+      if (!(Number(b.jobs) > 0)) return false;
       return n > 0 && PR.recipesForBuilding(planet, b.id, currentAccount()).length > 0;
     });
     const bSel = el('select', { class: 'pop-sel', title: '第一步：选择建筑' });

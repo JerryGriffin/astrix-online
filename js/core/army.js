@@ -1,4 +1,4 @@
-// 军队核心逻辑（Astrix v0.2.0）
+﻿// 军队核心逻辑（Astrix v0.2.0）
 // 与舰队（fleet.js）/ 船坞（shipyard.js）同构的纯算法模块：
 //   1. acc.armies 建制军队（类似舰队）：{ id, nameCn, blueprintId, power, stats, createdAt }
 //   2. 军队组装生产线：buildingId 'fabricator' + armyBlueprintId 的线由 armyBuildTick 推进
@@ -12,9 +12,9 @@
 
 import {
   ARMY_BP_BY_ID, ARMY_PART_BY_ID, ARMY_SLOT_BY_CAT, armyBpPartNeeds,
-} from '../data/army_parts.js?v=43.8';
-import { MATERIAL_SLOTS } from '../data/ship_parts.js?v=43.8';
-import { materialMul } from './shipyard.js?v=43.8';   // 无循环：shipyard 不依赖本模块
+} from '../data/army_parts.js?v=44.9';
+import { MATERIAL_SLOTS } from '../data/ship_parts.js?v=44.9';
+import { materialMul } from './shipyard.js?v=44.9';   // 无循环：shipyard 不依赖本模块
 
 // ============================================================================
 // 一、账号军队列表（迁移 + 查询）
@@ -282,18 +282,24 @@ export function armyBuildCheck(inst, bpOrId) {
 
 /** 推进一条军队组装线一个 tick，返回本 tick 进度增量（0~1）。acc 缺省只推进度不产出
  *  v0.2.4：blueprintId 兼容蓝图对象与自定义蓝图 id（经 acc.armyBlueprints 解析） */
-export function armyBuildTick(inst, blueprintId, labor, dt, powerRatio, acc) {
+export function armyBuildTick(inst, blueprintId, labor, dt, powerRatio, acc, progressKey) {
   if (!inst || !blueprintId) return 0;
   const bp = getArmyBp(acc, blueprintId);
   if (!bp) return 0;
   if (!inst.armyProgress || typeof inst.armyProgress !== 'object') inst.armyProgress = {};
+  // v0.4.4：进度键改为**生产线 id**（progressKey），不再按蓝图 id。
+  //   此前 inst.armyProgress[blueprintId] 让「同一兵种开多条线」共享**同一根进度条**：
+  //   结果是 N 条线进度完全相同、而且全部产出只会得到**一支**军队（需求 7）。
+  //   传 progressKey（= line.id）后每条线独立推进、各自成军。
+  //   不传时回退到 blueprintId，以兼容旧存档与既有调用。
+  const pKey = progressKey || blueprintId;
 
   const C = Math.max(1, Number(bp.buildWork) || 1);
   const ratio = Number.isFinite(Number(powerRatio)) ? Number(powerRatio) : 1;
   const eff = (Number(labor) || 0) * (Number(dt) || 0) * ratio;
   const inc = Math.min(eff / C, 1);
 
-  const oldProg = Number(inst.armyProgress[blueprintId] || 0);
+  const oldProg = Number(inst.armyProgress[pKey] || 0);
   let target = oldProg + inc;
   let delta = inc;
 
@@ -339,16 +345,16 @@ export function armyBuildTick(inst, blueprintId, labor, dt, powerRatio, acc) {
         }
       }
       arr.push(army);
-      inst.armyProgress[blueprintId] = 0;
+      inst.armyProgress[pKey] = 0;
       delta = 1 - oldProg;
     } else {
       // 缺件：卡在 1 − ε，不完成（UI 显示缺件清单）
       target = Math.min(target, 1 - 1e-6);
-      inst.armyProgress[blueprintId] = target;
+      inst.armyProgress[pKey] = target;
       delta = target - oldProg;
     }
   } else {
-    inst.armyProgress[blueprintId] = target;
+    inst.armyProgress[pKey] = target;
     delta = target - oldProg;
   }
   return delta;

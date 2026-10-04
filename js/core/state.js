@@ -15,54 +15,54 @@
 //    开局自带 1 座建筑工厂（设计者：「开局有一个建筑工厂」）。
 // 5. 施工队列由 tick 推进：速度 = 建筑工有效人力（受建筑工厂工位限制），无人则为 0。
 
-import { PLANETS } from '../data/planets.js?v=43.8';
-import { HOI_NATIONS, HOI_BY_ID, HOI_SCENARIO_ID } from '../data/hoi1936.js?v=43.8';   // v0.2.6 官方 mod 1936 剧本
+import { PLANETS } from '../data/planets.js?v=44.9';
+import { HOI_NATIONS, HOI_BY_ID, HOI_SCENARIO_ID } from '../data/hoi1936.js?v=44.9';   // v0.2.6 官方 mod 1936 剧本
 import {
   setHoiDeps, popOf, setupArmies, setupNavy, setupLines, setupBloc, setupFactories, setupColony, ensureShipNames, backgroundOf, repairScenarioEstates, setupGermanPuppets, tickWarsHoi4, tickJustify, tickDiploAI, staffBuildings, applyInfiniteReserve,
   ensureFocus, tickFocus, ensureSeas, scenarioDateOf, gameDaysOf,
-} from './hoi1936.js?v=43.8';
-import { BUILDING_BY_ID, buildingCost } from '../data/buildings.js?v=43.8';
-import { TECH_BY_ID, canResearch, missingPrereqs, missingBuilding } from '../data/techs.js?v=43.8';
-import { UPGRADES, upgradeCost } from '../data/upgrades.js?v=43.8';
+} from './hoi1936.js?v=44.9';
+import { BUILDING_BY_ID, buildingCost } from '../data/buildings.js?v=44.9';
+import { TECH_BY_ID, canResearch, missingPrereqs, missingBuilding } from '../data/techs.js?v=44.9';
+import { UPGRADES, upgradeCost } from '../data/upgrades.js?v=44.9';
 import {
   createPopulation, tickPopulation, getAvailable, gatherLaborByLayer, jobsOfBuilding, getIntensity,
   consumptionPerSec, jobOutput,
   JOBS, freeSlots,
-} from './population.js?v=43.8';
-import { buildRateOf, buildBlockReason } from './construction.js?v=43.8';
-import { tickShip, defaultBlueprints, createShip, shipBuildTick } from './shipyard.js?v=43.8';
+} from './population.js?v=44.9';
+import { buildRateOf, buildBlockReason } from './construction.js?v=44.9';
+import { tickShip, defaultBlueprints, createShip, shipBuildTick } from './shipyard.js?v=44.9';
 // v0.0.6：电力系统与配方生产。
 // 注意这两个模块**不反向 import 本文件**（否则形成循环依赖），
 // 它们只从传入的 inst 上读 buildings / pop / inventory / recipes。
-import { energyOf, computePower, tickPower } from './power.js?v=43.8';
+import { energyOf, computePower, tickPower } from './power.js?v=44.9';
 // v0.0.91：efficiencyBonus 由 production.js 导出（建筑总座数效率乘数），
 //   这里沿用既有的 state→production 单向边引入，不反向让 production import state，避免循环依赖。
-import { tickProduction, productionRates, ensureLines, lineWorkersTotal, efficiencyBonus, ensureEntry, addLine as addProductionLine, lineSlotInfo } from './production.js?v=43.8';
+import { tickProduction, productionRates, ensureLines, lineWorkersTotal, efficiencyBonus, ensureEntry, addLine as addProductionLine, lineSlotInfo } from './production.js?v=44.9';
 // v0.0.92：星际航行与殖民（管理模式 / 独立倾向 / 随机星球）
-import { tickIndependence, outputMulOf, happinessDeltaOf, ensureDiscoveredDefaults, discoverPlanet, capturePlanet, purgeShopColonies, tickManagedColonies, SHOP_PLANET_CODE } from './planetgen.js?v=43.8';
+import { tickIndependence, outputMulOf, happinessDeltaOf, ensureDiscoveredDefaults, discoverPlanet, capturePlanet, purgeShopColonies, tickManagedColonies, SHOP_PLANET_CODE } from './planetgen.js?v=44.9';
 // v0.1.2（需求 18/19）：永久升级的「效果」改乘方，唯一实现在 data/upgrades.js#upgradeMul
 // （UI 的 research.js 也用它，别在别处再写一套公式）。
 // 此前 upg_collect/refine/power/labor/research/build 六项付了钱却没有任何效果。
-import { upgradeMul } from '../data/upgrades.js?v=43.8';
-import { tickFleetMissions, ensureFleets } from './fleet.js?v=43.8';
-import { ensureArmies, armyBuildTick, advanceTraining, ARMY_LABOR_PER_BARRACKS } from './army.js?v=43.8';   // v0.2.0 军队
+import { upgradeMul } from '../data/upgrades.js?v=44.9';
+import { tickFleetMissions, ensureFleets } from './fleet.js?v=44.9';
+import { ensureArmies, armyBuildTick, advanceTraining, ARMY_LABOR_PER_BARRACKS } from './army.js?v=44.9';   // v0.2.0 军队
 // v0.3.4：战役系统（HOI4 式持续交战）。必须在 ensureArmies **之后**接线 ——
 //   战役结算要从真实 acc.armies 取师（兵员/攻防），否则打的是空数组。
-import { tickBattles, ensureBattles, orbitalControlOf, startBattle } from './battle.js?v=43.8';
+import { tickBattles, ensureBattles, orbitalControlOf, startBattle } from './battle.js?v=44.9';
 // v0.4.1：行星战区地图（战区归属 / 补给网络 / 战略打击 / 敌方 AI 战略层）
 import {
   ensureTheater, refreshSupply, decayStrikePressure, tickTheaterAI,
   tickRegions, regionYieldOf, colonySupportOf,
-} from './theater.js?v=43.8';
+} from './theater.js?v=44.9';
 // 注：ensureEntry 已在上面从 ./production.js 一并导入，勿重复 import。
 // v0.1.0：电脑账号（离线存档里的 NPC 势力）与其交易池联动。
 //   注意 npc.js 是叶子模块（只 import 数据表），shop.js 与 state.js 互为函数级引用、无顶层副作用。
-import { ensureNpcs, tickNpcs } from './npc.js?v=43.8';
+import { ensureNpcs, tickNpcs } from './npc.js?v=44.9';
 import {
   priceOf as shopPriceOf, suggestPriceOf as shopSuggestPriceOf,
   tickShop as shopTick,
-} from './shop.js?v=43.8';
-import { tickAuctions, tickNpcAuctionSpawner } from './auction.js?v=43.8';   // v0.2.6 拍卖行；v0.2.10 NPC 挂单
+} from './shop.js?v=44.9';
+import { tickAuctions, tickNpcAuctionSpawner } from './auction.js?v=44.9';   // v0.2.6 拍卖行；v0.2.10 NPC 挂单
 
 const SAVE_PREFIX = 'astrix.save.';
 const INDEX_KEY = SAVE_PREFIX + 'index';
@@ -1146,21 +1146,28 @@ function advanceArmyLines(inst, dt, acc) {
   if (!acc) return;
   const ratio = Number((inst.powerInfo && inst.powerInfo.ratio) ?? 1);
   if (!(ratio > 0)) return;
-  // v0.2.4：军营数决定建造速率 —— 每座 60 点固定建造人力，多座叠加；无军营不推进
+  // v0.2.4：军营是军队组装的**前置建筑**；v0.4.4 起人力真正参与计算（需求 1）
   const barracks = (inst.buildings && Number(inst.buildings.barracks)) || 0;
   if (!(barracks > 0)) return;
-  const labor = barracks * ARMY_LABOR_PER_BARRACKS;
-  // v0.3.3：与造船同理 —— 同一 armyBlueprintId 在一个 tick 内只结算一次。
-  //   否则 N 条同蓝图线会在同一 tick 内连续触发 N 次成军（一次产 N 支）。
-  //   军营人力是全局的（barracks × 60），故这里只需按蓝图去重，产能不损失。
-  const seen = new Set();
+  // v0.4.4（需求 1）：军队组装线**消耗该线自己分配的人力**（与造船线同一套口径），
+  //   军营数只作为**速率倍率**（每座 +40%），不再凭空提供固定人力。
+  //   此前 labor = barracks × 60 是抽象值，组装军队**完全不占人力**，
+  //   于是人力面板上「把所有人派去干活」对军队组装毫无影响。
   for (const line of inst.lines) {
     if (!line || !line.armyBlueprintId) continue;
-    if (seen.has(line.armyBlueprintId)) continue;
-    seen.add(line.armyBlueprintId);
-    // 保留「单线异常不拖垮全局」的隔离，但必须留痕 —— 静默 catch 会让
-    // 「成军永远失败」这类缺陷表现为「进度卡住但没有任何报错」。
-    try { armyBuildTick(inst, line.armyBlueprintId, labor, dt, ratio, acc); }
+    const workers = Number(line.workers) || 0;
+    if (!(workers > 0)) continue;               // 没派人的线不推进
+    const intensityId = line.intensityId != null ? line.intensityId
+      : (inst.pop ? inst.pop.intensityId : null);
+    const gi = getIntensity(intensityId);
+    const mul = (gi && Number(gi.outputMul)) || 0;
+    if (!(mul > 0)) continue;
+    const labor = workers * mul * (1 + 0.4 * (barracks - 1));
+    // v0.4.4（需求 7）：**不再按蓝图去重** —— 每条线用 line.id 作为独立进度键，
+    //   于是同一兵种开 N 条线会并行推进、各自产出一支军队。
+    //   旧去重是为压制「同蓝图多条线在同一 tick 连续成军」，但它把
+    //   「N 条线 = N 支军队」变成了「N 条线 = 1 支军队」。
+    try { armyBuildTick(inst, line.armyBlueprintId, labor, dt, ratio, acc, line.id); }
     catch (e) { console.error('[advanceArmyLines] 组装线推进失败:', line.armyBlueprintId, e); }
   }
 }

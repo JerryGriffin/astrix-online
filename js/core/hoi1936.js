@@ -12,15 +12,15 @@
 import { HOI_NATIONS, HOI_BY_ID, HOI_MAIN_NATIONS, HOI_MAIN_BY_ID, HOI_DEEP, HOI_SEAS, ARMY_MEN, popOf, BLOC_NAME, HOI_SCENARIO_ID,
   workforceOf, ARMY_POWER_PER_DIV, NAVY_MUL, GEAR_PARTS, SHIP_NAMES, ARMY_BP_NAME, HOI_BG, SHIP_CLASSES, POST_WAR_OPTIONS, GER_PUPPETS, ARMY_BP_LINE, warshipTonnageOf, WAR_LINE, EXTRA_FOCUS_TEMPLATE, JUSTIFY_DAYS, NATION_SEA_REGION, SEA_INITIAL_CONTROL, NAVAL_INVASION_CONTROL,
   // v0.3.3：历史事件时间表（「战争按历史来，不要随便乱宣战」）
-  HIST_TIMELINE, histEventsAt, histWarBetween, histWarTargetsFor } from '../data/hoi1936.js?v=43.8';
-import { BUILDING_BY_ID } from '../data/buildings.js?v=43.8';
-import { ARMY_BP_BY_ID, ARMY_BLUEPRINTS } from '../data/army_parts.js?v=43.8';
-import { JOBS_BY_BUILDING, assignWorkers, jobCapacity, getAvailable } from './population.js?v=43.8';
-import { ELITE_DIVISIONS, ELITE_MUL } from '../data/hoi1936.js?v=43.8';
+  HIST_TIMELINE, histEventsAt, histWarBetween, histWarTargetsFor } from '../data/hoi1936.js?v=44.9';
+import { BUILDING_BY_ID } from '../data/buildings.js?v=44.9';
+import { ARMY_BP_BY_ID, ARMY_BLUEPRINTS } from '../data/army_parts.js?v=44.9';
+import { JOBS_BY_BUILDING, assignWorkers, jobCapacity, getAvailable } from './population.js?v=44.9';
+import { ELITE_DIVISIONS, ELITE_MUL } from '../data/hoi1936.js?v=44.9';
 // v0.3.3：战争槽位上限（与 core/war.js 同源；war.js 不 import 本文件，无循环依赖）
-import { WAR_MAX_ACTIVE } from './war.js?v=43.8';
+import { WAR_MAX_ACTIVE } from './war.js?v=44.9';
 // v0.3.4：战役系统（敌方主动进攻 + 战线管理）。battle.js 不 import 本文件，无循环依赖。
-import { startBattle, listBattles, BATTLE_MAX_PER_WAR, IDLE_PROGRESS_PER_DAY } from './battle.js?v=43.8';
+import { startBattle, listBattles, BATTLE_MAX_PER_WAR, IDLE_PROGRESS_PER_DAY } from './battle.js?v=44.9';
 
 // 依赖注入（避免与 state.js / production.js 形成循环导入）
 let _getInst = null;
@@ -984,8 +984,14 @@ export function reinforceArmy(acc, inst, armyId, days) {
       }
     }
   } catch (e) { /* 忽略 */ }
-  // 装备不足 → 按装备比例折算补员进度
-  const real = Math.max(1, Math.round(hired * Math.min(1, gearTaken / gearNeed)));
+  // 装备不足 → 按装备比例折算补员进度。
+  // v0.4.4（需求 8「补员按钮无效」）：旧算法 `max(1, hired × 装备率)` 在
+  //   **一件装备都没有**时算出 gearTaken=0 → 结果只补 1 人（要 25 人），
+  //   按钮看起来完全无效，且不说明原因。
+  //   现给一个下限：即便无装备也能靠人力补回约 35%，并把装备缺口如实返回给 UI。
+  const GEAR_FLOOR = 0.35;
+  const gearRatio = Math.min(1, gearTaken / gearNeed);
+  const real = Math.max(1, Math.round(hired * Math.max(GEAR_FLOOR, gearRatio)));
   a.men = Math.min(ARMY_MEN_MAX, (Number(a.men) || 0) + real);
   a.reinforcing = a.men < ARMY_MEN_MAX;
   // 战力随兵力比例恢复
@@ -993,7 +999,14 @@ export function reinforceArmy(acc, inst, armyId, days) {
   if (a._basePower == null) a._basePower = Math.round((Number(a.power) || 0) / Math.max(0.01, (Number(a._lastRatio) || 1)));
   a.power = Math.round((a._basePower || a.power) * ratio);
   a._lastRatio = ratio;
-  return { ok: true, added: real, men: a.men, gearUsed: gearTaken };
+  return {
+    ok: true, added: real, men: a.men, gearUsed: gearTaken, gearNeed,
+    gearRatio, gearShort: gearTaken < gearNeed,
+    // 供 UI 直接显示的提示语
+    note: gearTaken < gearNeed
+      ? '装备不足（需 ' + gearNeed + ' 件，实有 ' + gearTaken + '），本次仅补回 ' + real + ' 人'
+      : '补回 ' + real + ' 人',
+  };
 }
 
 /**

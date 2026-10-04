@@ -13,18 +13,18 @@ function ok(cond, label) {
 }
 function section(t) { console.log('\n== ' + t + ' =='); }
 
-const B = await import('../js/data/buildings.js?v=43.8');
-const T = await import('../js/data/techs.js?v=43.8');
-const U = await import('../js/data/upgrades.js?v=43.8');
-const M = await import('../js/data/materials.js?v=43.8');
-const P = await import('../js/data/planets.js?v=43.8');
-const F = await import('../js/data/fuels.js?v=43.8');
-const SP = await import('../js/data/ship_parts.js?v=43.8');
-const Y = await import('../js/core/shipyard.js?v=43.8');
-const C = await import('../js/core/construction.js?v=43.8');
-const POP = await import('../js/core/population.js?v=43.8');
-const CUR = await import('../js/core/currency.js?v=43.8');
-const V = await import('../js/version.js?v=43.8');
+const B = await import('../js/data/buildings.js?v=44.9');
+const T = await import('../js/data/techs.js?v=44.9');
+const U = await import('../js/data/upgrades.js?v=44.9');
+const M = await import('../js/data/materials.js?v=44.9');
+const P = await import('../js/data/planets.js?v=44.9');
+const F = await import('../js/data/fuels.js?v=44.9');
+const SP = await import('../js/data/ship_parts.js?v=44.9');
+const Y = await import('../js/core/shipyard.js?v=44.9');
+const C = await import('../js/core/construction.js?v=44.9');
+const POP = await import('../js/core/population.js?v=44.9');
+const CUR = await import('../js/core/currency.js?v=44.9');
+const V = await import('../js/version.js?v=44.9');
 
 const MAT_NAMES = new Set(M.MATERIALS.map((m) => m.nameCn));
 const BUILDING_IDS = new Set(B.BUILDINGS.map((b) => b.id));
@@ -113,7 +113,7 @@ section('二·b、建筑造价可达性（v0.1.3 新增：抓「造 X 得先有 
 //   ② 反复扫描：某建筑造价已全部 ⊆ 已可得 → 该建筑可建 → 把它产出的材料并入可得集；
 //   ③ 收敛后仍不可建的建筑即为死锁，必须报错。
 {
-  const R = await import('../js/data/recipes.js?v=43.8');
+  const R = await import('../js/data/recipes.js?v=44.9');
   // 炉类家族共配方（熔炉 / 高炉 / 火力发电厂），生产侧视为同一族
   const FURNACE_FAMILY = new Set(['furnace', 'blast_furnace', 'thermal_plant']);
   const canProduce = (bid, rid) => bid === rid || (FURNACE_FAMILY.has(bid) && FURNACE_FAMILY.has(rid));
@@ -514,7 +514,7 @@ section('十、状态与存档往返（模拟刷新）');
       key: (i) => [...m.keys()][i],
     };
   })();
-  const S = await import('../js/core/state.js?v=43.8');
+  const S = await import('../js/core/state.js?v=44.9');
   S.loadState();
   const acc = S.newGame('自检员');
   const inst = S.getPlanetInstance(acc.homePlanetCode);
@@ -638,7 +638,7 @@ ok(html.includes('js/main.js?v=' + V.CACHE_TAG),
   ok(cssTags.length > 0 && bad.length === 0,
     `index.html 的 ${cssTags.length} 个 css 链接都应带 ?v=${V.CACHE_TAG}，缺少的：${bad.join('、') || '无'}`);
 }
-const startSrc = readFileSync(new URL('../js/ui/start.js?v=43.8', import.meta.url), 'utf8');
+const startSrc = readFileSync(new URL('../js/ui/start.js?v=44.9', import.meta.url), 'utf8');
 ok(!/['"`]v0\.\d/.test(startSrc), 'start.js 不应硬编码版本号字符串（注释里的版本标记不算）');
 ok(startSrc.includes("from '../version.js?v="), 'start.js 应从 version.js 取版本号（带缓存版本串，v0.0.62）');
 
@@ -795,7 +795,7 @@ section('十五、v0.0.5 采集扣星球储藏 && 建筑建造');
       key: (i) => [...m.keys()][i],
     };
   })();
-  const S = await import('../js/core/state.js?v=43.8');
+  const S = await import('../js/core/state.js?v=44.9');
   S.loadState();
   const acc = S.newGame('v005 自检员');
   const inst = S.getPlanetInstance(acc.homePlanetCode);
@@ -882,8 +882,8 @@ section('十五、v0.0.5 采集扣星球储藏 && 建筑建造');
 // ---------------------------------------------------------------------------
 section('十六、v0.0.5 船坞工门槛（舰队接入人力）');
 {
-  const SY = await import('../js/ui/shipyard.js?v=43.8');
-  const S = await import('../js/core/state.js?v=43.8');
+  const SY = await import('../js/ui/shipyard.js?v=44.9');
+  const S = await import('../js/core/state.js?v=44.9');
   S.loadState();
   const acc = S.newGame('船坞自检员');
   const inst = S.getPlanetInstance(acc.homePlanetCode);
@@ -938,7 +938,7 @@ section('十七、v0.0.51 房屋与庇护');
     return { getItem: (k) => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, String(v)),
              removeItem: (k) => m.delete(k), get length() { return m.size; }, key: (i) => [...m.keys()][i] };
   })();
-  const S = await import('../js/core/state.js?v=43.8');
+  const S = await import('../js/core/state.js?v=44.9');
   S.loadState();
   const acc = S.newGame('庇护自检员');
   const inst = S.getPlanetInstance(acc.homePlanetCode);
@@ -1005,7 +1005,7 @@ section('十九、v0.0.51 删除存档（不再失效、不再串档）');
     return { getItem: (k) => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, String(v)),
              removeItem: (k) => m.delete(k), get length() { return m.size; }, key: (i) => [...m.keys()][i] };
   })();
-  const S = await import('../js/core/state.js?v=43.8');
+  const S = await import('../js/core/state.js?v=44.9');
   S.loadState();
 
   // 建两个存档，各自推进不同时长，做出可区分的进度
@@ -1053,7 +1053,7 @@ section('十九、v0.0.51 删除存档（不再失效、不再串档）');
 // ---------------------------------------------------------------------------
 section('二十、v0.0.51 离线模式文案');
 {
-  const src = readFileSync(new URL('../js/ui/start.js?v=43.8', import.meta.url), 'utf8');
+  const src = readFileSync(new URL('../js/ui/start.js?v=44.9', import.meta.url), 'utf8');
   ok(src.includes("'与电脑对抗'"), '离线模式副文案应为「与电脑对抗」');
   ok(!src.includes("'全部是人机'"), '旧的「全部是人机」文案应已移除');
   // 删除后不能再走 enterOffline（那会触发 ensureAccount 自动建号，观感就是「删不掉」）
@@ -1071,7 +1071,7 @@ section('二十一、v0.0.52 研究真正扣点');
     return { getItem: (k) => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, String(v)),
              removeItem: (k) => m.delete(k), get length() { return m.size; }, key: (i) => [...m.keys()][i] };
   })();
-  const S = await import('../js/core/state.js?v=43.8');
+  const S = await import('../js/core/state.js?v=44.9');
   S.loadState();
   const acc = S.newGame('科研自检员');
   const T = techById;
@@ -1109,7 +1109,7 @@ section('二十一、v0.0.52 研究真正扣点');
 
   // 永久升级也消耗研究点
   acc.researchPoints = 1e9;
-  const U = (await import('../js/data/upgrades.js?v=43.8')).UPGRADES[0];
+  const U = (await import('../js/data/upgrades.js?v=44.9')).UPGRADES[0];
   const p0 = acc.researchPoints;
   const up = S.buyUpgrade(U.id);
   ok(up.ok === true, `应能购买升级，实际「${up.reason}」`);
@@ -1135,7 +1135,7 @@ section('二十二、v0.0.52 开局采集速率（不再是 0）');
     return { getItem: (k) => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, String(v)),
              removeItem: (k) => m.delete(k), get length() { return m.size; }, key: (i) => [...m.keys()][i] };
   })();
-  const S = await import('../js/core/state.js?v=43.8');
+  const S = await import('../js/core/state.js?v=44.9');
   S.loadState();
   const acc = S.newGame('采集自检员');
   const inst = S.getPlanetInstance(acc.homePlanetCode);
@@ -1228,7 +1228,7 @@ section('二十四、v0.0.52 休息消耗改小');
 section('二十五、v0.2.5 在线/离线存档池隔离（永久升级不串池）');
 {
   // 离线档买满升级 → 切在线池新建档 → 升级必须为 0；切回离线档不丢
-  const S = await import('../js/core/state.js?v=43.8');
+  const S = await import('../js/core/state.js?v=44.9');
   // 离线档买满升级 → 切在线池新建档 → 升级必须为 0；切回离线档不丢
   S.switchPool('offline');
   const off = S.createAccount('池探针·离线');

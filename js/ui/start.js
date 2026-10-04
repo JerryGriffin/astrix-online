@@ -1,9 +1,9 @@
 // 开始界面：标题、离线/在线模式、账号选择、各次要入口模态层（Astrix）
-import {  STATE, createAccount, switchAccount, deleteAccount, currentAccount, START_MODES, switchPool  } from '../core/state.js?v=43.8';
-import { HOI_NATIONS } from '../data/hoi1936.js?v=43.8';   // v0.2.6 官方 mod 1936 剧本
-import { fmtNum, fmtTime } from '../core/format.js?v=43.8';
+import {  STATE, createAccount, switchAccount, deleteAccount, currentAccount, START_MODES, switchPool  } from '../core/state.js?v=44.9';
+import { HOI_NATIONS } from '../data/hoi1936.js?v=44.9';   // v0.2.6 官方 mod 1936 剧本
+import { fmtNum, fmtTime } from '../core/format.js?v=44.9';
 // 版本号与更新日志的唯一来源：任何地方要显示版本都从这里取，改版本只改 js/version.js 一处
-import { VERSION, VERSIONS } from '../version.js?v=43.8';
+import { VERSION, VERSIONS } from '../version.js?v=44.9';
 
 // 创建元素的小工具
 function el(tag, cls, text) {

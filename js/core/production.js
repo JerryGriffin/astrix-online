@@ -13,17 +13,17 @@
 //   * 不修改 state.js / ui/* / data/buildings.js / data/materials.js / data/facilities.js /
 //     data/techs.js / version.js / index.html。
 
-import { RECIPES, RECIPE_BY_ID, recipesOfBuilding, getRecipe } from '../data/recipes.js?v=43.8';
-import { jobsOfBuilding, getIntensity, getAvailable, buildingSlots, jobOutput, manageOutputMulOf } from './population.js?v=43.8';
-import { MATERIALS } from '../data/materials.js?v=43.8';
-import { PART_BY_ID, MATERIAL_SLOTS, craftableParts, craftWorkOf } from '../data/ship_parts.js?v=43.8';
-import { ARMY_PART_BY_ID, ARMY_BP_BY_ID, ARMY_SLOT_BY_CAT, craftableArmyParts } from '../data/army_parts.js?v=43.8';   // v0.2.0 军事部件
-import { POWER_FACILITY_BY_ID } from '../data/facilities.js?v=43.8';
+import { RECIPES, RECIPE_BY_ID, recipesOfBuilding, getRecipe } from '../data/recipes.js?v=44.9';
+import { jobsOfBuilding, getIntensity, getAvailable, buildingSlots, jobOutput, manageOutputMulOf } from './population.js?v=44.9';
+import { MATERIALS } from '../data/materials.js?v=44.9';
+import { PART_BY_ID, MATERIAL_SLOTS, craftableParts, craftWorkOf } from '../data/ship_parts.js?v=44.9';
+import { ARMY_PART_BY_ID, ARMY_BP_BY_ID, ARMY_SLOT_BY_CAT, craftableArmyParts } from '../data/army_parts.js?v=44.9';   // v0.2.0 军事部件
+import { POWER_FACILITY_BY_ID } from '../data/facilities.js?v=44.9';
 // v0.0.92：殖民管理模式对产出的倍率（自由 1.25 / 剥削 1.60 / 领土 0.85 …）
-import { outputMulOf } from './planetgen.js?v=43.8';
-import { addEquipment } from './shipyard.js?v=43.8';
+import { outputMulOf } from './planetgen.js?v=44.9';
+import { addEquipment } from './shipyard.js?v=44.9';
 // v0.1.2（需求 18/19）：永久升级「冶炼 / 人力」的乘方效果，唯一实现在 data/upgrades.js#upgradeMul
-import { upgradeMul } from '../data/upgrades.js?v=43.8';
+import { upgradeMul } from '../data/upgrades.js?v=44.9';
 
 // nameCn → 材料对象（供 derivedStatsOf 查属性，纯查表不读 inst）
 const MATERIAL_BY_NAME = Object.fromEntries(MATERIALS.map((m) => [m.nameCn, m]));
@@ -651,10 +651,13 @@ export function addLine(inst, buildingId, recipeId, opts) {
     if (buildingId === 'fabricator') {   // 旧存档兼容：车间线仍校验工位
       const slot = lineSlotInfo(inst, buildingId);
       if (want > slot.free) return { ok: false, reason: '工位不足，还剩 ' + slot.free + ' 个' };
-      const free = freeLaborOf(inst);
-      if (want > free) return { ok: false, reason: '可用人力不足，还剩 ' + free + ' 人' };
     }
-    const aline = { id: genLineId(), buildingId, recipeId: null, armyBlueprintId: abp.id, workers: buildingId === 'barracks' ? 0 : want };
+    // v0.4.4（需求 1）：军队组装线**必须占用人力**，因此军营线同样校验可用人力。
+    //   旧写法 `workers: barracks ? 0 : want` 把军营线的人力硬置 0 ——
+    //   这正是「组装军队不消耗人力」的根因（人力全派去干活也不影响成军）。
+    const free = freeLaborOf(inst);
+    if (want > free) return { ok: false, reason: '可用人力不足，还剩 ' + free + ' 人' };
+    const aline = { id: genLineId(), buildingId, recipeId: null, armyBlueprintId: abp.id, workers: want };
     const wantId = opts.intensityId != null ? opts.intensityId : null;
     if (wantId != null) {
       const iv = getIntensity(wantId);

@@ -265,6 +265,10 @@
   padding: 10px; margin: 6px 0;
 }
 .shop-auc-label { font-size: 12px; color: var(--muted); }
+/* v0.4.4（需求 9）：标签与控件绑成一对，换行时不会被拆散（原先是平级兄弟节点） */
+.shop-auc-field { display: inline-flex; align-items: center; gap: 6px; }
+.shop-auc-field > input,
+.shop-auc-field > select { min-height: 44px; min-width: 120px; }
 .shop-auc-list { display: flex; flex-direction: column; gap: 6px; margin: 6px 0; }
 .shop-auc-item { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
 .shop-auc-log { display: flex; flex-direction: column; gap: 4px; }
