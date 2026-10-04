@@ -848,6 +848,14 @@ export function setupGermanPuppets(acc) {
  * 战争推进（v0.2.6 rev9，HOI4 式）：每场战争有 0~100 的推进条 ——
  *   由双方陆军 + 舰队实力差决定推进方向与速度，战役胜利额外推进。
  *   推进越深，敌方越可能接受迫降（与战争分数并用）。
+ *
+ * v0.3.3：**改用真实动态数据**。旧实现读 data/hoi1936.js 的 1936 **静态**
+ *   divisions/ic —— 那是开局快照，玩家扩军、补员、工业发展、舰队扩充
+ *   **完全不影响推进条**，导致「打了败仗却仍在推进」这类荒谬结果。
+ *   现在：
+ *     · 我方 = acc.armies 的实际战力 + 真实舰队战力 + 当前工业 + 国策加成
+ *     · 敌方 = 1936 基准 × 战损衰减（myScore 越高、battles 越多，敌方越弱）
+ *   这样「打赢 → 推进更快 → 更容易迫降」形成正反馈，与 HOI4 的战争点数逻辑一致。
  */
 export function tickWarsHoi4(acc, dtSec) {
   if (!acc || !Array.isArray(acc.wars)) return;
@@ -855,11 +863,34 @@ export function tickWarsHoi4(acc, dtSec) {
   if (days <= 0) return;
   const n = HOI_BY_ID[acc.nation];
   if (!n) return;
-  const myStr = (n.divisions * 10 + n.ic * 2) * (1 + (acc.hoiFocus && acc.hoiFocus.buffs ? (acc.hoiFocus.buffs.atkMul || 1) - 1 : 0));
+
+  // ---- 我方真实实力：军队战力 + 舰队战力 + 工业（不再用 1936 静态快照）----
+  let armyStr = 0;
+  for (const a of (Array.isArray(acc.armies) ? acc.armies : [])) {
+    if (!a) continue;
+    armyStr += (Number(a.power) || 0) * (1 + (Number(a.exp) || 0) / 200);   // 经验带来小幅加成
+  }
+  let icNow = 0;
+  try {
+    const inst = getHomeInstLocal(acc);
+    if (inst && inst.hoiIndustry) icNow = Number(inst.hoiIndustry.ic) || 0;
+  } catch (e) { icNow = 0; }
+  const atkBuff = (acc.hoiFocus && acc.hoiFocus.buffs) ? (Number(acc.hoiFocus.buffs.atkMul) || 1) : 1;
+  // 兜底：拿不到真实数据时至少用 1936 基准，不要退化成 0
+  const myStr = (armyStr + icNow * 2 + n.divisions * 4) * atkBuff;
+
   for (const w of acc.wars) {
     if (!w || w.status !== 'active') continue;
     const foe = HOI_BY_ID[String(w.targetId || '').replace(/^hoi_/, '')];
-    const foeStr = foe ? (foe.divisions * 10 + foe.ic * 2) : 200;
+    // ---- 敌方：1936 基准 × 战损衰减 ----
+    // 我方战争分数越高、交战次数越多，敌方损耗越大（HOI4 的战争点数同理）
+    const myScore = Number(w.myScore) || 0;
+    const theirScore = Number(w.theirScore) || 0;
+    const battles = Number(w.battles) || 0;
+    const wear = Math.max(0.25, 1 - (myScore * 0.012) - (battles * 0.01) + (theirScore * 0.004));
+    const foeBase = foe ? (foe.divisions * 10 + foe.ic * 2) : 200;
+    const foeStr = foeBase * wear;
+
     const ratio = myStr / Math.max(1, myStr + foeStr);          // 0~1
     w.progress = Math.max(0, Math.min(100, (Number(w.progress) || 0) + (ratio - 0.5) * 4 * days));
     if (w.progress >= 70 && (Number(w.myScore) || 0) < 40) w.myScore = 40;   // 推进到位 → 迫降可用
