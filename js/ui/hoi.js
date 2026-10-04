@@ -5,29 +5,32 @@
 //   · 顶部：剧本日历（到天）、国家、阵营、人口、军队 / 舰队概览
 //   · 国策树：工业 / 军事 / 外交三支，各两支；按游戏天数推进，完成即生效
 //   · 轨道圈层：母星行星的 7 个轨道圈层，争夺轨道控制权
-import { fmtNum } from '../core/format.js?v=41.6';
-import { currentAccount, getPlanetInstance } from '../core/state.js?v=41.6';
-import { listArmies, totalArmyPowerOf } from '../core/army.js?v=41.6';
-import { listFleets, fleetPowerOf } from '../core/fleet.js?v=41.6';
+import { fmtNum } from '../core/format.js?v=42.7';
+import { currentAccount, getPlanetInstance } from '../core/state.js?v=42.7';
+import { listArmies, totalArmyPowerOf } from '../core/army.js?v=42.7';
+import { listFleets, fleetPowerOf } from '../core/fleet.js?v=42.7';
 import {
   scenarioDateOf, gameDaysOf, ensureFocus, focusOptionsOf, startFocus,
   ensureSeas, contestSea, blocNameOf, nationOf, deepOf, enemySeaPressure, backgroundOf, HOI_SCENARIO_ID,
   listHistTargets, histWarGateFor,
-} from '../core/hoi1936.js?v=41.6';
+} from '../core/hoi1936.js?v=42.7';
 // v0.3.3：战争数据（实时交战双方状态）
-import { activeWarsOf } from '../core/war.js?v=41.6';
+import { activeWarsOf } from '../core/war.js?v=42.7';
 // v0.3.4：战役系统（师级交战 / 组织度 / 补给 / 工事 / 增援）—— 替代「只有进度条」
 import {
   listBattles, battleView, startBattle, committableArmies, foeRemaining,
   orderRetreat, stopBattle, terrainList, BATTLE_MAX_PER_WAR, BATTLE_COMBAT_WIDTH,
   ORBITAL_BOMB_CHARGES, orbitalControlOf,
-} from '../core/battle.js?v=41.6';
+} from '../core/battle.js?v=42.7';
 // v0.4.1：行星战区地图（战区归属 / 补给网络 / 战略轨道打击 / 殖民地争夺）
 import {
   ensureTheater, theaterView, attackTargetsOf, canStrikeRegion, strikeRegion,
-  colonyIncomeOf, REGION_STRUCTURES, STRIKE_MAX,
-} from '../core/theater.js?v=41.6';
-import { HOI_SEAS, HOI_BY_ID, HIST_TIMELINE } from '../data/hoi1936.js?v=41.6';
+  colonyIncomeOf, REGION_STRUCTURES, STRIKE_MAX, supplyLinksOf,
+  frontInfoOf as THfrontInfo, canOpenFront as THcanFront,
+  REGION_MAX_FRONTS as TH_MAX_FRONTS, SIEGE_REQUIRED as TH_SIEGE,
+  regionYieldOf,
+} from '../core/theater.js?v=42.7';
+import { HOI_SEAS, HOI_BY_ID, HIST_TIMELINE } from '../data/hoi1936.js?v=42.7';
 
 // v0.4.1：地图交互状态（同样放模块级，避免每秒重绘冲掉选中项）
 const _mapSel = { regionId: null };
@@ -122,11 +125,23 @@ function buildTheaterMap(acc, war, refresh) {
   const head = el('div', 'hoi-map-head');
   head.appendChild(el('span', { class: 'hoi-map-title', text: '行星战区图 ' + v.cols + '×' + v.rows }));
   const inc = v.colonyIncome;
+  // v0.4.2：把**真实产出**也摆出来（每秒注入物品栏的物资），让玩家看懂地图为何值钱。
+  //   按「每分钟」显示 —— 直接显示每秒会是 0.00x 这种没信息量的数字。
+  let ytxt = '';
+  try {
+    const y = regionYieldOf(acc);
+    if (y && Object.keys(y).length) {
+      ytxt = '　产出/分 ' + Object.keys(y).slice(0, 5)
+        .map((m) => m + ' +' + (Math.round((y[m] || 0) * 60 * 100) / 100)).join('　');
+    }
+  } catch (e) { /* 忽略 */ }
   head.appendChild(el('span', { class: 'hoi-sub',
     text: '殖民地 ' + inc.count + ' 处（' + inc.popM + ' 百万人口'
       + (inc.lostPopM ? '，已失 ' + inc.lostPopM + ' 百万' : '') + '）'
       + '　补给网络覆盖 ' + v.reach + ' 战区'
-      + '　轨道打击 ' + v.strikes + '/' + v.strikeMax }));
+      + '　轨道打击 ' + v.strikes + '/' + v.strikeMax
+      + (ytxt ? '\n' + ytxt : '') }));
+  head.lastChild.style.whiteSpace = 'pre-line';
   wrap.appendChild(head);
 
   // ---- 网格 ----
@@ -164,6 +179,39 @@ function buildTheaterMap(acc, war, refresh) {
   }
   wrap.appendChild(grid);
 
+  // ---- 补给线可视化（v0.4.2）：SVG 覆盖层，画出「补给从哪来」----
+  //   断供时能一眼看出断在哪一环 —— 这是地图层最需要被看见的信息。
+  try {
+    const links = supplyLinksOf(acc);
+    if (links && links.length) {
+      const NS = 'http://www.w3.org/2000/svg';
+      const svg = document.createElementNS(NS, 'svg');
+      svg.setAttribute('class', 'hoi-map-links');
+      svg.setAttribute('viewBox', '0 0 ' + v.cols + ' ' + v.rows);
+      svg.setAttribute('preserveAspectRatio', 'none');
+      for (const l of links) {
+        const ln = document.createElementNS(NS, 'line');
+        ln.setAttribute('x1', String(l.from.x + 0.5));
+        ln.setAttribute('y1', String(l.from.y + 0.5));
+        ln.setAttribute('x2', String(l.to.x + 0.5));
+        ln.setAttribute('y2', String(l.to.y + 0.5));
+        ln.setAttribute('vector-effect', 'non-scaling-stroke');
+        svg.appendChild(ln);
+      }
+      wrap.appendChild(svg);
+    }
+  } catch (e) { /* 可视化失败不影响地图本体 */ }
+
+  // ---- 图例 ----
+  const legend = el('div', 'hoi-map-legend');
+  legend.appendChild(el('span', { class: 'lg mine', text: '我方' }));
+  legend.appendChild(el('span', { class: 'lg foe', text: '敌方' }));
+  legend.appendChild(el('span', { class: 'lg neutral', text: '中立' }));
+  legend.appendChild(el('span', { class: 'lg link', text: '补给线' }));
+  legend.appendChild(el('span', { class: 'lg cut', text: '断供' }));
+  legend.appendChild(el('span', { class: 'lg struct', text: 'O投送点 D补给 C殖民地 M矿场 Q穹顶' }));
+  wrap.appendChild(legend);
+
   // ---- 选中战区详情 + 操作 ----
   if (_mapSel.regionId) {
     const r = v.regions.find((x) => x.id === _mapSel.regionId);
@@ -171,7 +219,9 @@ function buildTheaterMap(acc, war, refresh) {
   } else {
     wrap.appendChild(el('div', 'hoi-note',
       '点击战区查看详情：从**相邻战区**发动进攻，或对敌方战区实施**战略轨道打击**。'
-      + '补给只在我方连片战区内流通 —— 补给网络没覆盖的战区会挨饿，所以推进要「打穿走廊」。'));
+      + '补给只在我方连片战区内流通（青色补给线）—— 没被覆盖的战区会挨饿，'
+      + '所以推进要「打穿走廊」。'
+      + '同一战区可从**多个方向**同时进攻形成**夹击**；殖民地穹顶需先打满**围城进度**才能占领。'));
   }
   return wrap;
 }
@@ -199,28 +249,36 @@ function buildRegionPanel(acc, war, r, ctrl, refresh) {
 
   const row = el('div', 'hoi-region-acts');
   const view = theaterView(acc);
+  const fi = raw ? THfrontInfo(acc, raw.id) : null;
 
-  // ---- 从我方战区向相邻目标进攻 ----
+  // ---- 从我方战区向相邻目标进攻（v0.4.2：声明来源，支持多方向夹击）----
   if (raw && r.isMine && war && war.status === 'active') {
-    const avail = committableArmies(acc, war.id);
+    const busy = (acc.battles || []).filter((b) => b && b.status === 'active')
+      .flatMap((b) => (b.mine || []).map((d) => d.armyId));
+    const avail = (committableArmies(acc, war.id) || []).filter((a) => busy.indexOf(a.id) < 0);
     const targets = [];
     try { for (const x of attackTargetsOf(acc, raw)) if (x && x.id) targets.push(x); } catch (e) { /* 忽略 */ }
     if (targets.length) {
-      row.appendChild(el('span', 'hoi-note', '由此进攻：'));
+      row.appendChild(el('span', 'hoi-note', '由此进攻（多路同时打可形成夹击）：'));
       for (const tg of targets) {
         const tName = tg.owner ? ((HOI_BY_ID[tg.owner] || {}).nameCn || tg.owner) : '中立';
+        const tf = THfrontInfo(acc, tg.id);
         const btn = el('button', 'hoi-mini-btn' + (tg.owner ? '' : ' neutral'),
           (tg.nameCn || tg.id) + '·' + tName
           + (tg.owner ? ' 驻防' + Math.round((tg.garrison || 0) * 100) + '%' : '')
-          + (tg.structure === 'colony' ? ' ★殖民地' : ''));
-        btn.disabled = !(avail && avail.length) || !!tg.battleId;
-        btn.title = tg.battleId ? '该战区已在交战中'
-          : (!(avail && avail.length) ? '没有可用师（都在其他战线或兵员已耗尽）' : '从 ' + r.nameCn + ' 发起进攻');
+          + (tg.structure === 'colony' ? ' ★殖民地' : '')
+          + (tg.structure === 'dome' ? ' 需围城' : '')
+          + (tf && tf.fronts ? ' 前线' + tf.fronts : ''));
+        btn.disabled = !(avail.length) || !THcanFront(acc, tg.id);
+        const why = !avail.length ? '没有可用师（都在其他战线或兵员已耗尽）'
+          : !THcanFront(acc, tg.id) ? '该战区战线已满'
+          : (tf && tf.directions >= 2 ? '夹击加成 ' + Math.round(tf.flank * 100) + '%' : '开战');
+        btn.title = why;
         btn.addEventListener('click', () => {
-          const pick = (avail || []).slice(0, BATTLE_COMBAT_WIDTH + 1).map((a) => a.id);
-          const r2 = startBattle(acc, war, { regionId: tg.id, armyIds: pick });
+          const pick = avail.slice(0, BATTLE_COMBAT_WIDTH + 1).map((a) => a.id);
+          const r2 = startBattle(acc, war, { regionId: tg.id, originId: raw.id, armyIds: pick });
           if (!r2.ok) { alert(r2.reason); return; }
-          if (r2.region) _mapSel.regionId = r2.region.id;
+          _mapSel.regionId = tg.id;
           refresh && refresh();
         });
         row.appendChild(btn);
@@ -228,6 +286,14 @@ function buildRegionPanel(acc, war, r, ctrl, refresh) {
     } else {
       row.appendChild(el('span', 'hoi-note', '周边没有可进攻目标。'));
     }
+  }
+
+  // ---- 选中的是敌方战区：显示前线态势与围城进度 ----
+  if (!r.isMine && fi) {
+    row.appendChild(el('span', { class: 'hoi-note',
+      text: '前线 ' + fi.fronts + '/' + TH_MAX_FRONTS + ' 条　来源方向 ' + fi.directions
+        + (fi.flank > 0 ? '　**夹击加成 +' + Math.round(fi.flank * 100) + '% 防御削弱**' : '')
+        + (raw && raw.structure === 'dome' ? '　围城 ' + Math.round(((Number(raw.siege) || 0) / TH_SIEGE) * 100) + '%' : '') }));
   }
 
   // ---- 战略轨道打击（跨战区）----

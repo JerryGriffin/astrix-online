@@ -371,7 +371,43 @@
 .hoi-map {
   display: grid;
   gap: 4px;
+  position: relative;   /* 供补给线 SVG 覆盖层定位 */
 }
+/* v0.4.2 补给线可视化：SVG 覆盖层，画出补给从哪个投送点流过来。
+   vector-effect:non-scaling-stroke 让线宽不随 viewBox 拉伸变形。 */
+.hoi-map-links {
+  position: absolute;
+  left: 0; top: 0;
+  width: 100%; height: 100%;
+  pointer-events: none;     /* 不挡战区点击 */
+  z-index: 0;
+}
+.hoi-map-links > line {
+  stroke: rgba(124, 215, 255, .55);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-dasharray: 5 4;
+}
+.hoi-map > .hoi-cell { z-index: 1; }   /* 战区盖在线上方 */
+
+/* 图例 */
+.hoi-map-legend {
+  display: flex; flex-wrap: wrap; gap: 4px 10px;
+  font-size: 10px; color: #6f8399;
+  align-items: center;
+}
+.hoi-map-legend .lg { display: inline-flex; align-items: center; gap: 4px; }
+.hoi-map-legend .lg::before {
+  content: ''; width: 9px; height: 9px; border-radius: 3px;
+  border: 1px solid #24354a; background: #101a28;
+}
+.hoi-map-legend .lg.mine::before   { background: rgba(124,215,255,.35); border-color: rgba(124,215,255,.6); }
+.hoi-map-legend .lg.foe::before    { background: rgba(240,149,149,.32); border-color: rgba(240,149,149,.6); }
+.hoi-map-legend .lg.neutral::before{ background: rgba(120,130,145,.2); }
+.hoi-map-legend .lg.link::before   { height: 0; width: 16px; border-radius: 0;
+  border-top: 2px dashed rgba(124,215,255,.75); background: none; }
+.hoi-map-legend .lg.cut::before    { background: transparent; border-color: #f0c76b; }
+.hoi-map-legend .lg.struct::before { display: none; }
 .hoi-cell {
   position: relative;
   display: flex;

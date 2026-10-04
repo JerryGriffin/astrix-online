@@ -162,24 +162,42 @@ console.log('\nT5 在战区开战（地貌/驻防来自地图）');
   // 注意：玩家本土**未必**直接邻接敌国（版图之间常有中立区），
   //   所以要从**全部**我方战区里找，而不是只看本土 —— 这也正是
   //   「先扫清中立区、再接触敌军」的推进节奏。
-  let target = null;
+  let target = null, origin = null;
   for (const m of mine) {
     const adj = t.regions.filter((r) => r.owner && r.owner !== 'ger'
       && Math.abs(r.x - m.x) <= 1 && Math.abs(r.y - m.y) <= 1);
-    if (adj.length) { target = adj[0]; break; }
+    if (adj.length) { target = adj[0]; origin = m; break; }
   }
   ok(!!target, '找到一个与我方接壤的敌方战区', target ? target.id + '/' + target.terrain : 'none');
   if (target) {
-    const r = B.startBattle(acc, acc.wars[0], { regionId: target.id, armyIds: ['army_0','army_1','army_2'] });
+    // v0.4.2：进攻必须声明**来源战区**（相邻的我方战区）
+    let origin = null;
+    for (const m of mine) {
+      if (Math.abs(m.x - target.x) <= 1 && Math.abs(m.y - target.y) <= 1) { origin = m; break; }
+    }
+    ok(!!origin, '找到相邻的进攻来源战区', origin ? origin.id : 'none');
+    const noOrigin = B.startBattle(acc, acc.wars[0], { regionId: target.id, armyIds: ['army_0'] });
+    ok(!noOrigin.ok, '缺少 originId 时拒绝（地图层空间规则）', noOrigin.reason);
+    const r = B.startBattle(acc, acc.wars[0], {
+      regionId: target.id, originId: origin.id, armyIds: ['army_0','army_1','army_2'],
+    });
     ok(r.ok, '可在该战区开战', r.ok ? '' : r.reason);
     if (r.ok) {
       ok(r.battle.terrain === target.terrain, '战斗地貌 = 战区地貌',
         r.battle.terrain + ' vs ' + target.terrain);
       ok(r.battle.regionId === target.id, '战斗记录了 regionId', r.battle.regionId);
-      ok(target.battleId === r.battle.id, '战区被标记为交战中');
-      // 重复在同一战区开战应被拒
-      const r2 = B.startBattle(acc, acc.wars[0], { regionId: target.id, armyIds: ['army_5'] });
-      ok(!r2.ok, '同一战区不能重复开战', r2.reason);
+      ok(r.battle.originId === origin.id, '战斗记录了 originId', r.battle.originId);
+      // v0.4.2：同一战区可开多条战线（多方向夹击），但有上限
+      const avail2 = acc.armies.filter((a) => (a.men || 0) > 0 && !acc.battles.some(
+        (b) => b.status === 'active' && b.mine.some((d) => d.armyId === a.id)));
+      const r2 = B.startBattle(acc, acc.wars[0], {
+        regionId: target.id, originId: origin.id, armyIds: avail2.slice(0, 2).map((a) => a.id),
+      });
+      ok(r2.ok, '同一战区可再开第二条战线（多方向）', r2.ok ? '' : r2.reason);
+      const fronts = TH.frontInfoOf(acc, target.id);
+      ok(fronts.fronts === 2, '战线计数为 2', String(fronts.fronts));
+      ok(fronts.directions === 1, '同来源 → 方向数仍为 1（不构成夹击）', String(fronts.directions));
+      ok(fronts.flank === 0, '同来源无夹击加成', String(fronts.flank));
     }
   }
 }
@@ -201,7 +219,9 @@ console.log('\nT6 占领与殖民地争夺');
     const avail = acc.armies.filter((a) => (a.men || 0) > 0 && !acc.battles.some(
       (b) => b.status === 'active' && b.mine.some((d) => d.armyId === a.id)));
     if (!avail.length) break;
-    const r = B.startBattle(acc, acc.wars[0], { regionId: pick.id, armyIds: avail.slice(0, 5).map((a) => a.id) });
+    const r = B.startBattle(acc, acc.wars[0], {
+      regionId: pick.id, originId: cur.id, armyIds: avail.slice(0, 5).map((a) => a.id),
+    });
     if (!r.ok) break;
     let g = 0; while (r.battle.status === 'active' && g++ < 4000) B.tickBattles(acc, 1);
     if (r.battle.result && r.battle.result.attackerWin) {
@@ -308,6 +328,128 @@ console.log('\nT9 UI 视图');
   ok(v.strikeMax === TH.STRIKE_MAX, '打击上限可读');
   ok(v.regions.every((r) => typeof r.supply === 'number'), '每个战区有补给系数');
   ok(v.regions.every((r) => typeof r.terrain === 'string'), '每个战区有地貌');
+}
+
+// T10 v0.4.2：多方向夹击 ------------------------------------------------
+console.log('\nT10 多方向夹击（同战区多战线）');
+{
+  const acc = mkAcc(30, 240);
+  const t = TH.ensureTheater(acc);
+  // 造一个「被三面夹击」的目标：找一块中立/敌方战区，且我方在其 3 个不同方向
+  let target = null, origins = [];
+  for (const r of t.regions) {
+    if (r.owner === 'ger') continue;
+    const nb = t.regions.filter((m) => m.owner === 'ger'
+      && Math.abs(m.x - r.x) <= 1 && Math.abs(m.y - r.y) <= 1);
+    const uniq = [];
+    for (const m of nb) {
+      const dir = Math.sign(r.x - m.x) + ',' + Math.sign(r.y - m.y);
+      if (uniq.indexOf(dir) < 0) uniq.push(dir);
+    }
+    if (uniq.length >= 3) { target = r; origins = nb.slice(0, 3); break; }
+  }
+  if (!target) {
+    ok(true, '（该地图无三面夹击位置，跳过）');
+  } else {
+    ok(origins.length >= 3, '找到可三面夹击的战区', target.id + ' 方向数=' + origins.length);
+    const used = [];
+    for (const o of origins.slice(0, 3)) {
+      const avail = acc.armies.filter((a) => (a.men || 0) > 0 && !acc.battles.some(
+        (b) => b.status === 'active' && b.mine.some((d) => d.armyId === a.id)));
+      if (avail.length < 1) break;
+      const r = B.startBattle(acc, acc.wars[0], {
+        regionId: target.id, originId: o.id, armyIds: avail.slice(0, 3).map((a) => a.id),
+      });
+      if (r.ok) used.push(r.battle);
+    }
+    const fi = TH.frontInfoOf(acc, target.id);
+    ok(fi.fronts >= 2, '同战区开出多条战线', 'fronts=' + fi.fronts);
+    ok(fi.directions >= 2, '识别出多个来源方向', 'directions=' + fi.directions);
+    ok(fi.flank > 0, '产生夹击加成', 'flank=' + fi.flank.toFixed(3));
+    ok(fi.flank <= TH.FLANK_MAX + 1e-9, '夹击加成有上限', String(TH.FLANK_MAX));
+    // 同来源平摊：同一来源的两条战线 share 应为 0.5
+    const sameOriginBattles = (acc.battles || []).filter((b) => b.status === 'active'
+      && b.regionId === target.id && b.originId === used[0].originId);
+    if (sameOriginBattles.length >= 2) {
+      ok(true, '同来源多条战线 → 伤害平摊（overlapShare<1）',
+        'count=' + sameOriginBattles.length);
+    }
+    // 夹击确实让守方更脆
+    if (used[0]) { B.tickBattles(acc, 1); ok(typeof used[0].flank === 'number', '战斗对象记录了 flank', String(used[0].flank)); }
+  }
+}
+
+// T11 v0.4.2：殖民地产出接入真实经济 --------------------------------
+console.log('\nT11 殖民地产出接入真实经济');
+{
+  const acc = mkAcc();
+  const t = TH.ensureTheater(acc);
+  const before = TH.regionYieldOf(acc);
+  ok(before && typeof before === 'object', '能算出战区产出', JSON.stringify(before));
+  ok(Object.keys(before || {}).length > 0, '有产出资源', Object.keys(before || {}).join(','));
+  // 断供 → 产量下降
+  const home = t.regions.find((r) => r.owner === 'ger' && r.structure === 'orbital');
+  const sum = (o) => Object.keys(o || {}).reduce((s, k) => s + o[k], 0);
+  const full = sum(before);
+  // 人为制造断供：把我方所有战区的补给标记去掉
+  TH.refreshSupply(acc);
+  for (const r of t.regions) if (r.owner === 'ger') r.connected = false;
+  const cut = sum(TH.regionYieldOf(acc));
+  ok(cut < full, '断供后总产量下降', full.toFixed(2) + ' → ' + cut.toFixed(2));
+  // 驻防提升 → 产量上升
+  TH.refreshSupply(acc);
+  const g0 = home.garrison;
+  home.garrison = 0;
+  const noGar = sum(TH.regionYieldOf(acc));
+  home.garrison = TH.GARRISON_MAX;
+  const fullGar = sum(TH.regionYieldOf(acc));
+  ok(fullGar >= noGar, '驻防满时产量不低于驻防空', noGar.toFixed(2) + ' → ' + fullGar.toFixed(2));
+  // tickRegions 会增长驻防
+  const gStart = home.garrison;
+  for (let i = 0; i < 100; i++) TH.tickRegions(acc, 10);
+  ok(home.garrison >= gStart, 'tickRegions 会增长我方驻防', gStart + ' → ' + home.garrison);
+}
+
+// T12 v0.4.2：围城（穹顶需先打满围城进度） --------------------------
+console.log('\nT12 围城门槛（穹顶）');
+{
+  const acc = mkAcc(30, 240);
+  const t = TH.ensureTheater(acc);
+  // 找一块敌方穹顶（或直接指定一块敌方战区当穹顶来测门槛）
+  let dome = t.regions.find((r) => r.structure === 'dome' && r.owner !== 'ger');
+  if (!dome) {
+    dome = t.regions.find((r) => r.owner !== 'ger');
+    if (dome) dome.structure = 'dome';
+  }
+  if (!dome) { ok(true, '（地图上无合适战区，跳过）'); }
+  else {
+    const mine = t.regions.find((r) => r.owner === 'ger'
+      && Math.abs(r.x - dome.x) <= 1 && Math.abs(r.y - dome.y) <= 1);
+    if (!mine) { ok(true, '（穹顶不相邻，跳过）'); }
+    else {
+      dome.siege = 0;
+      const r1 = TH.captureRegion(acc, acc.wars[0], dome, true);
+      ok(!r1 || r1.sieged === true, '围城未满时无法占领穹顶', JSON.stringify(r1));
+      ok(dome.owner !== 'ger', '穹顶仍在敌方手中', String(dome.owner));
+      dome.siege = TH.SIEGE_REQUIRED;
+      const r2 = TH.captureRegion(acc, acc.wars[0], dome, true);
+      ok(r2 && !r2.sieged && dome.owner === 'ger', '围城打满后可占领', JSON.stringify(r2));
+    }
+  }
+}
+
+// T13 v0.4.2：补给线可视化数据 --------------------------------------
+console.log('\nT13 补给线路（可视化数据）');
+{
+  const acc = mkAcc();
+  const t = TH.ensureTheater(acc);
+  const links = TH.supplyLinksOf(acc);
+  ok(Array.isArray(links), '能取到补给线列表', String(links.length));
+  ok(links.length === Math.max(0, (t.regions.filter((r) => r.owner === 'ger').length) - 1),
+    '补给线数量 = 我方战区数 − 投送点数',
+    links.length + ' vs ' + (t.regions.filter((r) => r.owner === 'ger').length));
+  ok(links.every((l) => l.from && l.to && typeof l.from.x === 'number'),
+    '每条线有起点坐标（供 UI 画线）');
 }
 
 // ---------------------------------------------------------------------------

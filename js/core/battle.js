@@ -28,16 +28,17 @@
 // 约定：不 import state.js（账号对象由调用方传入），与 army.js 同构。
 // ============================================================================
 
-import { armyById, armyEffStats, armyPowerOf } from './army.js?v=41.6';
-import { fleetPowerOf } from './fleet.js?v=41.6';   // v0.4.0：空间舰队实力 → 轨道控制
-import { HOI_BY_ID } from '../data/hoi1936.js?v=41.6';
+import { armyById, armyEffStats, armyPowerOf } from './army.js?v=42.7';
+import { fleetPowerOf } from './fleet.js?v=42.7';   // v0.4.0：空间舰队实力 → 轨道控制
+import { HOI_BY_ID } from '../data/hoi1936.js?v=42.7';
 // v0.4.1：行星战区地图 —— 战斗「在哪打」、打赢后归谁、补给通不通
 import {
   ensureTheater, regionById, regionSupplyOf, refreshSupply, captureRegion,
   applyColonyProgress, decayStrikePressure, GARRISON_MAX,
-} from './theater.js?v=41.6';
+  frontInfoOf, canOpenFront, REGION_MAX_FRONTS, SIEGE_REQUIRED,
+} from './theater.js?v=42.7';
 // 迫降线（与 core/war.js 同源常量；此处只读，避免反向依赖 war.js）
-import { WAR_FORCE_SURRENDER_SCORE } from './war.js?v=41.6';
+import { WAR_FORCE_SURRENDER_SCORE } from './war.js?v=42.7';
 // 注意：**不 import core/hoi1936.js** —— 它要 import 本模块来驱动敌方进攻，
 //   这里再反向 import 就成了循环依赖。战役时钟用本文件自己的 BATTLE_HOURS_PER_SEC。
 
@@ -299,12 +300,24 @@ export function startBattle(acc, war, opts) {
     return { ok: false, reason: '该战线已同时进行 ' + BATTLE_MAX_PER_WAR + ' 个战场，先等一个分出胜负' };
   }
   // v0.4.1：在地图的某个战区开战 → 地貌取自该战区，并计入驻防与补给网络
+  // v0.4.2：允许**同一战区多条战线**（多方向夹击），但上限 REGION_MAX_FRONTS；
+  //   来自**同一来源**的多条战线伤害会被平分（叠加无效），来自**不同来源**才形成夹击。
   let region = null;
   if (o.regionId) {
     const t = ensureTheater(acc);
     region = regionById(t, o.regionId);
     if (!region) return { ok: false, reason: '战区不存在：' + o.regionId };
-    if (region.battleId) return { ok: false, reason: (region.nameCn || '该战区') + ' 已在交战中' };
+    if (!canOpenFront(acc, o.regionId)) {
+      return { ok: false, reason: (region.nameCn || '该战区') + ' 已有 ' + REGION_MAX_FRONTS + ' 条战线在交战中' };
+    }
+    // v0.4.2：进攻必须来自**相邻的我方战区**（地图层的空间规则）
+    if (!o.side || o.side !== 'foe') {
+      if (!o.originId) return { ok: false, reason: '缺少进攻来源战区（originId）' };
+      const from = regionById(t, o.originId);
+      const okAdj = from && Math.abs(from.x - region.x) <= 1 && Math.abs(from.y - region.y) <= 1;
+      if (!okAdj) return { ok: false, reason: '只能从相邻战区发起进攻' };
+      if (from.owner !== t.myNation) return { ok: false, reason: '进攻来源战区不属于我方' };
+    }
   }
   const terrain = region ? region.terrain
     : (BATTLE_TERRAIN[o.terrain] ? o.terrain : 'regolith');
@@ -342,6 +355,7 @@ export function startBattle(acc, war, opts) {
     attacker: foeAttacks ? 'foe' : 'mine',
     terrain,
     regionId: region ? region.id : null,   // v0.4.1：这场仗发生在哪个战区
+    originId: o.originId || null,       // v0.4.2：从哪个战区发起（用于夹击判定）
     startedAt: Date.now(),
     hours: 0,
     status: 'active',
@@ -651,7 +665,7 @@ function stepHour(acc, b) {
   // v0.4.1 **战区驻防 + 轨道打击瘫痪**：
   //   · 驻防（garrison）给守方额外防御 —— 所以「先打哪一仗」要看驻防厚薄；
   //   · 战略轨道打击留下的 strikePressure 会削弱守方 —— 这就是「先瘫痪要地再登陆」。
-  let garrisonBonus = 0, strikePenalty = 0;
+  let garrisonBonus = 0, strikePenalty = 0, flank = 0;
   if (b.regionId) {
     const t = ensureTheater(acc);
     const rg = regionById(t, b.regionId);
@@ -659,10 +673,19 @@ function stepHour(acc, b) {
       garrisonBonus = clamp(Number(rg.garrison) || 0, 0, GARRISON_MAX);
       strikePenalty = clamp(Number(rg.strikePressure) || 0, 0, 0.6);
     }
+    // v0.4.2 **夹击**：同一战区有多个**不同来源方向**的正面时，守方防御额外下降。
+    //   同来源的多条战线按份平分伤害（叠加无效）—— 所以「多派兵」没用，
+    //   「多路同时打」才有用，这正是包围战术的意义。
+    const fi = frontInfoOf(acc, b.regionId);
+    flank = fi.flank;
+    const sameOrigin = fi.perOrigin[b.originId || ('b' + b.id)] || 1;
+    b.overlapShare = 1 / Math.max(1, sameOrigin);
+    b.flank = flank;
+    b.fronts = fi.fronts;
   }
   b.garrison = garrisonBonus;
   b.strikePenalty = strikePenalty;
-  const defTerrain = terrain.def * (1 + garrisonBonus) * (1 - strikePenalty);
+  const defTerrain = terrain.def * (1 + garrisonBonus) * (1 - strikePenalty) * (1 - flank);
   const atkP = powerOf(mineEng, 'breakthrough', supply.mine, terrain.atk * atkGrav * (1 + strikePenalty * 0.5), b.entrench.mine);
   const defP = powerOf(foeEng, 'defense', supply.foe, defTerrain, b.entrench.foe);
   b.gravity = grav;
@@ -682,8 +705,11 @@ function stepHour(acc, b) {
 
   // ⑤ 逐对结算伤害：软/硬分离 + 装甲/穿甲（v0.3.5 的核心）
   //    先把每个进攻师的**有效攻击**按对目标装甲算好，再按目标师分摊。
-  const dmgOrgFoe = DMG_K * atkP * (0.55 + 0.9 * ratio) * (1 + breakthrough) * casMine;
-  const dmgStrFoe = DMG_K * atkP * ratio * 0.55 * casMine;
+  //    v0.4.2：乘上「同来源平摊 × 夹击加成」
+  const overlap = Number(b.overlapShare) || 1;
+  const flankMul = 1 + (Number(flank) || 0);
+  const dmgOrgFoe = DMG_K * atkP * (0.55 + 0.9 * ratio) * (1 + breakthrough) * casMine * overlap * flankMul;
+  const dmgStrFoe = DMG_K * atkP * ratio * 0.55 * casMine * overlap * flankMul;
   const dmgOrgMine = DMG_K * defP * (0.55 + 0.9 * (1 - ratio)) * (1 + b.breakthrough.foe) * casFoe;
   const dmgStrMine = DMG_K * defP * (1 - ratio) * 0.55 * casFoe;
 

@@ -29,7 +29,7 @@
 //   · 不 import state.js（账号对象由调用方传入），与 battle.js 同构。
 // ============================================================================
 
-import { HOI_BY_ID, HOI_MAIN_NATIONS } from '../data/hoi1936.js?v=41.6';
+import { HOI_BY_ID, HOI_MAIN_NATIONS } from '../data/hoi1936.js?v=42.7';
 
 export const THEATER_COLS = 6;
 export const THEATER_ROWS = 6;
@@ -46,6 +46,33 @@ export const REGION_STRUCTURES = {
 
 // 驻防加成：占点部队提供的防御（同占领方）
 export const GARRISON_MAX = 0.35;
+
+/** 占领后驻防自然增长（每秒）：占领要「站得住」才会，否则打下来也守不住 */
+export const GARRISON_GROWTH = 0.0022;      // /秒（约 6 分钟到满）
+export const GARRISON_DECAY_ENEMY = 0.0016; // 敌方在无战区时缓慢恢复驻防
+
+/** 围城：殖民地穹顶防御极高，需要先打「围城进度」才能占领 */
+export const SIEGE_REQUIRED = 0.55;         // dome 类建筑需要的围城进度
+
+/**
+ * v0.4.2：战区产出类型。
+ *   殖民地不只是「分数」，而是**真实经济来源** —— 各地貌/建筑产出不同资源，
+ *   由 state.js 每 tick 把产出注入母星物品栏（真正的物资，而非计数器）。
+ *   产出受该战区**补给网络**与**驻防**影响：断供或驻军不足 → 产量大跌。
+ */
+export const REGION_OUTPUT = {
+  regolith: { 有机质: 1.0, 水: 0.8 },                 // 富含挥发物的风化层
+  crater:   { 钢: 0.7, 铝: 0.5 },                     // 撞击溅射带出金属矿脉
+  canyon:   { 钢: 0.9, 石头: 1.0 },                   // 裸露岩层
+  dust:     { 硅: 0.6, 铝: 0.7, 有机质: 0.3 },        // 悬浮硅酸盐
+  lava:     { 钢: 0.8, 铜: 0.6, 硫: 0.5 },           // 硫化物金属
+  ice:      { 水: 1.2, 氧气: 0.6 },                   // 冰层与升华气
+  dome:     { 有机质: 0.9, 氧气: 0.8, 硅: 0.5 },      // 穹顶生态圈
+};
+// 建筑对产出的额外加成（同一个地貌在不同建筑下产出不同）
+export const STRUCTURE_OUTPUT_MUL = {
+  colony: 1.6, mine: 1.35, dome: 1.0, depot: 0.85, orbital: 0.7,
+};
 
 // 地貌 → 战区名用词（太空化，不用地球地理）
 const TERRAIN_WORDS = {
@@ -377,10 +404,114 @@ export function refreshSupply(acc) {
   // 写回 connected
   for (const r of t.regions) {
     r.connected = (r.owner === me) && seen.has(r.id);
+    // 记录补给网络的「上游」战区（供 UI 画补给线，也是断供诊断的依据）
+    if (r.connected) r.supplyFrom = r.supplyParent || null;
   }
   t.supplyReach = seen.size;
   currentTheater = t;
   return t;
+}
+
+/**
+ * v0.4.2：计算补给网络的连接关系（父节点），供 UI 画线。
+ *   从每个投送点/补给枢纽做多源 BFS，记录每个战区的补给来源上游。
+ *   → UI 可以画出「补给线」，被打断时能立刻看出断在哪一环。
+ */
+export function supplyLinksOf(acc) {
+  const t = ensureTheater(acc);
+  if (!t) return [];
+  const me = t.myNation;
+  const regions = t.regions;
+  const parent = new Map();          // regionId → 上游 regionId
+  const roots = regions.filter((r) => r.owner === me
+    && r.structure && REGION_STRUCTURES[r.structure]
+    && REGION_STRUCTURES[r.structure].supply >= 1);
+  const seen = new Set(roots.map((r) => r.id));
+  const queue = roots.slice();
+  while (queue.length) {
+    const cur = queue.shift();
+    for (const nb of neighborsIn(regions, cur)) {
+      if (!nb || seen.has(nb.id)) continue;
+      if (nb.owner !== me) continue;
+      seen.add(nb.id);
+      parent.set(nb.id, cur.id);
+      queue.push(nb);
+    }
+  }
+  const links = [];
+  for (const [child, from] of parent.entries()) {
+    const c = regionById(t, child), p = regionById(t, from);
+    if (c && p) links.push({ from: { x: p.x, y: p.y }, to: { x: c.x, y: c.y }, regionId: child });
+  }
+  return links;
+}
+
+/**
+ * v0.4.2：每 tick 推进战区状态 —— 驻防增长 / 围城推进 / 驻防衰减。
+ * @param {object} inst 母星实例（用于查是否本地开战，避免无谓计算）
+ */
+export function tickRegions(acc, dtSec) {
+  const t = ensureTheater(acc);
+  if (!t) return;
+  const dt = Number(dtSec) || 0;
+  if (!(dt > 0)) return;
+  const me = t.myNation;
+  const active = new Set();
+  for (const b of (Array.isArray(acc.battles) ? acc.battles : [])) {
+    if (b && b.status === 'active' && b.regionId) active.add(b.regionId);
+  }
+  for (const r of t.regions) {
+    if (r.battleId || active.has(r.id)) {
+      // 交战中：围城进度推进（穹顶最难啃），驻防不恢复
+      r.siege = clamp((Number(r.siege) || 0) + dt * 0.02, 0, SIEGE_REQUIRED);
+      continue;
+    }
+    if (r.owner === me) {
+      // 我方且已连通：驻防随时间增长（占领要站得住），断供则不增长
+      if (r.connected) {
+        r.garrison = Math.min(GARRISON_MAX, (Number(r.garrison) || 0) + GARRISON_GROWTH * dt);
+      }
+    } else if (r.owner) {
+      // 敌方：缓慢恢复驻防（守住阵地），被我方打击过的恢复更慢
+      const pressure = Number(r.strikePressure) || 0;
+      r.garrison = Math.min(GARRISON_MAX,
+        (Number(r.garrison) || 0) + GARRISON_DECAY_ENEMY * dt * (1 - pressure));
+    }
+  }
+}
+
+/**
+ * v0.4.2：殖民地 / 战区产出（真实物资）。
+ *   返回 { mat: amount }，由 state.js 注入物品栏。
+ *   产量 = 基础 × 建筑加成 × 补给网络 × 驻防系数
+ */
+export function regionYieldOf(acc) {
+  const t = ensureTheater(acc);
+  if (!t) return null;
+  const me = t.myNation;
+  const out = {};
+  const perColony = 0.60;    // 每处殖民地每秒每种资源的基础产出
+  const perMine = 0.35;      // 矿场
+  for (const r of t.regions) {
+    if (r.owner !== me) continue;
+    // 断供 → 产量腰斩；驻防不足 → 产量下降（没人守矿也挖不动）
+    const supplyMul = r.connected ? 1 : 0.35;
+    const garMul = 0.6 + 0.4 * clamp((Number(r.garrison) || 0) / 0.2, 0, 1);
+    const stMul = STRUCTURE_OUTPUT_MUL[r.structure] != null ? STRUCTURE_OUTPUT_MUL[r.structure] : 0.5;
+    let base = stMul;
+    if (r.structure === 'colony') base = stMul;
+    else if (r.structure === 'mine') base = stMul;
+    else base = 0.45;                    // 空战区只有基础采集
+    const table = REGION_OUTPUT[r.terrain] || {};
+    const mul = base * supplyMul * garMul;
+    if (mul <= 0) continue;
+    for (const mat in table) {
+      const amt = table[mat] * perColony * mul * (r.structure === 'colony' || r.structure === 'mine' ? 1 : 0.4);
+      if (amt > 0) out[mat] = (out[mat] || 0) + amt;
+    }
+  }
+  for (const mat in out) out[mat] = Math.round(out[mat] * 1000) / 1000;
+  return out;
 }
 
 /** 某战区的补给系数 0~1（网络通 = 1；孤立 = 按结构打折；敌方 = 由攻方补给决定） */
@@ -418,10 +549,23 @@ export function captureRegion(acc, war, region, mySideWon) {
     return { owner: region.owner, colony: null, lost: prevOwner === me };
   }
   if (prevOwner === me) return { owner: me, colony: null, lost: false };
+  // v0.4.2 **围城门槛**：殖民地穹顶防御极高（terrain.def ×1.45），
+  //   光把守军打崩不足以占领 —— 必须先把**围城进度**打满。
+  //   于是「硬啃穹顶」与「先围城 / 先轨道轰炸瘫痪」变成两条不同的战术路线。
+  if (region.structure === 'dome') {
+    const siege = clamp(Number(region.siege) || 0, 0, SIEGE_REQUIRED);
+    if (siege < SIEGE_REQUIRED * 0.999) {
+      return {
+        owner: prevOwner, colony: null, lost: false, sieged: true,
+        siegeNeed: SIEGE_REQUIRED, siege,
+      };
+    }
+  }
   region.owner = me;
   region.lastCaptureAt = Date.now();
   // 首次占领 → 驻防清零（守军溃散），并补一点驻防（我方少量进驻）
   region.garrison = Math.min(GARRISON_MAX, (Number(region.garrison) || 0) * 0.2 + 0.05);
+  region.siege = 0;
   let colony = null;
   if (region.structure === 'colony') {
     colony = { regionId: region.id, nameCn: region.nameCn, popM: region.popM, at: Date.now() };
@@ -436,6 +580,36 @@ export function captureRegion(acc, war, region, mySideWon) {
   return { owner: me, colony, lost: false };
 }
 
+/** 每战区最多同时进行的战线数（多方向夹击） */
+export const REGION_MAX_FRONTS = 3;
+/** 夹击：每多一个**不同来源方向**的正面进攻，守方防御额外下降 */
+export const FLANK_PER_DIRECTION = 0.16;
+export const FLANK_MAX = 0.34;
+
+/** 某战区当前的进攻态势：{ fronts, directions, originCount(originId) } */
+export function frontInfoOf(acc, regionId) {
+  const battles = (Array.isArray(acc.battles) ? acc.battles : [])
+    .filter((b) => b && b.status === 'active' && b.regionId === regionId);
+  const origins = new Set();
+  const perOrigin = {};
+  for (const b of battles) {
+    const o = b.originId || ('b' + b.id);
+    origins.add(o);
+    perOrigin[o] = (perOrigin[o] || 0) + 1;
+  }
+  return {
+    fronts: battles.length,
+    directions: origins.size,
+    perOrigin,
+    // 夹击强度：多方向才有效
+    flank: clamp((origins.size - 1) * FLANK_PER_DIRECTION, 0, FLANK_MAX),
+  };
+}
+
+/** 同一战区可再开几条战线 */
+export function canOpenFront(acc, regionId) {
+  return frontInfoOf(acc, regionId).fronts < REGION_MAX_FRONTS;
+}
 /** 我方殖民地收益（人口总计，用于面板与结算） */
 export function colonyIncomeOf(acc) {
   const t = ensureTheater(acc);

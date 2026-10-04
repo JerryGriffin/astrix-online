@@ -9,10 +9,10 @@
 //   故跨玩家在线竞价暂以本地 NPC 兜底（在线/离线同逻辑）；tickAuctions 预留 cloud 同步钩子，
 //   若日后云端提供公共板即可无缝接入（见 opts.syncCloud）。
 
-import { isEquipmentKey, MARKET_FEE, ascoinOf, priceOf, shopStateOf } from './shop.js?v=41.6';
-import { ownedOf, spendOwned, getPlanetInstance } from './state.js?v=41.6';
-import { equipmentList } from './shipyard.js?v=41.6';
-import { MATERIALS } from '../data/materials.js?v=41.6';
+import { isEquipmentKey, MARKET_FEE, ascoinOf, priceOf, shopStateOf } from './shop.js?v=42.7';
+import { ownedOf, spendOwned, getPlanetInstance } from './state.js?v=42.7';
+import { equipmentList } from './shipyard.js?v=42.7';
+import { MATERIALS } from '../data/materials.js?v=42.7';
 
 const AUCTION_DEFAULT_SEC = 15;     // 竞价窗口（秒）
 const AUCTION_FEE = 0.05;           // 卖家佣金（成交额的 5% 归平台）

@@ -4,8 +4,8 @@
 //         玩家扩军 / 补员 / 工业发展完全不影响推进条 →
 //         「连败仍推进」「扩军后推进速度不变」等荒谬结果。
 // 本探针验证：扩军与工业增长会真实改变推进速度。
-import { tickWarsHoi4, setHoiDeps } from '../js/core/hoi1936.js?v=41.6';
-import { HOI_BY_ID } from '../js/data/hoi1936.js?v=41.6';
+import { tickWarsHoi4, setHoiDeps } from '../js/core/hoi1936.js?v=42.7';
+import { HOI_BY_ID } from '../js/data/hoi1936.js?v=42.7';
 
 let pass = 0, fail = 0;
 const check = (n, c, d) => { if (c) { pass++; console.log('  ✓ ' + n + (d ? '  ' + d : '')); } else { fail++; console.log('  ✗ ' + n + (d ? '  ' + d : '')); } };
