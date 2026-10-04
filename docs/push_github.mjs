@@ -16,7 +16,7 @@
 
 import { readFileSync, statSync, readdirSync, existsSync } from 'fs';
 import { join, dirname, relative, sep } from 'path';
-import { fileURLToPath } from 'url';
+import { fileURLToPath, pathToFileURL } from 'url';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const DRY = process.argv.includes('--dry');
@@ -119,20 +119,19 @@ const newTree = await api('/repos/' + R.owner + '/' + R.repo + '/git/trees', {
 });
 console.log('  tree: ' + newTree.sha.slice(0, 10));
 
-// 4) 建 commit
+// 4) 建 commit —— 版本号与条目**从 js/version.js 动态取**，不再硬编码
+//    （原先写死 'v0.4.1'，结果推 v0.4.2 时提交信息仍是旧版本号，误导后续排查）
+const V = await import(pathToFileURL(join(ROOT, 'js/version.js')).href + '?v=' + Date.now());
+const vEntry = V.VERSIONS[0] || [V.VERSION, V.VERSION_DATE, []];
+const vTitle = vEntry[0] || V.VERSION;
+const entries = Array.isArray(vEntry[2]) ? vEntry[2] : [];
+const body = entries.length
+  ? entries.map((e) => '- ' + String(e).replace(/\*\*/g, '').slice(0, 160)).join('\n')
+  : '（无更新日志条目）';
 const msg = [
-  'feat(war): 行星战区地图 + 殖民地争夺 + 敌方AI战略层 (v0.4.1)',
+  'release(' + vTitle + '): ' + vEntry[1],
   '',
-  '行星战区地图（6x6=36 战区）：战斗发生在具体战区，打赢即占领。',
-  '补给网络：从轨道投送点做 BFS，只走我方战区 —— 断供战区挨饿，推进要打穿走廊。',
-  '殖民地争夺：地图保证分布 9 处殖民地，占领得收益/战争分数/额外进度。',
-  '战略轨道打击：可打任意敌方战区（跨战区），削减驻防并瘫痪防线。',
-  '战区驻防与地貌入算；敌方 AI 战略层按价值函数选目标并扩张。',
-  '',
-  '修复：resolveBattleEnd 里 war 的暂时性死区 ReferenceError 被 try/catch 吞掉，',
-  '      导致「打赢也不占领地」；以及地图生成的地貌退化与殖民地生成失败。',
-  '',
-  '自检：selfcheck_theater 59 项新增，selfcheck_battle 保持 100 项全绿。',
+  body,
 ].join('\n');
 
 const commit = await api('/repos/' + R.owner + '/' + R.repo + '/git/commits', {
