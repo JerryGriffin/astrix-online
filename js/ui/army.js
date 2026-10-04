@@ -10,20 +10,20 @@
 //   * 每支军队人数在 100 人上下（由框架数决定），列内展示。
 // 本页由 planet.js 的 showPanel 动态接入，异常只影响本 tab。
 
-import { reinforceArmy } from '../core/hoi1936.js?v=32.1';
+import { reinforceArmy } from '../core/hoi1936.js?v=33.2';
 import {
   ARMY_BLUEPRINTS, ARMY_PART_BY_ID, ARMY_SLOT_BY_CAT, ARMY_PART_COST,
   armyCapOf, armyBpPartNeeds, armyBpMaterialNeeds,
-} from '../data/army_parts.js?v=32.1';
+} from '../data/army_parts.js?v=33.2';
 import {
   armyStatsOfBp, armyPowerOf, armyPowerOfInstance, armyBuildCheck, listArmies, disbandArmy,
   getArmyBp, armyEffStats, armyPartMaterialOptions, trainArmy, cancelTraining, ARMY_LABOR_PER_BARRACKS,
   attachShipToArmy, detachShipFromArmy, shipEligibleForArmy, shipArmyOf, ARMY_SHIP_TECH,
-} from '../core/army.js?v=32.1';
-import { addLine, removeLine } from '../core/production.js?v=32.1';
-import { fmtNum, fmtTime } from '../core/format.js?v=32.1';
-import { currentAccount, getBuildingCounts } from '../core/state.js?v=32.1';
-import { TECH_BY_ID } from '../data/techs.js?v=32.1';
+} from '../core/army.js?v=33.2';
+import { addLine, removeLine } from '../core/production.js?v=33.2';
+import { fmtNum, fmtTime } from '../core/format.js?v=33.2';
+import { currentAccount, getBuildingCounts } from '../core/state.js?v=33.2';
+import { TECH_BY_ID } from '../data/techs.js?v=33.2';
 
 const ARMY_TECH = 't_m1';
 const ARMY_CATS = ['frame', 'mobility', 'weapon', 'armor', 'support'];

@@ -10,7 +10,7 @@
 // 数据落在账号上：acc.npcs = [{ id, nameCn, power, friendliness, ascoin, inventory, lastTick }]
 // 事件：acc.npcEvents = [{ id, npcId, kind, message, at }]（只记录，供 UI 展示）
 
-import { MATERIALS } from '../data/materials.js?v=32.1';
+import { MATERIALS } from '../data/materials.js?v=33.2';
 
 // 4 个电脑账号：3 个普通 + Royal（大后期但友好）
 const NPC_DEFS = [
