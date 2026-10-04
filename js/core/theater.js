@@ -29,7 +29,7 @@
 //   · 不 import state.js（账号对象由调用方传入），与 battle.js 同构。
 // ============================================================================
 
-import { HOI_BY_ID, HOI_MAIN_NATIONS } from '../data/hoi1936.js?v=42.7';
+import { HOI_BY_ID, HOI_MAIN_NATIONS } from '../data/hoi1936.js?v=43.8';
 
 export const THEATER_COLS = 6;
 export const THEATER_ROWS = 6;
@@ -65,10 +65,17 @@ export const REGION_OUTPUT = {
   crater:   { 钢: 0.7, 铝: 0.5 },                     // 撞击溅射带出金属矿脉
   canyon:   { 钢: 0.9, 石头: 1.0 },                   // 裸露岩层
   dust:     { 硅: 0.6, 铝: 0.7, 有机质: 0.3 },        // 悬浮硅酸盐
+  // ⚠️ 冰盖**刻意不产氧气**：本游戏的气体（氮气/氧气/氨气/甲烷/二氧化碳/氢气）
+  //   走星球大气储量（inventory 条目的 remaining），不作为物品栏资源 ——
+  //   v0.0.61 需求 3 明确要求「开局不给氧气，氧气直接扣星球储量」。
+  //   曾因冰盖/穹顶产出氧气而把氧气灌进物品栏，触发 selfcheck_v006 的
+  //   「氧气不应因人口呼吸而积累到物品栏」（且只在冰盖/穹顶落在本土时随机复现）。
+  ice:      { 水: 1.4 },                              // 冰层与升华气（仅水入栏）
   lava:     { 钢: 0.8, 铜: 0.6, 硫: 0.5 },           // 硫化物金属
-  ice:      { 水: 1.2, 氧气: 0.6 },                   // 冰层与升华气
-  dome:     { 有机质: 0.9, 氧气: 0.8, 硅: 0.5 },      // 穹顶生态圈
+  dome:     { 有机质: 0.9, 硅: 0.5 },                 // 穹顶生态圈（氧气走大气，不入栏）
 };
+/** 气体名单：与 production.js#GAS_NAMES 一致。战区产出**不得**包含这些。 */
+export const GAS_MATERIALS = new Set(['氮气', '氧气', '氨气', '甲烷', '二氧化碳', '氢气']);
 // 建筑对产出的额外加成（同一个地貌在不同建筑下产出不同）
 export const STRUCTURE_OUTPUT_MUL = {
   colony: 1.6, mine: 1.35, dome: 1.0, depot: 0.85, orbital: 0.7,
@@ -506,6 +513,8 @@ export function regionYieldOf(acc) {
     const mul = base * supplyMul * garMul;
     if (mul <= 0) continue;
     for (const mat in table) {
+      // 防御：气体一律不入物品栏（走星球大气储量），见 REGION_OUTPUT 上方说明
+      if (GAS_MATERIALS.has(mat)) continue;
       const amt = table[mat] * perColony * mul * (r.structure === 'colony' || r.structure === 'mine' ? 1 : 0.4);
       if (amt > 0) out[mat] = (out[mat] || 0) + amt;
     }
@@ -579,6 +588,9 @@ export function captureRegion(acc, war, region, mySideWon) {
   refreshSupply(acc);
   return { owner: me, colony, lost: false };
 }
+
+/** 敌方师池的键 = 战争 id（buildFoePool / aiFlankPlans 共用） */
+function foePoolKey(war) { return String((war && war.id) || ''); }
 
 /** 每战区最多同时进行的战线数（多方向夹击） */
 export const REGION_MAX_FRONTS = 3;
@@ -689,6 +701,32 @@ export function decayStrikePressure(acc, dtSec) {
 }
 export const STRIKE_MAX = 5;
 
+// v0.4.3：敌方 AI 也会**多路夹击** —— 从 2~3 个不同相邻方向同时打同一战区，
+//   让玩家体验到与 AI 对等的战术博弈（此前 AI 永远单线推进，玩家用夹击毫无压力）。
+//   注意：AI 的进攻不需要管兵（startBattle side='foe' 会自动挑玩家的最强师来防守）。
+export function aiFlankPlans(acc, war, target) {
+  const t = ensureTheater(acc);
+  if (!t || !target) return [];
+  const foe = String(war && war.targetId || '');
+  // ⚠️ 师池是按 **战争 id** 建的键（见 buildFoePool 用 foePoolKey(war)），
+  //   不是按交战对象 id —— 早先这里写成 acc.foePools[targetId] 导致永远取不到，
+  //   AI 夹击会静默失效（plans 恒为 0），测试直接把它抓出来了。
+  const pool = acc.foePools && acc.foePools[foePoolKey(war)];
+  if (!pool || pool.divisions <= 0) return [];       // 被打空了就没法再投师
+  const origins = neighborsIn(t.regions, target).filter((r) => r.owner === foe);
+  if (origins.length < 2) return [];
+  // 每个来源只出一条战线（同来源叠加无效，见 frontInfoOf）
+  const plans = [];
+  for (const o of origins) {
+    if (plans.length >= AI_FLANK_MAX) break;
+    const has = (acc.battles || []).some((b) => b && b.status === 'active'
+      && b.regionId === target.id && b.originId === o.id);
+    if (!has) plans.push({ originId: o.id, regionId: target.id });
+  }
+  return plans;
+}
+export const AI_FLANK_MAX = 3;
+
 // ---------------------------------------------------------------------------
 // 八、敌方 AI 战略层（v0.4.1 第三项）
 //   AI 不再只是「按实力差滑进度条」，而是会：
@@ -746,6 +784,22 @@ export function tickTheaterAI(acc, dtSec, ctx) {
         pick.garrison = Math.max(0, (Number(pick.garrison) || 0) * 0.6);
         pick.strikePressure = clamp((Number(pick.strikePressure) || 0) + 0.3, 0, 1);
       }
+      // ---- 3b v0.4.3：敌方多路夹击（不同相邻方向同时打同一战区）----
+      //   ctx.startBattle 由调用方（hoi1936.js）注入，避免 theater.js 反向依赖 battle.js
+      if (t.aiMood === 'press' && typeof (ctx && ctx.startBattle) === 'function') {
+        const plans = aiFlankPlans(acc, war, pick);
+        let opened = 0;
+        for (const p of plans) {
+          if (activeCount >= BATTLE_MAX_PER_WAR) break;
+          try {
+            const r = ctx.startBattle(acc, war, { side: 'foe', regionId: p.regionId, originId: p.originId });
+            if (r && r.ok) { opened++; activeCount++; }
+          } catch (e) { /* 单次进攻异常忽略 */ }
+        }
+        if (opened > 1) {
+          unshiftWarLog(acc, war, '敌方从 ' + opened + ' 个方向同时发起进攻 —— 我方该战区被夹击');
+        }
+      }
     }
     // ---- 4) 敌方扩张：把中立战区并入自己，连成补给走廊 ----
     const neutral = t.regions.filter((r) => !r.owner);
@@ -761,6 +815,33 @@ export function tickTheaterAI(acc, dtSec, ctx) {
   refreshSupply(acc);
 }
 export const AI_TICK_SEC = 30;
+
+/**
+ * v0.4.3：殖民地人口**反哺本土**。
+ *   地图上的殖民地不再只是资源产地 —— 它们的人口会：
+ *     · 提供**研究点**（主要收益）：人口越多，科研越快；
+ *     · 提供**本土人口增长加成**（次要）：远方殖民地是人口腹地。
+ *   返回 { researchPerSec, popGrowthBonus }，由 state.js 应用。
+ */
+export const RESEARCH_PER_POP = 0.02;      // 每百万人口每秒提供的���究点
+export const POP_GROWTH_PER_POP = 0.0012; // 每百万人口每���的人口增长加成
+export function colonySupportOf(acc) {
+  const t = ensureTheater(acc);
+  if (!t) return { popM: 0, researchPerSec: 0, popGrowthBonus: 0, count: 0 };
+  let popM = 0;
+  for (const c of t.colonies) {
+    // 只有仍在我方控制且补给通畅的殖民地才真正在反哺
+    const rg = regionById(t, c.regionId);
+    if (!rg || rg.owner !== t.myNation) continue;
+    popM += (Number(c.popM) || 0) * (rg.connected ? 1 : 0.4);
+  }
+  popM = Math.round(popM * 100) / 100;
+  return {
+    popM, count: t.colonies.length,
+    researchPerSec: popM * RESEARCH_PER_POP,
+    popGrowthBonus: popM * POP_GROWTH_PER_POP,
+  };
+}
 
 // ---------------------------------------------------------------------------
 // 九、给 UI 的只读视图

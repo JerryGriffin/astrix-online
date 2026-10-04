@@ -452,6 +452,101 @@ console.log('\nT13 补给线路（可视化数据）');
     '每条线有起点坐标（供 UI 画线）');
 }
 
+// T14 v0.4.3：敌方 AI 也会夹击 ---------------------------------------
+console.log('\nT14 敌方 AI 多路夹击');
+{
+  const acc = mkAcc(30, 240);
+  TH.ensureTheater(acc);
+  const t = acc.theater;
+  // **确定性地摆出包围局面**：挑一个「非我方邻居最多」的���方战区，
+  //   把它的邻居判给法国。（不能指望随机地图自然形成包围 —— 否则断言会被跳过。）
+  //   注意玩家本土在角落、邻居本就不多，故按邻居数择优而不是固定用本土。
+  const gerRegions = t.regions.filter((r) => r.owner === 'ger');
+  let ger = null, best = -1;
+  for (const r of gerRegions) {
+    const n = t.regions.filter((o) => o.owner !== 'ger'
+      && Math.abs(o.x - r.x) <= 1 && Math.abs(o.y - r.y) <= 1).length;
+    if (n > best) { best = n; ger = r; }
+  }
+  const target = ger;
+  const nbs = t.regions.filter((r) => r.owner !== 'ger'
+    && Math.abs(r.x - ger.x) <= 1 && Math.abs(r.y - ger.y) <= 1);
+  if (nbs.length < 2) { ok(false, '应能构造出包围局面', '可用邻居仅 ' + nbs.length); }
+  else {
+    const target = ger;
+    const aiOrigins = nbs.slice(0, 3);
+    for (const o of aiOrigins) { o.owner = 'fra'; o.structure = null; }
+    TH.refreshSupply(acc);
+    ok(aiOrigins.length >= 2, '法国有多条相邻进攻路线', 'n=' + aiOrigins.length);
+
+    // 给法国足够的师池，否则 aiFlankPlans 会因「被打空」而返回空
+    acc.foePools = acc.foePools || {};
+    acc.foePools['war_1'] = { ic: 50, divisions: 12, nameCn: '法兰西', killed: 0, seedAt: 12345 };
+
+    const plans = TH.aiFlankPlans(acc, acc.wars[0], target);
+    ok(plans.length >= 2, 'AI 能规划出多条夹击战线', 'plans=' + plans.length);
+    ok(plans.length <= TH.AI_FLANK_MAX, '夹击路数有上限', String(TH.AI_FLANK_MAX));
+    ok(plans.every((p) => p.regionId === target.id), '全部指向同一目标战区');
+    ok(new Set(plans.map((p) => p.originId)).size === plans.length, '每条战线来源方向不同');
+
+    // 实际开战后应产生夹击加成
+    const { startBattle } = await import(pathToFileURL(join(ROOT, 'js/core/battle.js')) + `?v=${CACHE_TAG}`);
+    let opened = 0;
+    for (const p of plans.slice(0, 3)) {
+      const r = startBattle(acc, acc.wars[0], { side: 'foe', regionId: p.regionId, originId: p.originId });
+      if (r && r.ok) opened++;
+    }
+    ok(opened >= 2, 'AI 成功开出多条战线', 'opened=' + opened);
+    const fi = TH.frontInfoOf(acc, target.id);
+    ok(fi.directions >= 2, 'AI 侧识别出多方向', 'dirs=' + fi.directions);
+    ok(fi.flank > 0, 'AI 的夹击也生效', 'flank=' + fi.flank.toFixed(3));
+  }
+}
+
+// T15 v0.4.3：殖民地人口反哺本土 --------------------------------------
+console.log('\nT15 殖民地人口反哺本土');
+{
+  const acc = mkAcc(40, 260);
+  const t = TH.ensureTheater(acc);
+  // 手动塞一个我方殖民地
+  const rg = t.regions.find((r) => r.owner === 'ger');
+  t.colonies.push({ regionId: rg.id, nameCn: '测试殖民地', popM: 5, at: Date.now() });
+  const s1 = TH.colonySupportOf(acc);
+  ok(s1.popM >= 5, '统计到殖民地人口', String(s1.popM));
+  ok(s1.researchPerSec > 0, '提供研究点', String(s1.researchPerSec));
+  ok(s1.popGrowthBonus > 0, '提供人口增长加成', String(s1.popGrowthBonus));
+  // 断供 → 反哺衰减
+  TH.refreshSupply(acc);
+  const fullRp = TH.colonySupportOf(acc).researchPerSec;
+  rg.connected = false;
+  const cutRp = TH.colonySupportOf(acc).researchPerSec;
+  ok(cutRp < fullRp, '断供的殖民地反哺减少', fullRp.toFixed(3) + ' → ' + cutRp.toFixed(3));
+  rg.connected = true;
+  // 失去殖民地 → 反哺归零
+  t.colonies = [];
+  ok(TH.colonySupportOf(acc).researchPerSec === 0, '没有殖民地则无反哺');
+}
+
+// T16 v0.4.3：战区产出不得包含气体（v0.0.61 需求 3 的不变量） ----------
+console.log('\nT16 战区产出不含气体（回归守卫）');
+{
+  const acc = mkAcc(20, 240);
+  const t = TH.ensureTheater(acc);
+  // 强行把本土战区设成会产氧气的冰盖/穹顶
+  const rg = t.regions.find((r) => r.owner === 'ger');
+  rg.terrain = 'ice'; rg.structure = 'colony'; rg.popM = 3;
+  const y = TH.regionYieldOf(acc);
+  ok(y && typeof y === 'object', '能算出产出');
+  const gasKeys = Object.keys(y || {}).filter((k) => TH.GAS_MATERIALS.has(k));
+  ok(gasKeys.length === 0,
+    '产出里没有任何气体（氧气等走大气储量，不入物品栏）', gasKeys.join(','));
+  ok(y && y['水'] > 0, '冰盖仍产出水', JSON.stringify(y));
+  // 所有地貌的产出表都不得含气体
+  const badTables = Object.keys(TH.REGION_OUTPUT).filter((k) =>
+    Object.keys(TH.REGION_OUTPUT[k]).some((m) => TH.GAS_MATERIALS.has(m)));
+  ok(badTables.length === 0, '所有地貌产出表都不含气体', badTables.join(','));
+}
+
 // ---------------------------------------------------------------------------
 console.log('\n通过 ' + pass + ' / 失败 ' + fail);
 if (fail) {

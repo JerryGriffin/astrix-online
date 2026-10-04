@@ -28,17 +28,17 @@
 // 约定：不 import state.js（账号对象由调用方传入），与 army.js 同构。
 // ============================================================================
 
-import { armyById, armyEffStats, armyPowerOf } from './army.js?v=42.7';
-import { fleetPowerOf } from './fleet.js?v=42.7';   // v0.4.0：空间舰队实力 → 轨道控制
-import { HOI_BY_ID } from '../data/hoi1936.js?v=42.7';
+import { armyById, armyEffStats, armyPowerOf } from './army.js?v=43.8';
+import { fleetPowerOf } from './fleet.js?v=43.8';   // v0.4.0：空间舰队实力 → 轨道控制
+import { HOI_BY_ID } from '../data/hoi1936.js?v=43.8';
 // v0.4.1：行星战区地图 —— 战斗「在哪打」、打赢后归谁、补给通不通
 import {
   ensureTheater, regionById, regionSupplyOf, refreshSupply, captureRegion,
   applyColonyProgress, decayStrikePressure, GARRISON_MAX,
   frontInfoOf, canOpenFront, REGION_MAX_FRONTS, SIEGE_REQUIRED,
-} from './theater.js?v=42.7';
+} from './theater.js?v=43.8';
 // 迫降线（与 core/war.js 同源常量；此处只读，避免反向依赖 war.js）
-import { WAR_FORCE_SURRENDER_SCORE } from './war.js?v=42.7';
+import { WAR_FORCE_SURRENDER_SCORE } from './war.js?v=43.8';
 // 注意：**不 import core/hoi1936.js** —— 它要 import 本模块来驱动敌方进攻，
 //   这里再反向 import 就成了循环依赖。战役时钟用本文件自己的 BATTLE_HOURS_PER_SEC。
 

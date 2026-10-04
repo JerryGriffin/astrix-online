@@ -5,35 +5,36 @@
 //   · 顶部：剧本日历（到天）、国家、阵营、人口、军队 / 舰队概览
 //   · 国策树：工业 / 军事 / 外交三支，各两支；按游戏天数推进，完成即生效
 //   · 轨道圈层：母星行星的 7 个轨道圈层，争夺轨道控制权
-import { fmtNum } from '../core/format.js?v=42.7';
-import { currentAccount, getPlanetInstance } from '../core/state.js?v=42.7';
-import { listArmies, totalArmyPowerOf } from '../core/army.js?v=42.7';
-import { listFleets, fleetPowerOf } from '../core/fleet.js?v=42.7';
+import { fmtNum } from '../core/format.js?v=43.8';
+import { currentAccount, getPlanetInstance } from '../core/state.js?v=43.8';
+import { listArmies, totalArmyPowerOf } from '../core/army.js?v=43.8';
+import { listFleets, fleetPowerOf } from '../core/fleet.js?v=43.8';
 import {
   scenarioDateOf, gameDaysOf, ensureFocus, focusOptionsOf, startFocus,
   ensureSeas, contestSea, blocNameOf, nationOf, deepOf, enemySeaPressure, backgroundOf, HOI_SCENARIO_ID,
   listHistTargets, histWarGateFor,
-} from '../core/hoi1936.js?v=42.7';
+} from '../core/hoi1936.js?v=43.8';
 // v0.3.3：战争数据（实时交战双方状态）
-import { activeWarsOf } from '../core/war.js?v=42.7';
+import { activeWarsOf } from '../core/war.js?v=43.8';
 // v0.3.4：战役系统（师级交战 / 组织度 / 补给 / 工事 / 增援）—— 替代「只有进度条」
 import {
   listBattles, battleView, startBattle, committableArmies, foeRemaining,
   orderRetreat, stopBattle, terrainList, BATTLE_MAX_PER_WAR, BATTLE_COMBAT_WIDTH,
   ORBITAL_BOMB_CHARGES, orbitalControlOf,
-} from '../core/battle.js?v=42.7';
+} from '../core/battle.js?v=43.8';
 // v0.4.1：行星战区地图（战区归属 / 补给网络 / 战略轨道打击 / 殖民地争夺）
 import {
   ensureTheater, theaterView, attackTargetsOf, canStrikeRegion, strikeRegion,
   colonyIncomeOf, REGION_STRUCTURES, STRIKE_MAX, supplyLinksOf,
   frontInfoOf as THfrontInfo, canOpenFront as THcanFront,
   REGION_MAX_FRONTS as TH_MAX_FRONTS, SIEGE_REQUIRED as TH_SIEGE,
-  regionYieldOf,
-} from '../core/theater.js?v=42.7';
-import { HOI_SEAS, HOI_BY_ID, HIST_TIMELINE } from '../data/hoi1936.js?v=42.7';
+  regionYieldOf, colonySupportOf,
+} from '../core/theater.js?v=43.8';
+import { HOI_SEAS, HOI_BY_ID, HIST_TIMELINE } from '../data/hoi1936.js?v=43.8';
 
 // v0.4.1：地图交互状态（同样放模块级，避免每秒重绘冲掉选中项）
-const _mapSel = { regionId: null };
+// v0.4.3：plan = 多路战线规划（同时开辟多条战线），mode='plan' 时点目标只入队不立即开战
+const _mapSel = { regionId: null, plan: [], mode: 'single' };
 
 // v0.3.4：开辟战线的选择状态放**模块级** —— 本页每秒整块重绘（见文件末尾 _hoiTimer），
 //   若把勾选存在 DOM 里会被每次重绘冲掉，用户根本没法挑兵。
@@ -144,6 +145,18 @@ function buildTheaterMap(acc, war, refresh) {
   head.lastChild.style.whiteSpace = 'pre-line';
   wrap.appendChild(head);
 
+  // v0.4.3：殖民地人口反哺本土（研究点 + 人口增长加成）
+  try {
+    const sup = colonySupportOf(acc);
+    if (sup && sup.popM > 0) {
+      const sb = el('div', 'hoi-colony-support');
+      sb.appendChild(el('span', null,
+        '殖民地人口反哺：研究点 +' + (Math.round(sup.researchPerSec * 100) / 100) + '/秒'
+        + '　本土人口增长 +' + Math.round(sup.popGrowthBonus * 10000) / 100 + '%'));
+      wrap.appendChild(sb);
+    }
+  } catch (e) { /* 忽略 */ }
+
   // ---- 网格 ----
   const grid = el('div', 'hoi-map');
   grid.style.gridTemplateColumns = 'repeat(' + v.cols + ', minmax(0,1fr))';
@@ -212,6 +225,9 @@ function buildTheaterMap(acc, war, refresh) {
   legend.appendChild(el('span', { class: 'lg struct', text: 'O投送点 D补给 C殖民地 M矿场 Q穹顶' }));
   wrap.appendChild(legend);
 
+  // ---- v0.4.3：多路战线规划 ----
+  wrap.appendChild(buildPlanBar(acc, war, refresh));
+
   // ---- 选中战区详情 + 操作 ----
   if (_mapSel.regionId) {
     const r = v.regions.find((x) => x.id === _mapSel.regionId);
@@ -224,6 +240,75 @@ function buildTheaterMap(acc, war, refresh) {
       + '同一战区可从**多个方向**同时进攻形成**夹击**；殖民地穹顶需先打满**围城进度**才能占领。'));
   }
   return wrap;
+}
+
+/** v0.4.3：多路战线规划条 —— 一次规划、同时开辟多条战线 */
+function buildPlanBar(acc, war, refresh) {
+  const bar = el('div', 'hoi-plan');
+  if (!war || war.status !== 'active') return bar;
+  const busy = (acc.battles || []).filter((b) => b && b.status === 'active').length;
+  const room = Math.max(0, BATTLE_MAX_PER_WAR - busy);
+
+  const modeBtn = el('button', 'hoi-mini-btn' + (_mapSel.mode === 'plan' ? ' on' : ''),
+    _mapSel.mode === 'plan' ? '规划模式：开（点目标加入队列）' : '规划模式：关');
+  modeBtn.title = '开启后，点相邻目标只会加入规划队列，可一次开辟多条战线形成夹击';
+  modeBtn.addEventListener('click', () => {
+    _mapSel.mode = (_mapSel.mode === 'plan' ? 'single' : 'plan');
+    refresh && refresh();
+  });
+  bar.appendChild(modeBtn);
+
+  bar.appendChild(el('span', 'hoi-note',
+    '进行中 ' + busy + '/' + BATTLE_MAX_PER_WAR + '　规划中 ' + _mapSel.plan.length + ' 条'));
+
+  for (let i = 0; i < _mapSel.plan.length; i++) {
+    const p = _mapSel.plan[i];
+    const t = ensureTheater(acc);
+    const tg = (t.regions || []).find((r) => r.id === p.regionId);
+    const og = (t.regions || []).find((r) => r.id === p.originId);
+    if (!tg) { _mapSel.plan.splice(i, 1); i--; continue; }
+    const item = el('span', 'hoi-plan-item', (og ? og.nameCn : '?') + ' → ' + tg.nameCn);
+    const del = el('button', 'hoi-mini-btn x', '×');
+    del.addEventListener('click', () => {
+      const k = _mapSel.plan.findIndex((q) => q.regionId === p.regionId && q.originId === p.originId);
+      if (k >= 0) _mapSel.plan.splice(k, 1);
+      refresh && refresh();
+    });
+    item.appendChild(del);
+    bar.appendChild(item);
+  }
+
+  if (_mapSel.plan.length) {
+    const go = el('button', 'btn btn-primary hoi-go',
+      '同时开战（' + Math.min(_mapSel.plan.length, room || _mapSel.plan.length) + ' 条）');
+    if (!room) { go.disabled = true; go.title = '同时进行的战线已满'; }
+    go.addEventListener('click', () => {
+      const msgs = [];
+      let n = 0;
+      for (const p of _mapSel.plan.slice()) {
+        const b = (acc.battles || []).filter((x) => x && x.status === 'active').length;
+        if (b >= BATTLE_MAX_PER_WAR) { msgs.push('战线数已达上限'); break; }
+        const busyIds = (acc.battles || []).filter((x) => x && x.status === 'active')
+          .flatMap((x) => (x.mine || []).map((d) => d.armyId));
+        const avail = (committableArmies(acc, war.id) || []).filter((a) => busyIds.indexOf(a.id) < 0);
+        if (!avail.length) { msgs.push('没有可用师了'); break; }
+        const r = startBattle(acc, war, {
+          regionId: p.regionId, originId: p.originId,
+          armyIds: avail.slice(0, BATTLE_COMBAT_WIDTH + 1).map((a) => a.id),
+        });
+        if (r.ok) n++;
+        else msgs.push(r.reason || '开战失败');
+      }
+      _mapSel.plan = [];
+      if (msgs.length) alert('已开辟 ' + n + ' 条战线：\n' + msgs.join('\n'));
+      refresh && refresh();
+    });
+    bar.appendChild(go);
+    const clr = el('button', 'hoi-mini-btn', '清空规划');
+    clr.addEventListener('click', () => { _mapSel.plan = []; refresh && refresh(); });
+    bar.appendChild(clr);
+  }
+  return bar;
 }
 
 /** 选中战区的详情与操作 */
@@ -263,18 +348,31 @@ function buildRegionPanel(acc, war, r, ctrl, refresh) {
       for (const tg of targets) {
         const tName = tg.owner ? ((HOI_BY_ID[tg.owner] || {}).nameCn || tg.owner) : '中立';
         const tf = THfrontInfo(acc, tg.id);
-        const btn = el('button', 'hoi-mini-btn' + (tg.owner ? '' : ' neutral'),
-          (tg.nameCn || tg.id) + '·' + tName
+        const inPlan = _mapSel.plan.some((q) => q.regionId === tg.id && q.originId === raw.id);
+        const btn = el('button', 'hoi-mini-btn'
+          + (tg.owner ? '' : ' neutral')
+          + (inPlan ? ' on' : '')
+          + (tf && tf.directions >= 2 ? ' flank' : ''),
+          (inPlan ? '✓ ' : '') + (tg.nameCn || tg.id) + '·' + tName
           + (tg.owner ? ' 驻防' + Math.round((tg.garrison || 0) * 100) + '%' : '')
           + (tg.structure === 'colony' ? ' ★殖民地' : '')
           + (tg.structure === 'dome' ? ' 需围城' : '')
-          + (tf && tf.fronts ? ' 前线' + tf.fronts : ''));
+          + (tf && tf.fronts ? ' 前线' + tf.fronts : '')
+          + (tf && tf.directions >= 2 ? ' 夹击+' + Math.round(tf.flank * 100) + '%' : ''));
         btn.disabled = !(avail.length) || !THcanFront(acc, tg.id);
         const why = !avail.length ? '没有可用师（都在其他战线或兵员已耗尽）'
           : !THcanFront(acc, tg.id) ? '该战区战线已满'
-          : (tf && tf.directions >= 2 ? '夹击加成 ' + Math.round(tf.flank * 100) + '%' : '开战');
+          : (tf && tf.directions >= 2 ? '已形成夹击：防御削弱 ' + Math.round(tf.flank * 100) + '%' : '开战');
         btn.title = why;
         btn.addEventListener('click', () => {
+          // 规划模式：只入队，不立即开战
+          if (_mapSel.mode === 'plan') {
+            const k = _mapSel.plan.findIndex((q) => q.regionId === tg.id && q.originId === raw.id);
+            if (k >= 0) _mapSel.plan.splice(k, 1);
+            else _mapSel.plan.push({ regionId: tg.id, originId: raw.id });
+            refresh && refresh();
+            return;
+          }
           const pick = avail.slice(0, BATTLE_COMBAT_WIDTH + 1).map((a) => a.id);
           const r2 = startBattle(acc, war, { regionId: tg.id, originId: raw.id, armyIds: pick });
           if (!r2.ok) { alert(r2.reason); return; }

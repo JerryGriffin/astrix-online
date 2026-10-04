@@ -12,28 +12,28 @@
 //
 // 全部数值计算都在 js/core/shipyard.js，本文件只负责渲染与交互。
 
-import { MATERIALS } from '../data/materials.js?v=42.7';
+import { MATERIALS } from '../data/materials.js?v=43.8';
 import {
   HULLS, ENGINES, WEAPONS, FACILITIES,
   MATERIAL_SLOTS, DEFAULT_MATERIAL,
   isPartUnlocked,
-} from '../data/ship_parts.js?v=42.7';
-import { POWER_FACILITIES, POWER_FACILITY_BY_ID } from '../data/facilities.js?v=42.7';
-import { FUELS } from '../data/fuels.js?v=42.7';
+} from '../data/ship_parts.js?v=43.8';
+import { POWER_FACILITIES, POWER_FACILITY_BY_ID } from '../data/facilities.js?v=43.8';
+import { FUELS } from '../data/fuels.js?v=43.8';
 import {
   emptyBlueprint, evaluateBlueprint, launchShip, tickShip,
   resolvePart, materialMul, safeTempBand, tempStatus, envTempK, equilibriumTemp,
   ensureBlueprints, shipBuildCheck, findBlueprint, blueprintBuildCost,
-} from '../core/shipyard.js?v=42.7';
-import { BUILDING_BY_ID } from '../data/buildings.js?v=42.7';
-import { fmtNum, fmtTime } from '../core/format.js?v=42.7';
+} from '../core/shipyard.js?v=43.8';
+import { BUILDING_BY_ID } from '../data/buildings.js?v=43.8';
+import { fmtNum, fmtTime } from '../core/format.js?v=43.8';
 // v0.0.5：建筑计数已迁到星球实例（inst.buildings），船坞工占用来自人力系统
-import { getPlanetInstance, getBuildingCounts, currentAccount } from '../core/state.js?v=42.7';
-import { jobsOfBuilding, getJobCount, buildingSlots, assignedToBuilding, freeSlots, getIntensity } from '../core/population.js?v=42.7';
+import { getPlanetInstance, getBuildingCounts, currentAccount } from '../core/state.js?v=43.8';
+import { jobsOfBuilding, getJobCount, buildingSlots, assignedToBuilding, freeSlots, getIntensity } from '../core/population.js?v=43.8';
 // v0.1.1（需求 3）：建造按钮改为创建 dock 造船线，走生产线的工位与人力结算
-import { addLine, ensureLines, linesOf, removeLine, lineSlotInfo, freeLaborOf } from '../core/production.js?v=42.7';
+import { addLine, ensureLines, linesOf, removeLine, lineSlotInfo, freeLaborOf } from '../core/production.js?v=43.8';
 // R19-2：造船除装备外按部件扣材料（spendOwned 整笔扣，ownedOf 查库存），不碰 core/state.js
-import { ownedOf, spendOwned } from '../core/state.js?v=42.7';
+import { ownedOf, spendOwned } from '../core/state.js?v=43.8';
 
 const SHIP_BUILDING_ID = 'dock';
 const SHIP_TECH_ID = 't_e3';

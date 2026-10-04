@@ -21,16 +21,16 @@ globalThis.localStorage = {
   clear: () => _ls.clear(),
 };
 
-const S = await import('../js/core/state.js?v=42.7');
-const V = await import('../js/version.js?v=42.7');
-const P = await import('../js/core/power.js?v=42.7');
-const PR = await import('../js/core/production.js?v=42.7');
-const RC = await import('../js/data/recipes.js?v=42.7');
-const F = await import('../js/data/facilities.js?v=42.7');
-const PL = await import('../js/data/planets.js?v=42.7');
-const SHOP = await import('../js/core/shop.js?v=42.7');
-const AUC = await import('../js/core/auction.js?v=42.7');
-const MAT = await import('../js/data/materials.js?v=42.7');
+const S = await import('../js/core/state.js?v=43.8');
+const V = await import('../js/version.js?v=43.8');
+const P = await import('../js/core/power.js?v=43.8');
+const PR = await import('../js/core/production.js?v=43.8');
+const RC = await import('../js/data/recipes.js?v=43.8');
+const F = await import('../js/data/facilities.js?v=43.8');
+const PL = await import('../js/data/planets.js?v=43.8');
+const SHOP = await import('../js/core/shop.js?v=43.8');
+const AUC = await import('../js/core/auction.js?v=43.8');
+const MAT = await import('../js/data/materials.js?v=43.8');
 
 // ----- 计数器 -----
 let pass = 0, fail = 0;
@@ -417,20 +417,55 @@ function mkLine(inst, buildingId, recipeId, workers, material) {
     `C6 设施配方照样扣 inputs（石墨/碳/石头 实际 ${ownedOf(inst, '石墨').toFixed(1)}/${ownedOf(inst, '碳').toFixed(1)}/${ownedOf(inst, '石头').toFixed(1)}）`, 'C');
 }
 
-// C7. v0.0.7 部件生产：外壳线按选定材料扣料并产出装备
+// C7. v0.0.7 部件生产：部件线按选定材料扣料并产出装备
+//
+// ⚠️ v0.4.3 重写（修掉一个长期失败的断言）。
+//   本项此前一直失败（「外壳产出入装备栏 0 件」），当时被当成产品 bug 排查了很久。
+//   真相是**测试过期**，产品是对的：
+//     · v0.3.2 按设计要求把外壳制造速率**下调 1/1000**（ship_parts.js 注释：
+//       「船外壳 hull 600 → 600000（速率降为 1/1000）」），对外壳 work 是**故意**的；
+//     · 于是「跑 3000 tick 应该产出一件外壳」这个前提在 v0.3.2 之后就不成立了
+//       （600000 work ÷ 14 工位 ≈ 42857 秒 ≈ 12 小时才出一件）；
+//     · 部件生产机制本身完好：设施/武器/引擎部件都能正常出货并扣料。
+//   现改为：
+//     ① 用**正常速率**的部件验证生产机制（出货 + 扣料）—— 这才是 C7 本来的测试意图；
+//     ② 单独断言外壳的 work 量级符合「刻意压慢 1/1000」的设计，防止有人把它"修回去"。
 {
+  // ① 机制验证：设施部件（facility work=25000，速率 1/100）
   const inst = freshPlanet();
   inst.buildings = { fabricator: 1 };
   setOwned(inst, '钢', 2000);
-  const r = mkLine(inst, 'fabricator', 'part_hull_s_mk1', 28, '钢');   // 人数按实际工位夹取
-  ok(r.ok, `C7 外壳线创建成功（${r.reason || 'ok'}）`, 'C');
-  const rd = PR.resolveRecipe(inst, 'part_hull_s_mk1');
-  ok(!!rd && rd.producesPart === 'hull_s_mk1', 'C7 part_ 配方可解析且带 producesPart', 'C');
+  const rFac = mkLine(inst, 'fabricator', 'part_fac_crew_mk1', 28, '钢');
+  ok(rFac.ok, `C7 部件线创建成功（${rFac.reason || 'ok'}）`, 'C');
+  const rdFac = PR.resolveRecipe(inst, 'part_fac_crew_mk1');
+  ok(!!rdFac && rdFac.producesPart === 'fac_crew_mk1',
+    'C7 part_ 配方可解析且带 producesPart', 'C');
   for (let i = 0; i < 3000; i++) PR.tickProduction(inst, 1, 1);
-  const eq = inst.equipment || {};
-  const got = Object.values(eq).find((e) => e.partId === 'hull_s_mk1');
-  ok(!!got && got.count >= 1, `C7 外壳产出入装备栏（实际 ${got ? got.count : 0} 件）`, 'C');
-  ok(ownedOf(inst, '钢') < 2000, `C7 生产外壳扣掉了所选材料（剩 ${ownedOf(inst, '钢').toFixed(1)}）`, 'C');
+  const gotFac = Object.values(inst.equipment || {}).find((e) => e.partId === 'fac_crew_mk1');
+  ok(!!gotFac && gotFac.count >= 1,
+    `C7 部件产出入装备栏（实际 ${gotFac ? gotFac.count : 0} 件）`, 'C');
+  ok(ownedOf(inst, '钢') < 2000,
+    `C7 生产部件扣掉了所选材料（剩 ${ownedOf(inst, '钢').toFixed(1)}）`, 'C');
+
+  // ② 外壳：断言「刻意压慢」的设计口径，而不是断言它在 3000 tick 内出货
+  const inst2 = freshPlanet();
+  inst2.buildings = { fabricator: 1 };
+  setOwned(inst2, '钢', 2000);
+  const rHull = mkLine(inst2, 'fabricator', 'part_hull_s_mk1', 28, '钢');
+  ok(rHull.ok, `C7 外壳线创建成功（${rHull.reason || 'ok'}）`, 'C');
+  const rdHull = PR.resolveRecipe(inst2, 'part_hull_s_mk1');
+  ok(!!rdHull && rdHull.producesPart === 'hull_s_mk1',
+    'C7 外壳配方可解析且带 producesPart', 'C');
+  const hullWork = Number(rdHull.work) || 0;
+  ok(hullWork >= 500000,
+    `C7 外壳 work 保持刻意压慢档（≥500000，实际 ${hullWork}；v0.3.2 设计：速率降为 1/1000）`, 'C');
+  // 给足工时，外壳最终**确实**能出货 —— 证明不是"造不出来"，只是慢
+  for (let i = 0; i < 60000; i++) PR.tickProduction(inst2, 1, 1);
+  const gotHull = Object.values(inst2.equipment || {}).find((e) => e.partId === 'hull_s_mk1');
+  ok(!!gotHull && gotHull.count >= 1,
+    `C7 外壳给足工时后确实出货（实际 ${gotHull ? gotHull.count : 0} 件）`, 'C');
+  ok(ownedOf(inst2, '钢') < 2000,
+    `C7 外壳生产扣掉了所选材料（剩 ${ownedOf(inst2, '钢').toFixed(1)}）`, 'C');
 }
 
 // C8. v0.0.7 生产线占用人力后，可用人力减少
@@ -498,7 +533,7 @@ function feedPop(inst) {
 //   任意数目的原料，任意比例合成一种新材料，你根据比例和材料推算新材料数值，
 //   精细加工厂可以选择任一种固体材料进行二合一。」
 console.log('\n===== E. 复合资源 / 自定义材料 / 通用精炼 =====');
-const MT = await import('../js/data/materials.js?v=42.7');
+const MT = await import('../js/data/materials.js?v=43.8');
 const MAT_BY_NAME = Object.fromEntries(MT.MATERIALS.map((m) => [m.nameCn, m]));
 const GASES = new Set(['氮气', '氧气', '氨气', '甲烷', '二氧化碳', '氢气']);
 
@@ -716,7 +751,7 @@ for (const c of COMPOSITES) {
 //   ② 四位小数会把小于 5e-5 的值四舍五入成 0.0000，显示成「+0/s」
 //      （粗金这类丰度 1e-7 的资源就落在这一档）。
 console.log('\n===== F. 速率显示精度 =====');
-const FMT = await import('../js/core/format.js?v=42.7');
+const FMT = await import('../js/core/format.js?v=43.8');
 {
   const cases = [
     [0.0523, '+0.0523', '普通小数保留 4 位'],
@@ -769,7 +804,7 @@ const FMT = await import('../js/core/format.js?v=42.7');
 // 3) 开局不给氧气，氧气直接扣星球储量
 // 4) 科研里取消舰船 MKI~MKIII 与 a/b/c/d（已在 selfcheck_v005 第六节覆盖）
 console.log('\n===== G. v0.0.61（跨层储量 / 净增长 / 氧气）=====');
-const POP = await import('../js/core/population.js?v=42.7');
+const POP = await import('../js/core/population.js?v=43.8');
 {
   // ---- G1：同名资源跨层各自成条，储量分开 ----
   // v0.0.91：原「地下」拆成「浅层(underground)」与「深层(deep)」两条，故石头现在是
@@ -918,7 +953,7 @@ console.log('\n===== H. 缓存版本串（v0.0.62 防回归）=====');
 //   战损比落在 0~1、掠夺只在胜利时非零、旧数字签名兼容。
 console.log('\n===== I. 钢铁雄心式交战（v0.2.2）=====');
 {
-  const ARMY = await import('../js/core/army.js?v=42.7');
+  const ARMY = await import('../js/core/army.js?v=43.8');
   const seed = 123456789;
   // 单位契约与 galaxy.js 发送的一致：{ nameCn, power, stats:{atk, def} }
   const mk = (nameCn, atk, def, power) => ({ nameCn, power, stats: { atk, def } });
@@ -995,8 +1030,8 @@ console.log('\n===== I. 钢铁雄心式交战（v0.2.2）=====');
 // =====================================================================
 console.log('\n===== J. 军队材料/编制/训练（v0.2.4）=====');
 {
-  const ARMY = await import('../js/core/army.js?v=42.7');
-  const AP = await import('../js/data/army_parts.js?v=42.7');
+  const ARMY = await import('../js/core/army.js?v=43.8');
+  const AP = await import('../js/data/army_parts.js?v=43.8');
 
   // 1. 材料实装：武器用钛合金（强）应比铁攻更高；机动底盘用重材减速、轻材加速
   const rifleIron = ARMY.resolveArmyPart('ap_wpn_rifle', '铁');

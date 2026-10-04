@@ -472,6 +472,42 @@
 .hoi-mini-btn.warn { border-color: rgba(240,199,107,.5); color: #f0c76b; }
 .hoi-mini-btn:disabled { opacity: .45; cursor: not-allowed; }
 
+/* v0.4.3：多路战线规划条 */
+.hoi-plan {
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+  padding: 6px 8px;
+  border: 1px dashed #2a3a50;
+  border-radius: 8px;
+  background: rgba(10, 16, 26, .4);
+}
+.hoi-plan-item {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 11px; color: #cfe6f5;
+  padding: 2px 4px 2px 8px;
+  border-radius: 6px;
+  background: rgba(124, 215, 255, .1);
+  border: 1px solid rgba(124, 215, 255, .35);
+}
+.hoi-plan-item .x { padding: 0 5px; min-height: 18px; font-size: 11px; line-height: 1; }
+.hoi-mini-btn.on {
+  border-color: rgba(124, 215, 255, .7);
+  background: rgba(124, 215, 255, .18);
+  color: #cfe6f5;
+}
+.hoi-mini-btn.flank {
+  border-color: rgba(255, 212, 121, .6);
+  color: #ffd479;
+}
+/* 殖民地人口反哺提示 */
+.hoi-colony-support {
+  font-size: 11px;
+  color: #9FE1CB;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: rgba(159, 225, 203, .08);
+  border: 1px solid rgba(159, 225, 203, .25);
+}
+
 /* ---------- 移动端 ---------- */
 @media (max-width: 720px) {
   .hoi-map { grid-template-columns: repeat(3, minmax(0,1fr)) !important; }
