@@ -25,10 +25,10 @@
 // 不 import state.js（账号对象由调用方传入），与 war.js 同构。
 // ============================================================================
 
-import { HOI_BY_ID } from '../data/hoi1936.js?v=45.10';
+import { HOI_BY_ID } from '../data/hoi1936.js?v=46.11';
 import {
   regionsOf, applyTreatyToTheater, treatyOutputMulOf,
-} from './theater.js?v=45.10';
+} from './theater.js?v=46.11';
 
 // --- 和约选项 -------------------------------------------------------------
 export const TREATY_OPTIONS = [

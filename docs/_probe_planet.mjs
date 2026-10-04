@@ -20,12 +20,12 @@ if (typeof globalThis.localStorage === 'undefined') {
 }
 if (typeof globalThis.alert === 'undefined') globalThis.alert = () => {};
 
-import { STATE, getPlanetInstance, currentAccount } from '../js/core/state.js?v=45.10';
-import { getAvailable } from '../js/core/population.js?v=45.10';
+import { STATE, getPlanetInstance, currentAccount } from '../js/core/state.js?v=46.11';
+import { getAvailable } from '../js/core/population.js?v=46.11';
 import {
   MANAGEMENT_MODES, modeOf, setManagement,
-} from '../js/core/planetgen.js?v=45.10';
-import { canEnterPlanet, dispatchWorkforce } from '../js/ui/colony.js?v=45.10';
+} from '../js/core/planetgen.js?v=46.11';
+import { canEnterPlanet, dispatchWorkforce } from '../js/ui/colony.js?v=46.11';
 
 // 仅允许本探针使用的账号，避免污染其它逻辑
 const ACC_ID = 'probe_acc_planet';

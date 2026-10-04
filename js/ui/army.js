@@ -1,4 +1,4 @@
-// 军队页（Astrix v0.2.4）
+﻿// 军队页（Astrix v0.2.4）
 // 「单兵武器 t_m1」研究前军队 tab 也会显示（v0.2.4：按钮常驻，页内提示需解锁的科技）：
 //   * 子导航「我的军队 | 设计与建造」（UI 与舰队页同构，fleet-subnav 样式复用）；
 //   * 三张默认蓝图（游骑兵 / 铁壁 / 雷霆）随军事科技逐级解锁；「设计与建造」可像
@@ -10,20 +10,24 @@
 //   * 每支军队人数在 100 人上下（由框架数决定），列内展示。
 // 本页由 planet.js 的 showPanel 动态接入，异常只影响本 tab。
 
-import { reinforceArmy } from '../core/hoi1936.js?v=45.10';
+import { reinforceArmy } from '../core/hoi1936.js?v=46.11';
 import {
   ARMY_BLUEPRINTS, ARMY_PART_BY_ID, ARMY_SLOT_BY_CAT, ARMY_PART_COST,
   armyCapOf, armyBpPartNeeds, armyBpMaterialNeeds,
-} from '../data/army_parts.js?v=45.10';
+} from '../data/army_parts.js?v=46.11';
 import {
   armyStatsOfBp, armyPowerOf, armyPowerOfInstance, armyBuildCheck, listArmies, disbandArmy,
   getArmyBp, armyEffStats, armyPartMaterialOptions, trainArmy, cancelTraining, ARMY_LABOR_PER_BARRACKS,
   attachShipToArmy, detachShipFromArmy, shipEligibleForArmy, shipArmyOf, ARMY_SHIP_TECH,
-} from '../core/army.js?v=45.10';
-import { addLine, removeLine } from '../core/production.js?v=45.10';
-import { fmtNum, fmtTime } from '../core/format.js?v=45.10';
-import { currentAccount, getBuildingCounts } from '../core/state.js?v=45.10';
-import { TECH_BY_ID } from '../data/techs.js?v=45.10';
+} from '../core/army.js?v=46.11';
+import { addLine, removeLine } from '../core/production.js?v=46.11';
+import { fmtNum, fmtTime } from '../core/format.js?v=46.11';
+// v0.4.6：从 core/shipyard.js 取材料合并表（**不从 production.js 取**——
+//   后者与 state.js 循环引用，直接 import 会在模块求值顺序不对时抛
+//   「Cannot access '_getInst' before initialization」）。
+import { materialMul, materialLookupFor } from '../core/shipyard.js?v=46.11';
+import { currentAccount, getBuildingCounts } from '../core/state.js?v=46.11';
+import { TECH_BY_ID } from '../data/techs.js?v=46.11';
 
 const ARMY_TECH = 't_m1';
 const ARMY_CATS = ['frame', 'mobility', 'weapon', 'armor', 'support'];
@@ -253,7 +257,8 @@ function buildBpCard(bp, root, ctx, techSet, barracks) {
   if (bp.desc) card.appendChild(el('div', 'army-bp-desc muted', bp.desc));
 
   // 数值面板：火力红 / 防护青 / 机动琥珀 + 战力绿
-  const stats = armyStatsOfBp(bp);
+  // v0.4.6：注入材料表（含自定义合金），否则自定义材料会退回 ×1.00 基准
+  const stats = armyStatsOfBp(bp, materialLookupFor(inst));
   const box = el('div', 'army-stat-box');
   box.innerHTML =
     '<span>⚔ 火力 <b class="atk">' + stats.atk + '</b></span>'
@@ -516,15 +521,20 @@ function renderArmyDesigner(sec, root, ctx, techSet) {
         if (!p || p.cat !== cat) return;
         const row = el('div', 'bp-row');
         row.appendChild(el('span', 'bp-label', p.nameCn));
-        // 材料自选
-        const matOpts = armyPartMaterialOptions(it.id);
+        // 材料自选 —— v0.4.6 需求 11：候选改为**全材料**（含自定义合金），
+        // 并显示结构/质量倍率与「自造 / 推荐」标记，便于玩家权衡。
+        const matOpts = armyPartMaterialOptions(it.id, inst);
         if (matOpts.length) {
           const sel = document.createElement('select');
           sel.className = 'bp-select';
-          for (const m of matOpts) {
+          for (const o0 of matOpts) {
             const o = document.createElement('option');
-            o.value = m; o.textContent = m;
-            if ((it.material || '铁') === m) o.setAttribute('selected', 'selected');
+            o.value = o0.name;
+            const tags = [];
+            if (o0.custom) tags.push('自造');
+            if (o0.recommended) tags.push('推荐');
+            o.textContent = o0.name + '（×' + o0.structMul.toFixed(2) + (tags.length ? ' · ' + tags.join('') : '') + '）';
+            if ((it.material || '铁') === o0.name) o.setAttribute('selected', 'selected');
             sel.appendChild(o);
           }
           sel.addEventListener('change', () => { it.material = sel.value; refreshEval(); });
@@ -579,7 +589,8 @@ function renderArmyDesigner(sec, root, ctx, techSet) {
   const capEl = head.querySelector('[data-dsn-cap]');
   const saveMsg = el('div', 'muted');
   function refreshEval() {
-    const stats = armyStatsOfBp(draft);
+    // v0.4.6：同上
+  const stats = armyStatsOfBp(draft, materialLookupFor(inst));
     const cap = armyCapOf(draft.parts);
     if (capEl) capEl.textContent = cap.used + ' / ' + cap.cap
       + (cap.ok ? ' ✓' : (cap.frames < 1 ? '（至少 1 架框架）' : cap.weapons < 1 ? '（至少 1 件武器）' : '（超编）'));

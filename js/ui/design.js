@@ -1,4 +1,4 @@
-// 设计面板（Astrix v0.0.7）
+﻿// 设计面板（Astrix v0.0.7）
 //
 // ============================================================================
 // 职责
@@ -18,22 +18,22 @@
 
 import {
   HULLS, ENGINES, WEAPONS, FACILITIES,
-  MATERIAL_SLOTS, DEFAULT_MATERIAL,
-} from '../data/ship_parts.js?v=45.10';
+  DEFAULT_MATERIAL,
+} from '../data/ship_parts.js?v=46.11';
 import {
-  evaluateBlueprint, materialMul,
+  evaluateBlueprint, materialMul, materialOptionsFor,
   ensureBlueprints, genBlueprintId, kindOfHull, HULL_RP_COST,
   equipmentList, emptyBlueprint, shipBuildCheck,
-} from '../core/shipyard.js?v=45.10';
-import { getPlanetInstance, ownedOf, getBuildingCounts, spendOwned } from '../core/state.js?v=45.10';
-import { lineSlotInfo, freeLaborOf } from '../core/production.js?v=45.10';
-import { fmtNum } from '../core/format.js?v=45.10';
+} from '../core/shipyard.js?v=46.11';
+import { getPlanetInstance, ownedOf, getBuildingCounts, spendOwned } from '../core/state.js?v=46.11';
+import { lineSlotInfo, freeLaborOf, materialLookup } from '../core/production.js?v=46.11';
+import { fmtNum } from '../core/format.js?v=46.11';
 // R4：蓝图编辑器（含「建造」开 dock 线）从 shipyard.js 的舰船分支迁到「设计」分支。
 //   这里只复用函数，编辑器本体仍定义在 shipyard.js（其天然的归属），按其渲染。
 import {
   buildBlueprintEditor, shipBuildBlockReason,
   materialBuildBlockReason, createDockLine, blueprintMaterialNeeds,
-} from './shipyard.js?v=45.10';
+} from './shipyard.js?v=46.11';
 
 function esc(s) {
   return String(s).replace(/[&<>"']/g, (c) => (
@@ -63,17 +63,26 @@ function makeSelect(options, value, onChange) {
 }
 
 // v0.1.0：ownedMat 是 renderDesign 内的局部集合，必须由调用方传进来（此前直接引用外层变量 → 未定义报错）
-function makeMaterialSelect(slot, value, onChange, ownedMat) {
-  const list = MATERIAL_SLOTS[slot] || [];
-  // v0.0.8：材料候选只列玩家当前拥有的（ownedOf > 0）。
-  //   当前选中的值与默认材料始终保留，避免已选材料因暂无库存而从下拉框里「掉出去」。
-  const opts = list
-    .filter((name) => !ownedMat || ownedMat.has(name) || name === value || name === DEFAULT_MATERIAL[slot])
-    .map((name) => {
-      const mul = materialMul(name);
-      return [name, `${name}（结构 ×${mul.structMul.toFixed(2)} · 质量 ×${mul.massMul.toFixed(2)}）`];
-    });
-  return makeSelect(opts, value || DEFAULT_MATERIAL[slot], onChange);
+// v0.4.6 需求 11：候选材料改为**全材料**（含自定义化工厂造出来的合金），
+//   唯一门槛是不能用气体。MATERIAL_SLOTS 降级为「推荐」标记，只影响排序与提示。
+//   旧实现 `.filter(ownedMat.has)` 会把没库存的材料全滤掉 —— 现在只做灰显，不再剔除，
+//   这样玩家能提前看到「我造出来的合金在这里能用」。
+function makeMaterialSelect(slot, value, onChange, ownedMat, inst) {
+  const opts = materialOptionsFor(slot, inst, { lookup: materialLookup(inst) });
+  const def = DEFAULT_MATERIAL[slot];
+  const rows = opts.map((o) => {
+    const tags = [];
+    if (o.custom) tags.push('自造');
+    if (o.recommended) tags.push('推荐');
+    if (ownedMat && !ownedMat.has(o.name)) tags.push('暂无库存');
+    const suffix = tags.length ? '· ' + tags.join(' ') : '';
+    return [o.name, `${o.name}（结构 ×${o.structMul.toFixed(2)} · 质量 ×${o.massMul.toFixed(2)}${suffix ? ' · ' + suffix : ''}）`];
+  });
+  // 当前选中的值即使已不在候选里也保留（老蓝图引用了已删除材料时不至于空白）
+  if (value && !opts.some((o) => o.name === value)) {
+    rows.unshift([value, `${value}（当前蓝图所用）`]);
+  }
+  return makeSelect(rows, value || def, onChange);
 }
 
 function addButton(label, onClick) {
@@ -113,6 +122,8 @@ export function renderDesign(container, ctx) {
   //   物品栏：ownedOf(inst, mat) > 0；装备栏：equipmentList(inst) 含该部件且 count > 0。
   //   取不到星球实例时退化为「全部可列」（设计入口本就只在造出船坞后出现，inst 必存在）。
   const inst = planetCode ? getPlanetInstance(planetCode) : null;
+  // v0.4.6：材料候选表（内置 + 自定义合金），供所有材料下拉复用
+  const matLookup = materialLookup(inst);
   const ownedMat = new Set();
   const ownedEquip = new Set();
   if (inst) {
@@ -127,7 +138,8 @@ export function renderDesign(container, ctx) {
   function facAvailable(f) {
     if (ownedEquip.has(f.id)) return true;
     if (f.materialSlot) {
-      const mats = MATERIAL_SLOTS[f.materialSlot] || [];
+      // v0.4.6：改为「玩家持有**任意**可投料材料」即可选，不再只看硬编码白名单
+      const mats = materialOptionsFor(f.materialSlot, inst, { lookup: matLookup }).map((o) => o.name);
       if (mats.some((m) => ownedMat.has(m))) return true;
     }
     return false;
@@ -233,7 +245,7 @@ export function renderDesign(container, ctx) {
     draft.hullMaterial = DEFAULT_MATERIAL.hull;
     render();
   }));
-  hullRow.appendChild(makeMaterialSelect('hull', draft.hullMaterial, (v) => { draft.hullMaterial = v; render(); }, ownedMat));
+  hullRow.appendChild(makeMaterialSelect('hull', draft.hullMaterial, (v) => { draft.hullMaterial = v; render(); }, ownedMat, inst));
   hullRow.appendChild(costHint);
   box.appendChild(hullRow);
 
@@ -247,7 +259,7 @@ export function renderDesign(container, ctx) {
       row.appendChild(makeSelect(ENGINES.map((e) => [e.id, `${e.nameCn}（推力 ${e.thrust} · ${e.mass}）`]), eng.id, (v) => {
         eng.id = v; render();
       }));
-      row.appendChild(makeMaterialSelect('engine', eng.material, (v) => { eng.material = v; render(); }, ownedMat));
+      row.appendChild(makeMaterialSelect('engine', eng.material, (v) => { eng.material = v; render(); }, ownedMat, inst));
       row.appendChild(removeButton(() => { draft.engines.splice(i, 1); render(); }));
       engineWrap.appendChild(row);
     });
@@ -272,7 +284,7 @@ export function renderDesign(container, ctx) {
       row.appendChild(makeSelect(WEAPONS.map((w) => [w.id, `${w.nameCn}（伤害 ${w.damage} · 占地 ${w.footprint}）`]), p.id, (v) => {
         p.id = v; render();
       }));
-      row.appendChild(makeMaterialSelect('weapon', p.material, (v) => { p.material = v; render(); }, ownedMat));
+      row.appendChild(makeMaterialSelect('weapon', p.material, (v) => { p.material = v; render(); }, ownedMat, inst));
       row.appendChild(removeButton(() => { draft.parts.splice(i, 1); render(); }));
       weaponWrap.appendChild(row);
     });
@@ -348,7 +360,7 @@ export function renderDesign(container, ctx) {
     const rpCost = HULL_RP_COST[draft.hullId] || 0;
     costHint.textContent = '研究点 ' + fmtNum(rpCost);
 
-    const ev = evaluateBlueprint(draft, { researched, ships: account.ships });
+    const ev = evaluateBlueprint(draft, { researched, ships: account.ships, lookup: matLookup });
     evalPanel.innerHTML = '';
     const grid = el('div', 'bp-eval-grid');
     const rows = [
@@ -438,7 +450,7 @@ export function renderDesign(container, ctx) {
     const card = el('div', 'dsn-saved-card glass');
     card.appendChild(el('div', 'dsn-saved-hint muted',
       '已保存蓝图 · 仅展示数值（右侧可直接建造；点「展开编辑」修改设施 / 材料）'));
-    const ev = evaluateBlueprint(bp, { researched, ships: account.ships });
+    const ev = evaluateBlueprint(bp, { researched, ships: account.ships, lookup: matLookup });
     const grid = el('div', 'bp-eval-grid');
     const rows = [
       ['容量占用', `${fmtNum(ev.footprint)} / ${fmtNum(ev.capacity)}`

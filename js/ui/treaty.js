@@ -15,10 +15,10 @@
 // ============================================================================
 
 import { treatyOptions, treatyAvailability, treatyOutcome, allyCountOf, partitionShares, signTreaty }
-  from '../core/treaty.js?v=45.10';
-import { regionsOf, applyTreatyToTheater } from '../core/theater.js?v=45.10';
-import { endWar } from '../core/war.js?v=45.10';
-import { fmtNum } from '../core/format.js?v=45.10';
+  from '../core/treaty.js?v=46.11';
+import { regionsOf, applyTreatyToTheater } from '../core/theater.js?v=46.11';
+import { endWar } from '../core/war.js?v=46.11';
+import { fmtNum } from '../core/format.js?v=46.11';
 
 // 与 galaxy.js 同款 el()（本项目没有 ui/common.js，每个 UI 文件各自带一份）
 function el(tag, cls, text) {

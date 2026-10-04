@@ -1,4 +1,4 @@
-// 人力面板 UI（Astrix，零依赖原生 ES module）
+﻿// 人力面板 UI（Astrix，零依赖原生 ES module）
 // 数据来自 js/core/population.js（分配与代谢）与 js/core/state.js（建筑计数）。
 //
 // ============================================================================
@@ -13,24 +13,26 @@
 // 3. **新增人数输入栏**：每行都有 −/输入框/＋/满员，方便大规模分配（人数很多时不用点几百次）。
 // 4. 顶部营养区改为 3 消耗（氧气/有机质/水）+ 3 产出（二氧化碳/甲烷/氨气）。
 
-import { fmtNum, fmtRate } from '../core/format.js?v=45.10';
-import { BUILDINGS, BUILDING_BY_ID } from '../data/buildings.js?v=45.10';
+import { fmtNum, fmtRate } from '../core/format.js?v=46.11';
+import { BUILDINGS, BUILDING_BY_ID } from '../data/buildings.js?v=46.11';
 import {
   createPopulation, assignWorkers, setJobIntensity, getIntensity,
   getTotalLabor, getAssigned, getAvailable, consumptionPerSec, metabolitePerSec,
   JOBS, JOBS_BY_BUILDING, WORK_INTENSITY,
   assignedToBuilding, freeSlots, jobCapacity, hiddenJobCount, getJobCount,
   MANAGE_MODES, manageModeOf,
-} from '../core/population.js?v=45.10';
-import { getBuildingCounts, currentAccount } from '../core/state.js?v=45.10';
-import { ARMY_BP_BY_ID } from '../data/army_parts.js?v=45.10';   // v0.2.0 军队组装线命名
+} from '../core/population.js?v=46.11';
+import { getBuildingCounts, currentAccount } from '../core/state.js?v=46.11';
+import { ARMY_BP_BY_ID } from '../data/army_parts.js?v=46.11';   // v0.2.0 军队组装线命名
 // v0.1.1（需求 20）：殖民管理模式——判断本星球是否由电脑接管发展
-import { modeOf } from '../core/planetgen.js?v=45.10';
+import { modeOf } from '../core/planetgen.js?v=46.11';
 // v0.2.3（需求）：殖民地报告历史已从人力页移除 —— 报告只在「星球选择 / 星际」的
 //   每颗星球行内联展示（colony.js），不再在人力页保留历史副本。
 // v0.0.7：生产线接口（核心模块正在实现中）。用命名空间导入 + 函数存在性守卫，
 //   若接口尚未落地（addLine 等不是函数），本文件不会报错，也不渲染生产线区块。
-import * as PR from '../core/production.js?v=45.10';
+import * as PR from '../core/production.js?v=46.11';
+// v0.4.6 需求 12：自定义化工厂（定义合金）的界面 —— 此前 UI 层完全没有这个入口
+import { renderAlloyForge } from './alloy.js?v=46.11';
 
 // 取/建星球上的人口对象（挂在 planet.pop，首次访问惰性创建）
 function ensurePop(planet) {
@@ -401,6 +403,21 @@ function renderProductionBlock(panel, root, planet) {
 
   const linesWrap = el('div', { class: 'pop-lines' });
   block.appendChild(linesWrap);
+
+  // v0.4.6 需求 12：**自定义化工厂 —— 定义新合金的完整 UI**。
+  //   此前 core/production.js#makeCustomMaterial 与「自定义化工厂」建筑都已存在，
+  //   但**整个 UI 层没有任何入口**（全项目搜不到 makeCustomMaterial 的调用点），
+  //   玩家根本没法定义合金 —— 需求 12 实际上只做了一半（数据层有、入口没有）。
+  //   现在把它接到生产线区块里：只有建过自定义化工厂的星球才会出现。
+  if (typeof PR.makeCustomMaterial === 'function'
+    && typeof PR.listCustomMaterials === 'function') {
+    // v0.4.6：回调必须是**函数**。此前误传了 root（DOM 元素），
+    //   一旦点「定义合金」就抛「rerender is not a function」——新增的功能完全不能用。
+    const redraw = (typeof root === 'function') ? root
+      : () => { try { renderPopulation(root, planet); } catch (e) { /* 忽略 */ } };
+    const forge = renderAlloyForge(planet, redraw);
+    if (forge) block.appendChild(forge);
+  }
 
   // 新建表单的临时状态
   const draft = { buildingId: null, recipeId: null, material: null };

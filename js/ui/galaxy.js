@@ -16,20 +16,20 @@ import {
   ensureReady, cloudStatus, cloudUser,
   loginWithName, registerWithName, signOutCloud,
   listPublicPlanets, publishMyPlanet, postIncident, fetchInbox, markIncidentResolved,
-} from '../core/cloud.js?v=45.10';
-import { currentAccount, getPlanetInstance, ownedOf, spendOwned } from '../core/state.js?v=45.10';
-import { ensureEntry } from '../core/production.js?v=45.10';
-import { listFleets, fleetPowerOf, defenseBonusOf } from '../core/fleet.js?v=45.10';
-import { totalArmyPowerOf, listArmies, disbandArmy, resolveBattle, armyToUnit, armyPowerOfInstance } from '../core/army.js?v=45.10';
+} from '../core/cloud.js?v=46.11';
+import { currentAccount, getPlanetInstance, ownedOf, spendOwned } from '../core/state.js?v=46.11';
+import { ensureEntry } from '../core/production.js?v=46.11';
+import { listFleets, fleetPowerOf, defenseBonusOf } from '../core/fleet.js?v=46.11';
+import { totalArmyPowerOf, listArmies, disbandArmy, resolveBattle, armyToUnit, armyPowerOfInstance } from '../core/army.js?v=46.11';
 // v0.2.1：内嵌殖民地管理（含内联报告），取代在线模式独立的「星球选择」tab
-import { renderColony } from './colony.js?v=45.10';
-import { PLANETS } from '../data/planets.js?v=45.10';
-import { HOI_NATIONS, HOI_BY_ID, HOI_SCENARIO_ID } from '../data/hoi1936.js?v=45.10';   // v0.2.6 官方 mod
-import { declareWar, activeWarsOf, warWith, addWarScore, canForceSurrender, draftTreaty, endWar, surrenderWar } from '../core/war.js?v=45.10';
-import { postwarOptionsFor, applyPostwarChoice, canJustify, startJustify, justifyStatusOf, histWarGateFor } from '../core/hoi1936.js?v=45.10';
+import { renderColony } from './colony.js?v=46.11';
+import { PLANETS } from '../data/planets.js?v=46.11';
+import { HOI_NATIONS, HOI_BY_ID, HOI_SCENARIO_ID } from '../data/hoi1936.js?v=46.11';   // v0.2.6 官方 mod
+import { declareWar, activeWarsOf, warWith, addWarScore, canForceSurrender, draftTreaty, endWar, surrenderWar } from '../core/war.js?v=46.11';
+import { postwarOptionsFor, applyPostwarChoice, canJustify, startJustify, justifyStatusOf, histWarGateFor } from '../core/hoi1936.js?v=46.11';
 // v0.4.5（需求 4）：和平会议取代「写死和约 + 事后二选一弹窗」
-import { openPeaceConference } from './treaty.js?v=45.10';
-import { fmtNum } from '../core/format.js?v=45.10';
+import { openPeaceConference } from './treaty.js?v=46.11';
+import { fmtNum } from '../core/format.js?v=46.11';
 
 function el(tag, cls, text) {
   const e = document.createElement(tag);

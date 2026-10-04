@@ -5,17 +5,17 @@
 //   · 顶部：剧本日历（到天）、国家、阵营、人口、军队 / 舰队概览
 //   · 国策树：工业 / 军事 / 外交三支，各两支；按游戏天数推进，完成即生效
 //   · 轨道圈层：母星行星的 7 个轨道圈层，争夺轨道控制权
-import { fmtNum } from '../core/format.js?v=45.10';
-import { currentAccount, getPlanetInstance } from '../core/state.js?v=45.10';
-import { listArmies, totalArmyPowerOf } from '../core/army.js?v=45.10';
-import { listFleets, fleetPowerOf } from '../core/fleet.js?v=45.10';
+import { fmtNum } from '../core/format.js?v=46.11';
+import { currentAccount, getPlanetInstance } from '../core/state.js?v=46.11';
+import { listArmies, totalArmyPowerOf } from '../core/army.js?v=46.11';
+import { listFleets, fleetPowerOf } from '../core/fleet.js?v=46.11';
 import {
   scenarioDateOf, gameDaysOf, ensureFocus, focusOptionsOf, startFocus,
   ensureSeas, contestSea, blocNameOf, nationOf, deepOf, enemySeaPressure, backgroundOf, HOI_SCENARIO_ID,
   listHistTargets, histWarGateFor,
-} from '../core/hoi1936.js?v=45.10';
+} from '../core/hoi1936.js?v=46.11';
 // v0.3.3：战争数据（实时交战双方状态）
-import { activeWarsOf } from '../core/war.js?v=45.10';
+import { activeWarsOf } from '../core/war.js?v=46.11';
 // v0.3.4：战役系统（师级交战 / 组织度 / 补给 / 工事 / 增援）—— 替代「只有进度条」
 import {
   listBattles, battleView, startBattle, committableArmies, foeRemaining,
@@ -23,7 +23,7 @@ import {
   ORBITAL_BOMB_CHARGES, orbitalControlOf,
   // v0.4.5（需求 2）：指挥官 + 战役事件
   commandersOf, assignCommander, battleById,
-} from '../core/battle.js?v=45.10';
+} from '../core/battle.js?v=46.11';
 // v0.4.1：行星战区地图（战区归属 / 补给网络 / 战略轨道打击 / 殖民地争夺）
 import {
   ensureTheater, theaterView, attackTargetsOf, canStrikeRegion, strikeRegion,
@@ -31,8 +31,8 @@ import {
   frontInfoOf as THfrontInfo, canOpenFront as THcanFront,
   REGION_MAX_FRONTS as TH_MAX_FRONTS, SIEGE_REQUIRED as TH_SIEGE,
   regionYieldOf, colonySupportOf,
-} from '../core/theater.js?v=45.10';
-import { HOI_SEAS, HOI_BY_ID, HIST_TIMELINE } from '../data/hoi1936.js?v=45.10';
+} from '../core/theater.js?v=46.11';
+import { HOI_SEAS, HOI_BY_ID, HIST_TIMELINE } from '../data/hoi1936.js?v=46.11';
 
 // v0.4.1：地图交互状态（同样放模块级，避免每秒重绘冲掉选中项）
 // v0.4.3：plan = 多路战线规划（同时开辟多条战线），mode='plan' 时点目标只入队不立即开战

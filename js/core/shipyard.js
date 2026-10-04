@@ -1,4 +1,4 @@
-// 船坞核心逻辑（Astrix v0.0.4）
+﻿// 船坞核心逻辑（Astrix v0.0.4）
 // 纯计算模块，不碰 DOM。负责：
 //   1. 材料 → 部件属性的换算（外壳/引擎/武器/装甲都可自选材料）
 //   2. 蓝图校验（容量 ≥ 占地、必须有引擎与乘员仓、型号是否已研究）
@@ -10,18 +10,18 @@
 // 全部公式集中在这里，方便策划调参
 // ============================================================================
 
-import { MATERIALS } from '../data/materials.js?v=45.10';
+import { MATERIALS } from '../data/materials.js?v=46.11';
 import {
   PART_BY_ID, HULLS, ENGINES, WEAPONS, FACILITIES, MARKS,
   MATERIAL_SLOTS, DEFAULT_MATERIAL, PART_CATEGORIES,
   craftableParts, isPartUnlocked,
-} from '../data/ship_parts.js?v=45.10';
+} from '../data/ship_parts.js?v=46.11';
 // 军用部件（ap_*）与舰船部件共用 inst.equipment 库存（key=partId@材料），
 // 装备清单/拍卖行列装备时必须两类都能解析出中文名（v0.2.8 修复：军用装备露出英文 id）
-import { ARMY_PART_BY_ID } from '../data/army_parts.js?v=45.10';
-import { POWER_FACILITY_BY_ID } from '../data/facilities.js?v=45.10';
-import { FUEL_BY_NAME } from '../data/fuels.js?v=45.10';
-import { PLANETS } from '../data/planets.js?v=45.10';
+import { ARMY_PART_BY_ID } from '../data/army_parts.js?v=46.11';
+import { POWER_FACILITY_BY_ID } from '../data/facilities.js?v=46.11';
+import { FUEL_BY_NAME } from '../data/fuels.js?v=46.11';
+import { PLANETS } from '../data/planets.js?v=46.11';
 
 // 自建材料中文名索引（materials.js 只导出 MATERIALS 数组）
 const MAT_BY_NAME = Object.fromEntries(MATERIALS.map((m) => [m.nameCn, m]));
@@ -48,8 +48,156 @@ export const MELT_FACTOR = { hull: 0.40, engine: 0.55, weapon: 0.50, facility: 0
 
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 
-export function materialMul(name) {
-  const m = MAT_BY_NAME[name];
+// ============================================================================
+// v0.4.6 需求 11：**任意材料** —— 装备制造与蓝图不再受硬编码白名单限制
+// ============================================================================
+//
+// 根因：这里过去只有一张写死的 `MATERIAL_SLOTS` 白名单（ship_parts.js），
+//   4 个槽位各列十来种材料。后果是：
+//     · **自定义化工厂造出来的合金永远选不上**（不在白名单里）；
+//     · 白名单漏掉的精加工产物 / 新材料也一并选不上；
+//     · `materialMul` 只查 `MAT_BY_NAME`（内置表），就算硬塞一个自定义材料进去，
+//       也会**静默返回 ×1.00 基准倍率**而不是它真实的强度/密度 ——
+//       玩家以为在用强力合金，实际拿到的是铁的数值。
+//
+// 现在改成：**除气体外，任何材料都能选**。唯一的物理门槛是不能拿气体造外壳。
+// 气体名单沿用 v0.0.61 冻结的那一份（GAS_NAMES），不新增也不放宽。
+//
+// lookup 参数：调用方传入 `materialLookup(inst)`（内置 + 自定义合金的合并表，
+//   见 core/production.js）。本模块**不 import production.js**（会被反向依赖成环），
+//   所以用注入的方式拿自定义材料。
+// ============================================================================
+
+/** 气体材料：不能作为结构材料（沿用 v0.0.61 冻结名单） */
+export const GAS_NAMES = new Set(['氮气', '氧气', '氨气', '甲烷', '二氧化碳', '氢气']);
+
+/**
+ * 该材料能否作为结构材料投料。
+ * 只排除气体 —— 其余（精加工产物、自定义合金、乃至未来新增材料）一律允许。
+ */
+export function isStructurableMaterial(name, lookup) {
+  const nm = String(name || '').trim();
+  if (!nm) return false;
+  if (GAS_NAMES.has(nm)) return false;
+  const L = lookup || MAT_BY_NAME;
+  return !!(L[nm] || MAT_BY_NAME[nm]);
+}
+
+/** 该材料是不是玩家自造的合金（用于 UI 上打「自造」标记） */
+export function isCustomMaterial(name, customNames) {
+  if (!customNames) return false;
+  if (customNames instanceof Set) return customNames.has(name);
+  if (Array.isArray(customNames)) return customNames.indexOf(name) >= 0;
+  return false;
+}
+
+/**
+ * 某个材料槽的**完整候选清单**（需求 11 的统一入口）。
+ *
+ * @param slot  槽位名（hull/engine/weapon/armor…），只用来挑「推荐材料」排序
+ * @param inst  星球实例（用于合并 inst.customMaterials 自定义合金）
+ * @param opts  { lookup, customNames, ownedOf, onlyOwned }
+ * @returns [{ name, structMul, massMul, heatMul, custom, recommended, owned }]
+ *
+ * 排序：先按「是否推荐」（白名单里的经典材料排前面），再按结构倍率降序。
+ * 这样既保留老玩家熟悉的顺序，又让自定义合金能被看到。
+ */
+export function materialOptionsFor(slot, inst, opts) {
+  const o = opts || {};
+  const custom = listCustomEntries(inst);
+  const customNames = o.customNames || custom.map((c) => c.name);
+  const recommended = RECOMMENDED_BY_SLOT[slot] || [];
+  const names = new Set();
+  // 1) 自定义合金（这是 v0.4.6 最大的新增来源）
+  for (const c of custom) names.add(c.name);
+  // 2) 内置材料：全部实体材料（不再只取白名单）
+  for (const m of MATERIALS) {
+    if (m && m.nameCn) names.add(m.nameCn);
+  }
+  const out = [];
+  for (const name of names) {
+    if (!isStructurableMaterial(name, o.lookup)) continue;
+    const mul = materialMul(name, o.lookup);
+    out.push({
+      name,
+      label: name,
+      structMul: mul.structMul,
+      massMul: mul.massMul,
+      heatMul: mul.heatMul,
+      custom: isCustomMaterial(name, customNames),
+      recommended: recommended.indexOf(name) >= 0,
+      owned: typeof o.ownedOf === 'function' ? (Number(o.ownedOf(name)) || 0) : null,
+    });
+  }
+  out.sort((a, b) => {
+    if (a.recommended !== b.recommended) return a.recommended ? -1 : 1;
+    return b.structMul - a.structMul;
+  });
+  if (o.onlyOwned) return out.filter((x) => (x.owned || 0) > 0);
+  return out;
+}
+
+// 内部：读星球的自定义合金表（只取 nameCn 列表，不 import production.js）
+function listCustomEntries(inst) {
+  const t = inst && inst.customMaterials;
+  if (!t || typeof t !== 'object' || Array.isArray(t)) return [];
+  const out = [];
+  for (const k in t) {
+    const m = t[k] && t[k].material;
+    if (m && m.nameCn) out.push({ name: m.nameCn, mat: m });
+  }
+  return out;
+}
+
+// 内部：推荐材料表（只影响排序，不是白名单）
+const RECOMMENDED_BY_SLOT = {
+  hull: ['铝', '铝合金', '铁', '钢', '钛', '钛合金', '碳化钨', '陶瓷', '石墨烯', '纳米碳合金'],
+  engine: ['铝', '铁', '钢', '钛', '钛合金', '碳化钨'],
+  weapon: ['铁', '钢', '钛', '钛合金', '钨', '碳化钨', '石墨烯', '纳米碳合金'],
+  armor: ['铁', '钢', '钛', '钨', '碳化钨', '陶瓷', '石墨烯', '纳米碳合金', '铱'],
+};
+
+/**
+ * 材料合并表：内置材料 + 玩家自造合金。
+ * 放在本模块（而不是 core/production.js）是为了**避开循环依赖** ——
+ * production.js 与 state.js 互相引用，从 UI 层直接 import production.js
+ * 会在模块求值顺序不对时抛「Cannot access '_getInst' before initialization」。
+ * 本函数是纯函数（只读 inst.customMaterials），不依赖 state.js。
+ *
+ * 同时把结果登记到 ACTIVE_LOOKUP，让深层路径（战区结算 / 军队战力）也能用到自定义合金。
+ */
+export function materialLookupFor(inst) {
+  const out = { ...MAT_BY_NAME };
+  const list = listCustomEntries(inst);
+  for (const c of list) if (c.name) out[c.name] = c.mat;
+  if (list.length) setActiveMaterialLookup(out);
+  return out;
+}
+
+/**
+ * 当前生效的材料表（内置 + 玩家自造合金）。
+ *
+ * 为什么需要这个「全局」而不是纯参数注入：`materialMul` / `resolvePart` /
+ * `armyStatsOfBp` 这些函数在**战区结算、军队战力、蓝图求值**等深层路径上被调用，
+ * 那些地方拿不到星球实例（也没有参数可传）。若只靠参数注入，自定义合金在这些
+ * 路径上会退回 ×1.00 基准 —— 玩家造了强力合金，军队面板却显示铁的数值。
+ *
+ * production.js 在自造材料的增删处调用 `setActiveMaterialLookup(materialLookup(inst))`
+ * 同步过来。本模块仍不 import production.js（避免循环依赖）。
+ */
+let ACTIVE_LOOKUP = null;
+export function setActiveMaterialLookup(table) {
+  ACTIVE_LOOKUP = (table && typeof table === 'object' && Object.keys(table).length) ? table : null;
+}
+export function getActiveMaterialLookup() { return ACTIVE_LOOKUP || MAT_BY_NAME; }
+
+/**
+ * 材料倍率。lookup 可选（= 内置 + 自定义合金的合并表）。
+ * v0.4.6：必须先查 lookup，否则自定义合金会被当成「查不到」而**静默返回 ×1.00**。
+ */
+export function materialMul(name, lookup) {
+  const L = lookup || ACTIVE_LOOKUP || MAT_BY_NAME;
+  const m = (name && L[name]) || (name && MAT_BY_NAME[name]) || null;
   if (!m) return { structMul: 1, massMul: 1, heatMul: 1, mat: null };
   return {
     structMul: Math.max(STRENGTH_FLOOR, m.strength / BASE_STRENGTH),
@@ -60,7 +208,7 @@ export function materialMul(name) {
 }
 
 // 把一个部件 + 所选材料解析成「实装属性」
-export function resolvePart(partId, materialName) {
+export function resolvePart(partId, materialName, lookup) {
   let p = PART_BY_ID[partId];
   if (!p) {
     // 电力设施（电池/光伏/风机/燃机）：在船上设施体系之外，单独一套数据（facilities.js）。
@@ -91,7 +239,7 @@ export function resolvePart(partId, materialName) {
     };
   }
   const useMat = p.materialSlot ? (materialName || DEFAULT_MATERIAL[p.materialSlot]) : null;
-  const mul = materialMul(useMat);
+  const mul = materialMul(useMat, lookup);
   const out = { ...p, material: useMat, structMul: mul.structMul, massMul: mul.massMul };
 
   if (p.category === 'hull') {
@@ -158,23 +306,24 @@ export function emptyBlueprint() {
 }
 
 // 全船部件（含外壳与引擎）展开成实装属性列表
-export function resolveBlueprint(bp) {
-  const hull = resolvePart(bp.hullId, bp.hullMaterial);
-  const engines = (bp.engines || []).map((e) => resolvePart(e.id, e.material)).filter(Boolean);
-  const parts = (bp.parts || []).map((p) => resolvePart(p.id, p.material)).filter(Boolean);
+// v0.4.6：lookup 可选（内置 + 自定义合金合并表），用于自定义合金的倍率结算
+export function resolveBlueprint(bp, lookup) {
+  const hull = resolvePart(bp.hullId, bp.hullMaterial, lookup);
+  const engines = (bp.engines || []).map((e) => resolvePart(e.id, e.material, lookup)).filter(Boolean);
+  const parts = (bp.parts || []).map((p) => resolvePart(p.id, p.material, lookup)).filter(Boolean);
   return { hull, engines, parts, all: [hull, ...engines, ...parts].filter(Boolean) };
 }
 
 // ---------------------------------------------------------------------------
 // 三、容量 / 占地 / 质量
 // ---------------------------------------------------------------------------
-export function capacityOf(bp) {
-  const hull = resolvePart(bp.hullId, bp.hullMaterial);
+export function capacityOf(bp, lookup) {
+  const hull = resolvePart(bp.hullId, bp.hullMaterial, lookup);
   return hull ? hull.capacity : 0;
 }
 
-export function usedFootprint(bp) {
-  const { parts } = resolveBlueprint(bp);
+export function usedFootprint(bp, lookup) {
+  const { parts } = resolveBlueprint(bp, lookup);
   return parts.reduce((s, p) => s + (p.footprint || 0), 0);
 }
 
@@ -188,8 +337,8 @@ export function usedSlots(bp) {
   return (bp.engines || []).length + (bp.parts || []).length;
 }
 
-export function totalMass(bp) {
-  const { all } = resolveBlueprint(bp);
+export function totalMass(bp, lookup) {
+  const { all } = resolveBlueprint(bp, lookup);
   return +all.reduce((s, p) => s + (p.mass || 0), 0).toFixed(2);
 }
 
@@ -337,18 +486,20 @@ export function nextSerial(ships, className) {
 
 // 完整评估。ctx = { researched: Set|string[], ships: [] }
 export function evaluateBlueprint(bp, ctx = {}) {
+  // v0.4.6：把材料表（内置 + 自定义合金）注入到每一次 resolvePart
+  const lookup = ctx.lookup || null;
+  const hull = resolvePart(bp.hullId, bp.hullMaterial, lookup);
+  const engines = (bp.engines || []).map((e) => resolvePart(e.id, e.material, lookup)).filter(Boolean);
   const errors = [];
   const warnings = [];
   const researched = new Set(ctx.researched || []);
 
-  const hull = resolvePart(bp.hullId, bp.hullMaterial);
   if (!hull) errors.push('未选择外壳');
-  const engines = (bp.engines || []).map((e) => resolvePart(e.id, e.material)).filter(Boolean);
   if (engines.length === 0) errors.push('至少需要 1 台引擎');
   if ((bp.engines || []).length > 4) errors.push('引擎最多 4 台');
 
-  const cap = capacityOf(bp);
-  const foot = usedFootprint(bp);
+  const cap = capacityOf(bp, lookup);
+  const foot = usedFootprint(bp, lookup);
   if (foot > cap) errors.push(`容量不足：已占 ${foot} / ${cap} m³，超出 ${foot - cap} m³`);
 
   // v0.0.8：槽位限制已取消，只按容量。返回值里保留 slots / slotsUsed 供 UI 显示，
@@ -356,7 +507,7 @@ export function evaluateBlueprint(bp, ctx = {}) {
   const slots = hull ? hull.slots : 0;
   const used = usedSlots(bp);
 
-  const { parts } = resolveBlueprint(bp);
+  const { parts } = resolveBlueprint(bp, lookup);
   const hasCrew = parts.some((p) => (p.crew || 0) > 0);
   if (!hasCrew) errors.push('没有乘员仓：无人驾驶的船造不出来');
 

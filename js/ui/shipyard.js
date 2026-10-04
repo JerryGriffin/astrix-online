@@ -1,4 +1,4 @@
-// 船坞界面（Astrix v0.0.4）
+﻿// 船坞界面（Astrix v0.0.4）
 //
 // ============================================================================
 // 职责
@@ -12,28 +12,28 @@
 //
 // 全部数值计算都在 js/core/shipyard.js，本文件只负责渲染与交互。
 
-import { MATERIALS } from '../data/materials.js?v=45.10';
+import { MATERIALS } from '../data/materials.js?v=46.11';
 import {
   HULLS, ENGINES, WEAPONS, FACILITIES,
   MATERIAL_SLOTS, DEFAULT_MATERIAL,
   isPartUnlocked,
-} from '../data/ship_parts.js?v=45.10';
-import { POWER_FACILITIES, POWER_FACILITY_BY_ID } from '../data/facilities.js?v=45.10';
-import { FUELS } from '../data/fuels.js?v=45.10';
+} from '../data/ship_parts.js?v=46.11';
+import { POWER_FACILITIES, POWER_FACILITY_BY_ID } from '../data/facilities.js?v=46.11';
+import { FUELS } from '../data/fuels.js?v=46.11';
 import {
   emptyBlueprint, evaluateBlueprint, launchShip, tickShip,
-  resolvePart, materialMul, safeTempBand, tempStatus, envTempK, equilibriumTemp,
+  resolvePart, materialMul, materialOptionsFor, safeTempBand, tempStatus, envTempK, equilibriumTemp,
   ensureBlueprints, shipBuildCheck, findBlueprint, blueprintBuildCost,
-} from '../core/shipyard.js?v=45.10';
-import { BUILDING_BY_ID } from '../data/buildings.js?v=45.10';
-import { fmtNum, fmtTime } from '../core/format.js?v=45.10';
+} from '../core/shipyard.js?v=46.11';
+import { BUILDING_BY_ID } from '../data/buildings.js?v=46.11';
+import { fmtNum, fmtTime } from '../core/format.js?v=46.11';
 // v0.0.5：建筑计数已迁到星球实例（inst.buildings），船坞工占用来自人力系统
-import { getPlanetInstance, getBuildingCounts, currentAccount } from '../core/state.js?v=45.10';
-import { jobsOfBuilding, getJobCount, buildingSlots, assignedToBuilding, freeSlots, getIntensity } from '../core/population.js?v=45.10';
+import { getPlanetInstance, getBuildingCounts, currentAccount } from '../core/state.js?v=46.11';
+import { jobsOfBuilding, getJobCount, buildingSlots, assignedToBuilding, freeSlots, getIntensity } from '../core/population.js?v=46.11';
 // v0.1.1（需求 3）：建造按钮改为创建 dock 造船线，走生产线的工位与人力结算
-import { addLine, ensureLines, linesOf, removeLine, lineSlotInfo, freeLaborOf } from '../core/production.js?v=45.10';
+import { addLine, ensureLines, linesOf, removeLine, lineSlotInfo, freeLaborOf, materialLookup } from '../core/production.js?v=46.11';
 // R19-2：造船除装备外按部件扣材料（spendOwned 整笔扣，ownedOf 查库存），不碰 core/state.js
-import { ownedOf, spendOwned } from '../core/state.js?v=45.10';
+import { ownedOf, spendOwned } from '../core/state.js?v=46.11';
 
 const SHIP_BUILDING_ID = 'dock';
 const SHIP_TECH_ID = 't_e3';
@@ -477,6 +477,8 @@ export function renderShipyard(root, ctx) {
 // ============================================================================
 export function buildBlueprintEditor(account, ctx, bp, researched, rerender, blockReason) {
   const box = el('div', 'bp-box');
+  // v0.4.6：材料候选需要星球实例（读 inst.customMaterials 自定义合金）
+  const inst = getPlanetInstance((bp && bp.planetCode) || (ctx && ctx.planetCode) || 'syl');
 
   // 可选部件（按已研究科技与型号过滤）
   const hullOptions = HULLS.filter((h) => isPartUnlocked(h.id, researched));
@@ -503,7 +505,7 @@ export function buildBlueprintEditor(account, ctx, bp, researched, rerender, blo
     bp.hullId = v; rerender();
   });
   hullRow.appendChild(hullSel);
-  hullRow.appendChild(makeMaterialSelect('hull', bp.hullMaterial, (v) => { bp.hullMaterial = v; rerender(); }));
+  hullRow.appendChild(makeMaterialSelect('hull', bp.hullMaterial, (v) => { bp.hullMaterial = v; rerender(); }, inst));
   box.appendChild(hullRow);
 
   // ---- 引擎 ----
@@ -515,7 +517,7 @@ export function buildBlueprintEditor(account, ctx, bp, researched, rerender, blo
     row.appendChild(makeSelect(engineOptions.map((e) => [e.id, `${e.nameCn}（推力 ${e.thrust} · ${e.mass}）`]), eng.id, (v) => {
       eng.id = v; rerender();
     }));
-    row.appendChild(makeMaterialSelect('engine', eng.material, (v) => { eng.material = v; rerender(); }));
+    row.appendChild(makeMaterialSelect('engine', eng.material, (v) => { eng.material = v; rerender(); }, inst));
     row.appendChild(removeButton(() => { bp.engines.splice(i, 1); rerender(); }));
     box.appendChild(row);
   });
@@ -536,7 +538,7 @@ export function buildBlueprintEditor(account, ctx, bp, researched, rerender, blo
     row.appendChild(makeSelect(weaponOptions.map((w) => [w.id, `${w.nameCn}（伤害 ${w.damage} · 占地 ${w.footprint}）`]), p.id, (v) => {
       p.id = v; rerender();
     }));
-    row.appendChild(makeMaterialSelect('weapon', p.material, (v) => { p.material = v; rerender(); }));
+    row.appendChild(makeMaterialSelect('weapon', p.material, (v) => { p.material = v; rerender(); }, inst));
     row.appendChild(removeButton(() => { bp.parts.splice(i, 1); rerender(); }));
     box.appendChild(row);
   });
@@ -967,13 +969,19 @@ function makeSelect(options, value, onChange) {
   return sel;
 }
 
-function makeMaterialSelect(slot, value, onChange) {
-  const list = MATERIAL_SLOTS[slot] || [];
-  const opts = list.map((name) => {
-    const mul = materialMul(name);
-    return [name, `${name}（结构 ×${mul.structMul.toFixed(2)} · 质量 ×${mul.massMul.toFixed(2)}）`];
+// v0.4.6 需求 11：候选材料改为**全材料**（含自定义化工厂造出来的合金），
+//   唯一门槛是不能用气体。MATERIAL_SLOTS 降级为「推荐」标记（只影响排序与提示）。
+function makeMaterialSelect(slot, value, onChange, inst) {
+  const opts = materialOptionsFor(slot, inst, { lookup: materialLookup(inst) });
+  const rows = opts.map((o) => {
+    const tags = [];
+    if (o.custom) tags.push('自造');
+    if (o.recommended) tags.push('推荐');
+    const suffix = tags.length ? ' · ' + tags.join(' ') : '';
+    return [o.name, `${o.name}（结构 ×${o.structMul.toFixed(2)} · 质量 ×${o.massMul.toFixed(2)}${suffix}）`];
   });
-  return makeSelect(opts, value || DEFAULT_MATERIAL[slot], onChange);
+  if (value && !opts.some((o) => o.name === value)) rows.unshift([value, `${value}（当前蓝图所用）`]);
+  return makeSelect(rows, value || DEFAULT_MATERIAL[slot], onChange);
 }
 
 function addButton(label, onClick) {

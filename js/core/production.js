@@ -1,4 +1,4 @@
-// 生产核心逻辑（Astrix v0.0.6）
+﻿// 生产核心逻辑（Astrix v0.0.6）
 // 纯算法模块，零依赖，浏览器直接 import。
 //
 // 契约来源：docs/TODO_v0.0.6.md 第 1.4 节（冻结接口）。
@@ -13,17 +13,18 @@
 //   * 不修改 state.js / ui/* / data/buildings.js / data/materials.js / data/facilities.js /
 //     data/techs.js / version.js / index.html。
 
-import { RECIPES, RECIPE_BY_ID, recipesOfBuilding, getRecipe } from '../data/recipes.js?v=45.10';
-import { jobsOfBuilding, getIntensity, getAvailable, buildingSlots, jobOutput, manageOutputMulOf } from './population.js?v=45.10';
-import { MATERIALS } from '../data/materials.js?v=45.10';
-import { PART_BY_ID, MATERIAL_SLOTS, craftableParts, craftWorkOf } from '../data/ship_parts.js?v=45.10';
-import { ARMY_PART_BY_ID, ARMY_BP_BY_ID, ARMY_SLOT_BY_CAT, craftableArmyParts } from '../data/army_parts.js?v=45.10';   // v0.2.0 军事部件
-import { POWER_FACILITY_BY_ID } from '../data/facilities.js?v=45.10';
+import { RECIPES, RECIPE_BY_ID, recipesOfBuilding, getRecipe } from '../data/recipes.js?v=46.11';
+import { jobsOfBuilding, getIntensity, getAvailable, buildingSlots, jobOutput, manageOutputMulOf } from './population.js?v=46.11';
+import { MATERIALS } from '../data/materials.js?v=46.11';
+import { PART_BY_ID, craftableParts, craftWorkOf } from '../data/ship_parts.js?v=46.11';
+import { materialOptionsFor } from './shipyard.js?v=46.11';
+import { ARMY_PART_BY_ID, ARMY_BP_BY_ID, ARMY_SLOT_BY_CAT, craftableArmyParts } from '../data/army_parts.js?v=46.11';   // v0.2.0 军事部件
+import { POWER_FACILITY_BY_ID } from '../data/facilities.js?v=46.11';
 // v0.0.92：殖民管理模式对产出的倍率（自由 1.25 / 剥削 1.60 / 领土 0.85 …）
-import { outputMulOf } from './planetgen.js?v=45.10';
-import { addEquipment } from './shipyard.js?v=45.10';
+import { outputMulOf } from './planetgen.js?v=46.11';
+import { addEquipment, setActiveMaterialLookup, materialLookupFor } from './shipyard.js?v=46.11';
 // v0.1.2（需求 18/19）：永久升级「冶炼 / 人力」的乘方效果，唯一实现在 data/upgrades.js#upgradeMul
-import { upgradeMul } from '../data/upgrades.js?v=45.10';
+import { upgradeMul } from '../data/upgrades.js?v=46.11';
 
 // nameCn → 材料对象（供 derivedStatsOf 查属性，纯查表不读 inst）
 const MATERIAL_BY_NAME = Object.fromEntries(MATERIALS.map((m) => [m.nameCn, m]));
@@ -137,14 +138,12 @@ export function customMaterialsOf(inst) {
 
 // 查材料属性用的合并表：内置材料 + 玩家自建材料
 // （这样自建材料也能当另一个自建材料的原料，不会算成 0）
+//
+// v0.4.6：实现搬到 core/shipyard.js#materialLookupFor —— 从 UI 层直接 import
+//   production.js 会因与 state.js 的循环依赖抛「_getInst before initialization」。
+//   这里只做转发，保持既有调用点不变。
 export function materialLookup(inst) {
-  const out = { ...MATERIAL_BY_NAME };
-  const t = customMaterialsOf(inst);
-  for (const k in t) {
-    const m = t[k] && t[k].material;
-    if (m && m.nameCn) out[m.nameCn] = m;
-  }
-  return out;
+  return materialLookupFor(inst);
 }
 
 // ============================================================================
@@ -324,9 +323,29 @@ export function derivedStatsOf(parts, lookup) {
   };
 }
 
-// 自建材料的原料总量门槛（与复合资源同一水平）
+// 自建材料的原料总量门槛
+// v0.4.6 需求 12「任意自选任意数目的原料」：
+//   上限从 **16 抬到 2048**，种数上限从隐含的几种抬到 CUSTOM_KIND_MAX（24 种）。
+//   原本 16 的上限让「自定义合金」只能做点小料，玩家真正想造的
+//   「几十种原料的大合金」在数据层根本表达不出来。
 export const CUSTOM_AMT_MIN = 8;
-export const CUSTOM_AMT_MAX = 16;
+export const CUSTOM_AMT_MAX = 2048;
+/** 最多能选多少种原料（防止存档被撑爆；24 种已远超内置配方所需） */
+export const CUSTOM_KIND_MAX = 24;
+
+// v0.4.6：**合成工时随复杂度增长**（关键平衡点）
+//   原本无论 2 种还是 16 种原料，work 都是写死的 320 ——
+//   于是「多掺材料」是**纯赚**：协同加成 S = 1+0.06(n−1) 与精细度 1+floor(n/3)
+//   都随种数上升，而工时不变。这会让「无脑多掺」成为最优解，自定义合金系统失去取舍。
+//   现在工时随种数与总量显著上升：多掺材料 = 更慢更贵，需要权衡。
+export const CUSTOM_WORK_BASE = 320;
+export function customWorkOf(kindCount, totalAmt) {
+  const n = Math.max(1, Number(kindCount) || 1);
+  const tot = Math.max(0, Number(totalAmt) || 0);
+  // 种数项（主导） + 总量项（次要）
+  const mul = 0.55 + 0.30 * n + tot / 60;
+  return Math.max(CUSTOM_WORK_BASE, Math.round(CUSTOM_WORK_BASE * mul));
+}
 
 // 由名字生成一个稳定、可用于 id 的短串（重名自动加 _2 / _3…）
 function makeCustomKey(name, taken) {
@@ -376,6 +395,10 @@ export function makeCustomMaterial(inst, name, parts) {
     list.push({ mat, amt });
   }
   if (list.length < 2) return { ok: false, reason: '至少要选用 2 种原料。' };
+  // v0.4.6 需求 12：种数上限（CUSTOM_KIND_MAX），此前完全没有限制
+  if (list.length > CUSTOM_KIND_MAX) {
+    return { ok: false, reason: '原料种数最多 ' + CUSTOM_KIND_MAX + ' 种（当前 ' + list.length + ' 种）。' };
+  }
 
   const total = list.reduce((s, p) => s + p.amt, 0);
   if (total < CUSTOM_AMT_MIN) {
@@ -385,15 +408,22 @@ export function makeCustomMaterial(inst, name, parts) {
     return { ok: false, reason: '原料总量最多 ' + CUSTOM_AMT_MAX + '（当前 ' + total + '）。' };
   }
 
+  // v0.4.6 需求 12：**不再要求「定义时就得凑齐全部原料」**。
+  //   旧逻辑 `if (have < p.amt) return 不足` 把「定义配方」和「开工生产」混成了一件事 ——
+  //   玩家在设计阶段就被库存卡住，明明想好配方却存不进去。
+  //   现在只校验**材料存在**（防止手改存档塞不存在的材料名）；
+  //   库存不足只作为**警告**返回（warnings），由 UI 提示「当前缺料」，不阻断定义。
+  //   真正的扣料仍然发生在生产时（tickProduction），那里缺料自然会停线。
+  const warnings = [];
   for (const p of list) {
     const known = MATERIAL_BY_NAME[p.mat] || customMaterialsOf(inst)[p.mat];
-    const have = ownedTotal(inst, p.mat);
-    // v0.0.61：存在性看「材料表里认不认得」，持有量看「跨层总量」
+    // v0.0.61：存在性看「材料表里认不认得」
     if (!known && !findEntry(inst, p.mat)) {
       return { ok: false, reason: '材料「' + p.mat + '」不存在。' };
     }
+    const have = ownedTotal(inst, p.mat);
     if (have + 1e-9 < p.amt) {
-      return { ok: false, reason: '「' + p.mat + '」不足：需要 ' + p.amt + '，现有 ' + Math.floor(have) + '。' };
+      warnings.push('「' + p.mat + '」现有 ' + Math.floor(have) + ' / 需要 ' + p.amt);
     }
   }
 
@@ -415,18 +445,22 @@ export function makeCustomMaterial(inst, name, parts) {
     description: desc,
     derivedFrom: list.map((p) => ({ mat: p.mat, amt: p.amt })),
   };
+  // v0.4.6：工时随原料种数与总量上升（customWorkOf），消除「无脑多掺」的最优解
+  const work = customWorkOf(list.length, total);
   const recipe = {
     id: 'r_custom_' + key,
     buildingId: 'custom_chem',
     nameCn: list.map((p) => p.mat + ' ×' + p.amt).join(' + ') + ' → ' + nm,
     inputs: Object.fromEntries(list.map((p) => [p.mat, p.amt])),
     outputs: { [nm]: 1 },
-    work: 320,
-    desc,
+    work,
+    desc: desc + '（' + list.length + ' 种原料、总量 ' + total + '，合成工时 ' + work + '）',
     custom: true,
+    kindCount: list.length,
+    totalAmt: total,
   };
   table[key] = { material, recipe };
-  return { ok: true, key, material, recipe };
+  return { ok: true, key, material, recipe, warnings };
 }
 
 // 删除一种自定义材料（同时清掉指向它的已选工作内容，避免悬空 id）
@@ -435,6 +469,9 @@ export function removeCustomMaterial(inst, key) {
   if (!table[key]) return false;
   delete table[key];
   if (inst.recipes && inst.recipes.custom_chem === 'r_custom_' + key) delete inst.recipes.custom_chem;
+  // v0.4.6：删除后必须立刻重算合并表，否则被删的合金仍留在
+  //   shipyard.js 的 ACTIVE_LOOKUP 里继续参与 materialMul（幽灵材料）。
+  try { setActiveMaterialLookup(materialLookup(inst)); } catch (e) { /* 忽略 */ }
   return true;
 }
 
@@ -796,23 +833,29 @@ export function recipesForBuilding(inst, buildingId, acc) {
     for (const p of craftableParts()) {
       const r = partRecipe(p.partId);
       if (r) {
-        r.materials = (p.materials && p.materials.length) ? p.materials.slice() : [p.defaultMaterial];
+        // v0.4.6 需求 11：候选材料从**硬编码白名单**换成「除气体外全部可选」
+        //   （内置材料 + 玩家自造合金）。MATERIAL_SLOTS 仅用于推荐排序。
+        const opts = materialOptionsFor(p.materialSlot, inst, { lookup: materialLookup(inst) });
+        r.materialOptions = opts;
+        r.materials = opts.map((o) => o.name);
         r.defaultMaterial = p.defaultMaterial;
         push(r);
       }
     }
-    // v0.2.4：军事部件按材料槽自选材料（复用舰船 MATERIAL_SLOTS），
+    // v0.2.4：军事部件按材料槽自选材料，
     //   投料 = 固定辅料 + 所选材料 × 部件质量（见 partInputsOf）；不同材料造出的部件数值不同。
+    // v0.4.6：同样换成全材料候选（自定义合金可用来造军械了）。
     const tset = new Set((acc && Array.isArray(acc.tech)) ? acc.tech : []);
     for (const ap of craftableArmyParts(tset)) {
       const r = partRecipe(ap.id);
       if (!r) continue;
       const slot = ap.slot || ARMY_SLOT_BY_CAT[ap.cat];
-      const mats = (slot && MATERIAL_SLOTS[slot]) ? MATERIAL_SLOTS[slot] : [];
-      if (mats.length) {
-        r.materials = mats.slice();
+      const opts = materialOptionsFor(slot, inst, { lookup: materialLookup(inst) });
+      if (opts.length) {
+        r.materialOptions = opts;
+        r.materials = opts.map((o) => o.name);
         r.defaultMaterial = '铁';
-        r.choiceHint = '部件材料（军队数值不同）';
+        r.choiceHint = '部件材料（军队数值不同；自定义合金同样可用）';
       }
       push(r);
     }

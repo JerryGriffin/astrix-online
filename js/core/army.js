@@ -12,9 +12,8 @@
 
 import {
   ARMY_BP_BY_ID, ARMY_PART_BY_ID, ARMY_SLOT_BY_CAT, armyBpPartNeeds,
-} from '../data/army_parts.js?v=45.10';
-import { MATERIAL_SLOTS } from '../data/ship_parts.js?v=45.10';
-import { materialMul } from './shipyard.js?v=45.10';   // 无循环：shipyard 不依赖本模块
+} from '../data/army_parts.js?v=46.11';
+import { materialMul, materialOptionsFor } from './shipyard.js?v=46.11';   // 无循环：shipyard 不依赖本模块
 
 // ============================================================================
 // 一、账号军队列表（迁移 + 查询）
@@ -153,10 +152,10 @@ export function getArmyBp(acc, bpOrId) {
 //   武器     → atk ×结构倍率
 //   机动底盘 → speed ×(2 − 质量倍率)（轻材更快、重材更慢，铁不变）
 //   支援     → atk/def ×结构倍率
-export function resolveArmyPart(partId, materialName) {
+export function resolveArmyPart(partId, materialName, lookup) {
   const p = ARMY_PART_BY_ID[partId];
   if (!p) return { atk: 0, def: 0, speed: 0, mass: 0 };
-  const mul = materialMul(materialName || '铁');
+  const mul = materialMul(materialName || '铁', lookup);
   const out = { atk: Number(p.atk) || 0, def: Number(p.def) || 0, speed: Number(p.speed) || 0, mass: Number(p.mass) || 0 };
   if (p.cat === 'mobility') {
     out.speed = Math.round(out.speed * Math.max(0.5, 2 - mul.massMul) * 10) / 10;
@@ -169,11 +168,21 @@ export function resolveArmyPart(partId, materialName) {
   return out;
 }
 
-/** 部件的材料槽候选（UI 下拉用） */
-export function armyPartMaterialOptions(partId) {
+/**
+ * 部件的材料槽候选（UI 下拉用）—— v0.4.6 需求 11。
+ *
+ * 过去这里是 `MATERIAL_SLOTS[slot]`：一张**硬编码白名单**，
+ * 于是自定义化工厂造出来的合金**永远选不上**（不在名单里），
+ * 精加工产物里名单漏掉的也一并选不上。
+ * 现在改为「除气体外全部可选」，白名单降级为**推荐排序**。
+ *
+ * @param inst   星球实例（读 inst.customMaterials）
+ * @param opts   { lookup, ownedOf, onlyOwned }
+ */
+export function armyPartMaterialOptions(partId, inst, opts) {
   const p = ARMY_PART_BY_ID[partId];
-  const slot = p ? (p.slot || ARMY_SLOT_BY_CAT[p.cat]) : null;
-  return (slot && MATERIAL_SLOTS[slot]) ? MATERIAL_SLOTS[slot].slice() : [];
+  const slot = p ? (p.slot || ARMY_SLOT_BY_CAT[p.cat]) : 'hull';
+  return materialOptionsFor(slot, inst, opts);
 }
 
 export function disbandArmy(acc, armyId) {
@@ -188,7 +197,7 @@ export function disbandArmy(acc, armyId) {
 // 二、战力口径（唯一实现；UI 与战斗结算都调这里）
 // ============================================================================
 /** 蓝图静态属性：{ atk, def, speed, mass, men } —— v0.2.4 支持蓝图对象 + 材料实装 + 人数 */
-export function armyStatsOfBp(bpOrId) {
+export function armyStatsOfBp(bpOrId, lookup) {
   const bp = (bpOrId && typeof bpOrId === 'object') ? bpOrId : ARMY_BP_BY_ID[bpOrId];
   const out = { atk: 0, def: 0, speed: 0, mass: 0, men: 0 };
   if (!bp) return out;
@@ -196,7 +205,7 @@ export function armyStatsOfBp(bpOrId) {
   for (const it of bp.parts) {
     const p = ARMY_PART_BY_ID[it.id];
     if (!p) continue;
-    const r = resolveArmyPart(it.id, it.material || '铁');
+    const r = resolveArmyPart(it.id, it.material || '铁', lookup);
     const n = Number(it.count) || 0;
     out.atk += r.atk * n;
     out.def += r.def * n;

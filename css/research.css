@@ -280,3 +280,95 @@
   .shop-mk-act .btn { flex: 1; }
 }
 
+
+/* ============================================================================
+   v0.4.6 需求 12：自定义化工厂（定义合金）
+   ============================================================================
+   配方列表 + 新建表单。表单必须**实时显示推导属性与合成工时** ——
+   因为 v0.4.6 让工时随复杂度上升，玩家需要看到「多掺料」的取舍才能决策。 */
+.alloy-forge {
+  border: 1px solid rgba(124, 215, 255, 0.35);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  margin: 10px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.alloy-forge-title { font-weight: 600; font-size: 13px; }
+.alloy-forge-sub { font-size: 11px; color: var(--muted); line-height: 1.6; }
+
+/* 已有配方 */
+.alloy-list { display: flex; flex-direction: column; gap: 6px; }
+.alloy-list-title { font-size: 12px; color: var(--muted); }
+.alloy-row {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.alloy-row-head { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.alloy-row-head button { margin-left: auto; }
+.alloy-tag {
+  font-size: 11px; color: var(--muted);
+  border: 1px solid var(--border); border-radius: 10px; padding: 1px 7px;
+}
+.alloy-row-desc { font-size: 11px; color: #9FE1CB; }
+.alloy-row-ingr { font-size: 11px; color: var(--muted); line-height: 1.5; }
+.alloy-empty { font-size: 12px; color: var(--muted); }
+
+/* 新建表单 */
+.alloy-form {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.alloy-form-title { font-size: 12px; font-weight: 600; }
+.alloy-name-row { display: flex; align-items: center; gap: 6px; }
+.alloy-lbl { font-size: 11px; color: var(--muted); flex: 0 0 auto; }
+.alloy-in {
+  flex: 1 1 auto; min-height: 38px; min-width: 0;
+  padding: 4px 8px;
+  background: var(--panel); color: inherit;
+  border: 1px solid var(--border); border-radius: 4px;
+}
+
+.alloy-ing-wrap { display: flex; flex-direction: column; gap: 5px; }
+.alloy-ing-row { display: flex; align-items: center; gap: 6px; }
+.alloy-ing-row button { flex: 0 0 auto; min-width: 44px; }
+.alloy-sel {
+  flex: 1 1 auto; min-width: 0; min-height: 38px;
+  padding: 4px 6px;
+  background: var(--panel); color: inherit;
+  border: 1px solid var(--border); border-radius: 4px;
+}
+.alloy-amt {
+  flex: 0 0 76px; min-height: 38px;
+  padding: 4px 6px;
+  background: var(--panel); color: inherit;
+  border: 1px solid var(--border); border-radius: 4px;
+}
+.alloy-hint { font-size: 11px; color: var(--muted); line-height: 1.5; }
+
+.alloy-preview {
+  border-top: 1px dashed var(--border);
+  padding-top: 6px;
+  display: flex; flex-direction: column; gap: 3px;
+}
+.alloy-prev-line { font-size: 11px; color: #7cd7ff; }
+.alloy-lack { font-size: 11px; color: #f0c76b; }
+
+.alloy-acts { display: flex; flex-wrap: wrap; gap: 6px; }
+.alloy-warn:empty { display: none; }
+.alloy-warn { font-size: 11px; color: #f09595; }
+
+@media (max-width: 560px) {
+  .alloy-ing-row { flex-wrap: wrap; }
+  .alloy-sel { flex: 1 1 100%; }
+  .alloy-amt { flex: 1 1 auto; }
+}
