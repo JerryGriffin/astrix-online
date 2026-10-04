@@ -9,10 +9,10 @@
 //   故跨玩家在线竞价暂以本地 NPC 兜底（在线/离线同逻辑）；tickAuctions 预留 cloud 同步钩子，
 //   若日后云端提供公共板即可无缝接入（见 opts.syncCloud）。
 
-import { isEquipmentKey, MARKET_FEE, ascoinOf, priceOf, shopStateOf } from './shop.js?v=44.9';
-import { ownedOf, spendOwned, getPlanetInstance } from './state.js?v=44.9';
-import { equipmentList } from './shipyard.js?v=44.9';
-import { MATERIALS } from '../data/materials.js?v=44.9';
+import { isEquipmentKey, MARKET_FEE, ascoinOf, priceOf, shopStateOf } from './shop.js?v=45.10';
+import { ownedOf, spendOwned, getPlanetInstance } from './state.js?v=45.10';
+import { equipmentList } from './shipyard.js?v=45.10';
+import { MATERIALS } from '../data/materials.js?v=45.10';
 
 const AUCTION_DEFAULT_SEC = 15;     // 竞价窗口（秒）
 const AUCTION_FEE = 0.05;           // 卖家佣金（成交额的 5% 归平台）
@@ -142,10 +142,34 @@ export function createAuction(acc, inst, opts) {
     createdAt: Date.now(),
     status: 'active',         // active | ended
     asset: esc.asset || null, // 飞船托管对象（其余类型结算时按 key 重建）
-    npcCeiling: Math.max(minBid * 2, Math.round(minBid * (2 + Math.random() * 20))), // NPC 出价上限
+    // v0.4.5（需求 3「过于离谱的拍卖价不要有人买」）：
+    //   旧算法 `max(minBid*2, minBid*(2 + rand*20))` 让 NPC 上限高达起拍价的 **22 倍**，
+    //   再叠加 tick 里 `topBid*(1.1~1.35)` 的复利式抬价，成交价会被推到天文数字。
+    //   现改为**锚定公允价**（见 npcCeilingOf）。
+    npcCeiling: npcCeilingOf(acc, type, key, qty, minBid),
   };
   acc.shopAuctions.push(auction);
   return { ok: true, auction };
+}
+
+/** v0.4.5：NPC 出价上限 —— 锚定市价，杜绝离谱成交价 */
+export const NPC_MAX_FAIR_MULTIPLE = 1.8;   // 资源类：最高出到市价的 1.8 倍
+export const NPC_FALLBACK_MULTIPLE = 1.5;   // 算不出市价时：最高出到起拍价的 1.5 倍
+export function npcCeilingOf(acc, type, key, qty, minBid) {
+  const base = Math.max(1, Number(minBid) || 1);
+  let fair = 0;
+  if (type === 'resource') {
+    try {
+      const one = priceOf(acc, key);
+      if (one > 0) fair = one * (Number(qty) || 1);
+    } catch (e) { fair = 0; }
+  }
+  if (fair > 0) {
+    // 公允价过低时（玩家故意天价起拍想抬价）也不允许 NPC 超过起拍价的 1.5 倍
+    const cap = Math.min(fair * NPC_MAX_FAIR_MULTIPLE, base * 1.5);
+    return Math.max(base, Math.round(cap));
+  }
+  return Math.max(base, Math.round(base * NPC_FALLBACK_MULTIPLE));
 }
 
 /** 出价：amount 必须高于当前最高价（首拍需 ≥ 起拍价），且出价人不能拍自己的单 */
@@ -235,7 +259,12 @@ export function tickAuctions(acc, dt, opts) {
       // 越临近结束出价越积极；但不超过上限
       const p = Math.min(0.9, 0.25 + (1 - Math.min(1, remainSec / a.durationSec)) * 0.5);
       if (!npcSeller && a.topBid < a.npcCeiling && Math.random() < p) {
-        const next = Math.min(a.npcCeiling, Math.round(a.topBid > 0 ? a.topBid * (1.1 + Math.random() * 0.25) : a.minBid));
+        // v0.4.5：抬价幅度收敛（原 1.1~1.35 会复利式滚到天文数字），
+        //   且**永远不会超过 npcCeiling**（该上限已由市价锚定）。
+        const step = a.topBid > 0
+          ? Math.max(1, Math.round(a.topBid * (1.04 + Math.random() * 0.10)))
+          : a.minBid;
+        const next = Math.min(a.npcCeiling, step);
         if (next > a.topBid) {
           a.topBid = next;
           a.topBidder = 'npc';

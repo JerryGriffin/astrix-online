@@ -12,16 +12,16 @@
 //
 // 约定：不修改 state.js（账号对象由调用方传入）；互 import 仅限函数体内使用（无 TDZ 风险）。
 
-import { PLANETS } from '../data/planets.js?v=44.9';
+import { PLANETS } from '../data/planets.js?v=45.10';
 import {
   generateRandomPlanet, capturePlanet, captureDefaultPlanet, uncapturedDefaults,
-} from './planetgen.js?v=44.9';
-import { ownedOf, spendOwned, getPlanetInstance } from './state.js?v=44.9';
-import { shipArmyOf } from './army.js?v=44.9';   // v0.2.10 军队/舰队飞船互斥（army 不 import 本文件，无环）
-import { CELL_VOLUME, cellsForEquipmentKey } from './footprint.js?v=44.9';   // 纯聚合工具，state.js 不 import 本文件，无环
-import { resolveBlueprint, totalMass } from './shipyard.js?v=44.9';          // 只读导出：蓝图部件 / 蓝图质量
-import { ensureEntry } from './production.js?v=44.9';                        // 装卸货 / 奖励入包（生产模块不 import 本文件，无环）
-import { fmtNum } from './format.js?v=44.9';
+} from './planetgen.js?v=45.10';
+import { ownedOf, spendOwned, getPlanetInstance } from './state.js?v=45.10';
+import { shipArmyOf } from './army.js?v=45.10';   // v0.2.10 军队/舰队飞船互斥（army 不 import 本文件，无环）
+import { CELL_VOLUME, cellsForEquipmentKey } from './footprint.js?v=45.10';   // 纯聚合工具，state.js 不 import 本文件，无环
+import { resolveBlueprint, totalMass } from './shipyard.js?v=45.10';          // 只读导出：蓝图部件 / 蓝图质量
+import { ensureEntry } from './production.js?v=45.10';                        // 装卸货 / 奖励入包（生产模块不 import 本文件，无环）
+import { fmtNum } from './format.js?v=45.10';
 
 // ============================================================================
 // 编队
@@ -248,17 +248,40 @@ export function fleetPowerOf(acc, fleet) {
   return sum;
 }
 
-/** 编队载货能力（格）：每艘运输船按蓝图 capacity 折算，1 格 = CELL_VOLUME 体积；缺信息时兜底 10 格/船 */
+/**
+ * v0.4.5（需求 5「运输物资时不必非要运输船」）：
+ *   旧实现只有「运输船」（kind==='freighter' 或名字含「运输」）才能带货，
+ *   玩家造了护卫舰/驳船却**完全无法运输**，必须专门再造一艘运输船。
+ *   现在：**任何有货舱的船都能带货**；若编队里一艘有货舱的都没有，
+ *   也允许用任意舰船临时搭载（小额货舱），运输不再被舰型硬卡死。
+ *   运输船依然更划算（货舱大得多），但不再是唯一选择。
+ */
+export const GENERIC_CARGO_CELLS = 5;      // 非运输船临时搭载的兜底货舱（格）
+function cargoCellsOfShip(acc, ship) {
+  if (!ship) return 0;
+  const bps = Array.isArray(acc && acc.blueprints) ? acc.blueprints : [];
+  const bp = bps.find((b) => b && b.id === ship.blueprintId);
+  const cap = Number(bp && bp.capacity) || 0;
+  return cap > 0 ? Math.max(1, Math.ceil(cap / CELL_VOLUME)) : 0;
+}
+
+/** 编队载货能力（格）：运输船与任何有货舱的船都计入 */
 export function fleetCargoCells(acc, fleet) {
   if (!fleet) return 0;
-  const bps = Array.isArray(acc && acc.blueprints) ? acc.blueprints : [];
   let cells = 0;
+  let anyReal = false;
   for (const id of fleet.shipIds) {
     const s = shipById(acc, id);
-    if (!s || !isFreighter(acc, s)) continue;
-    const bp = bps.find((b) => b && b.id === s.blueprintId);
-    const cap = Number(bp && bp.capacity) || 0;
-    cells += cap > 0 ? Math.max(1, Math.ceil(cap / CELL_VOLUME)) : 10;   // 兜底 10 格/船
+    if (!s) continue;
+    const cap = cargoCellsOfShip(acc, s);
+    if (cap > 0) { cells += cap; anyReal = true; }
+    else if (isFreighter(acc, s)) { cells += 10; anyReal = true; }  // 缺信息的运输船兜底 10 格
+  }
+  // 一艘带货舱的都没有 → 允许任意舰船临时搭载（不再硬性要求运输船）
+  if (!anyReal) {
+    for (const id of fleet.shipIds) {
+      if (shipById(acc, id)) { cells += GENERIC_CARGO_CELLS; break; }
+    }
   }
   return cells;
 }
@@ -324,9 +347,9 @@ export function startMission(acc, fleetId, type, targetCode, cargo) {
 
   let cmd = null;
   if (type === 'transport') {
-    // 校验沿用原 cmdTransport：需运输船 + 有货 + 目的地 + 载货格数够
-    const freighters = fleet.shipIds.filter((id) => isFreighter(acc, shipById(acc, id)));
-    if (!freighters.length) return { ok: false, reason: '编队里没有运输船，无法运货' };
+    // 校验沿用原 cmdTransport：有货 + 目的地 + 载货格数够。
+    // v0.4.5（需求 5）：**不再硬性要求运输船** —— 有货舱的船都能带；
+    //   若一艘都没有，fleetCargoCells 会给一个临时搭载的兜底货舱。
     let goods = null;
     let fromShips = false;
     if (cargo && typeof cargo === 'object') {
@@ -349,7 +372,7 @@ export function startMission(acc, fleetId, type, targetCode, cargo) {
     if (need > cap) {
       return {
         ok: false,
-        reason: '载货空间不足：需要 ' + need + ' 格，编队只有 ' + cap + ' 格（可多编入几艘运输船）',
+        reason: '载货空间不足：需要 ' + need + ' 格，编队只有 ' + cap + ' 格（可多编入几艘有货舱的船）',
       };
     }
     cmd = { cargo: goods, fromCode: fleet.homePlanetCode, toCode: targetCode, cells: need, capacity: cap, fromShips };

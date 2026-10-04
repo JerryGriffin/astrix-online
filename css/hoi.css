@@ -518,3 +518,81 @@
   .hoi-war-side { flex: 1 1 100%; }
   .hoi-war-vs { width: 100%; }
 }
+/* ============================================================================
+   v0.4.5 需求 4：和平会议（条约选择）
+   ============================================================================
+   6 张处置卡片，每张都列出**确切得失**而不是笼统描述 ——
+   玩家要在「拿全部领土但重兵驻守」「产出 ×1.6 但易丢」「分给盟友」
+   「最省事但对方保留战力」之间做真实取舍。 */
+.hoi-treaty-conf { display: flex; flex-direction: column; gap: 10px; }
+.hoi-treaty-list { display: flex; flex-direction: column; gap: 8px; max-height: 58vh; overflow-y: auto; }
+
+.hoi-treaty-card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--panel);
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.hoi-treaty-card.is-locked { opacity: 0.55; }
+
+.hoi-treaty-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.hoi-treaty-icon { font-size: 16px; }
+.hoi-treaty-name { font-weight: 600; font-size: 14px; }
+.hoi-treaty-cost { font-size: 11px; color: var(--muted); margin-left: auto; }
+
+.hoi-treaty-desc { font-size: 12px; color: var(--muted); line-height: 1.5; }
+
+.hoi-treaty-gains { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 4px 10px; }
+.hoi-treaty-gain { font-size: 12px; }
+.hoi-treaty-gain.is-good { color: #9FE1CB; }
+.hoi-treaty-gain.is-bad { color: #f09595; }
+
+.hoi-treaty-risk { font-size: 11px; color: #e8c07d; }
+.hoi-treaty-locked { font-size: 11px; color: #f09595; }
+
+.hoi-treaty-shares { display: flex; flex-wrap: wrap; gap: 6px; }
+.hoi-treaty-share {
+  font-size: 11px; padding: 2px 8px; border-radius: 10px;
+  border: 1px solid var(--border); color: var(--muted);
+}
+.hoi-treaty-share.is-me { border-color: #9FE1CB; color: #9FE1CB; }
+
+.hoi-treaty-sign { width: 100%; }
+.hoi-treaty-cancel { width: 100%; }
+
+@media (max-width: 560px) {
+  .hoi-treaty-list { max-height: 64vh; }
+  .hoi-treaty-cost { margin-left: 0; width: 100%; }
+}
+
+/* ============================================================================
+   v0.4.5 需求 2：指挥官 + 战役事件
+   ============================================================================
+   指挥官让「谁来指挥这条战线」变成真实决策；
+   战役事件让战线出现转折点，而不是一条匀速下行的直线。 */
+.hoi-cmd-box,
+.hoi-event-box {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  margin: 6px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.hoi-event-box { border-color: rgba(124, 215, 255, 0.35); }
+
+.hoi-cmd-cur { font-size: 13px; color: #9FE1CB; font-weight: 600; }
+.hoi-cmd-desc { font-size: 11px; color: var(--muted); line-height: 1.5; }
+.hoi-cmd-sel {
+  min-height: 40px;
+  padding: 4px 8px;
+  background: var(--panel);
+  color: inherit;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.hoi-event-box .li { font-size: 11px; color: var(--muted); line-height: 1.5; }

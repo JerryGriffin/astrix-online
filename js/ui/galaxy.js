@@ -16,18 +16,20 @@ import {
   ensureReady, cloudStatus, cloudUser,
   loginWithName, registerWithName, signOutCloud,
   listPublicPlanets, publishMyPlanet, postIncident, fetchInbox, markIncidentResolved,
-} from '../core/cloud.js?v=44.9';
-import { currentAccount, getPlanetInstance, ownedOf, spendOwned } from '../core/state.js?v=44.9';
-import { ensureEntry } from '../core/production.js?v=44.9';
-import { listFleets, fleetPowerOf, defenseBonusOf } from '../core/fleet.js?v=44.9';
-import { totalArmyPowerOf, listArmies, disbandArmy, resolveBattle, armyToUnit, armyPowerOfInstance } from '../core/army.js?v=44.9';
+} from '../core/cloud.js?v=45.10';
+import { currentAccount, getPlanetInstance, ownedOf, spendOwned } from '../core/state.js?v=45.10';
+import { ensureEntry } from '../core/production.js?v=45.10';
+import { listFleets, fleetPowerOf, defenseBonusOf } from '../core/fleet.js?v=45.10';
+import { totalArmyPowerOf, listArmies, disbandArmy, resolveBattle, armyToUnit, armyPowerOfInstance } from '../core/army.js?v=45.10';
 // v0.2.1：内嵌殖民地管理（含内联报告），取代在线模式独立的「星球选择」tab
-import { renderColony } from './colony.js?v=44.9';
-import { PLANETS } from '../data/planets.js?v=44.9';
-import { HOI_NATIONS, HOI_BY_ID, HOI_SCENARIO_ID } from '../data/hoi1936.js?v=44.9';   // v0.2.6 官方 mod
-import { declareWar, activeWarsOf, warWith, addWarScore, canForceSurrender, draftTreaty, endWar, surrenderWar } from '../core/war.js?v=44.9';
-import { postwarOptionsFor, applyPostwarChoice, canJustify, startJustify, justifyStatusOf, histWarGateFor } from '../core/hoi1936.js?v=44.9';
-import { fmtNum } from '../core/format.js?v=44.9';
+import { renderColony } from './colony.js?v=45.10';
+import { PLANETS } from '../data/planets.js?v=45.10';
+import { HOI_NATIONS, HOI_BY_ID, HOI_SCENARIO_ID } from '../data/hoi1936.js?v=45.10';   // v0.2.6 官方 mod
+import { declareWar, activeWarsOf, warWith, addWarScore, canForceSurrender, draftTreaty, endWar, surrenderWar } from '../core/war.js?v=45.10';
+import { postwarOptionsFor, applyPostwarChoice, canJustify, startJustify, justifyStatusOf, histWarGateFor } from '../core/hoi1936.js?v=45.10';
+// v0.4.5（需求 4）：和平会议取代「写死和约 + 事后二选一弹窗」
+import { openPeaceConference } from './treaty.js?v=45.10';
+import { fmtNum } from '../core/format.js?v=45.10';
 
 function el(tag, cls, text) {
   const e = document.createElement(tag);
@@ -1047,40 +1049,15 @@ function buildNpcCard(f, ctx, rerender, acc) {
     wTag.style.fontSize = '12px';
     wTag.style.color = w.myScore >= w.theirScore ? '#9FE1CB' : '#f09595';
     act.appendChild(wTag);
-    const press = el('button', 'btn btn-sm btn-primary', '迫降签约');
+    // v0.4.5（需求 4）：和平会议 —— 不再是「一份写死和约 + 一个二选一按钮」，
+    //   而是先开和平会议让玩家**在 6 种处置里选一种并看到确切得失**，
+    //   选定后才结束战争。此前流程硬编码了 draftTreaty（赔款直接入账），
+    //   战后处置只是挂在结算之后的弹窗，且不改动地图领土。
+    const press = el('button', 'btn btn-sm btn-primary', '和平会议');
     press.addEventListener('click', () => {
       const chk = canForceSurrender(acc, f.id);
       if (!chk.ok) { alert(chk.reason); return; }
-      const terms = draftTreaty(w, Number(st.ascoin) || 0, {});
-      acc.ascoin = (Number(acc.ascoin) || 0) + terms.reparations;
-      acc.defeatedNations = Array.isArray(acc.defeatedNations) ? acc.defeatedNations : [];
-      const nid = f.hoi ? f.hoi.id : f.id;
-      if (!acc.defeatedNations.includes(nid)) acc.defeatedNations.push(nid);
-      endWar(acc, f.id, 'me', terms, '迫降 ' + f.nameCn + ' 并签订条约');
-      // v0.2.6 rev8：战后处置 —— 吞并 / 成立傀儡政权（史实名）
-      const nidPost = f.hoi ? f.hoi.id : null;
-      const opts = nidPost ? postwarOptionsFor(nidPost) : [];
-      if (opts.length > 1 && ctx.openModal) {
-        const wrap2 = el('div');
-        wrap2.appendChild(el('p', 'modal-tip', '「' + f.nameCn + '」已承认战败，赔款 '
-          + fmtNum(terms.reparations) + ' Ascoin 入账。请决定战后处置：'));
-        for (const op of opts) {
-          const b = el('button', 'btn btn-sm btn-primary', op.nameCn);
-          b.style.minHeight = '44px';
-          b.style.marginRight = '8px';
-          b.addEventListener('click', () => {
-            const r = applyPostwarChoice(acc, nidPost, op.key);
-            ctx.closeModal && ctx.closeModal();
-            alert(r.ok ? r.text : (r.reason || '处置失败'));
-            refresh();
-          });
-          wrap2.appendChild(b);
-        }
-        ctx.openModal({ title: '战后处置：' + f.nameCn, body: wrap2 });
-      } else {
-        alert('迫降成功！条约赔款 ' + fmtNum(terms.reparations) + ' Ascoin 已入账，「' + f.nameCn + '」承认战败。');
-      }
-      refresh();
+      openPeaceConference(acc, w, f, st, ctx, refresh);
     });
     const sur = el('button', 'btn btn-sm', '我方投降');
     sur.addEventListener('click', () => {

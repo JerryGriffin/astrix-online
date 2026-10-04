@@ -5,23 +5,25 @@
 //   · 顶部：剧本日历（到天）、国家、阵营、人口、军队 / 舰队概览
 //   · 国策树：工业 / 军事 / 外交三支，各两支；按游戏天数推进，完成即生效
 //   · 轨道圈层：母星行星的 7 个轨道圈层，争夺轨道控制权
-import { fmtNum } from '../core/format.js?v=44.9';
-import { currentAccount, getPlanetInstance } from '../core/state.js?v=44.9';
-import { listArmies, totalArmyPowerOf } from '../core/army.js?v=44.9';
-import { listFleets, fleetPowerOf } from '../core/fleet.js?v=44.9';
+import { fmtNum } from '../core/format.js?v=45.10';
+import { currentAccount, getPlanetInstance } from '../core/state.js?v=45.10';
+import { listArmies, totalArmyPowerOf } from '../core/army.js?v=45.10';
+import { listFleets, fleetPowerOf } from '../core/fleet.js?v=45.10';
 import {
   scenarioDateOf, gameDaysOf, ensureFocus, focusOptionsOf, startFocus,
   ensureSeas, contestSea, blocNameOf, nationOf, deepOf, enemySeaPressure, backgroundOf, HOI_SCENARIO_ID,
   listHistTargets, histWarGateFor,
-} from '../core/hoi1936.js?v=44.9';
+} from '../core/hoi1936.js?v=45.10';
 // v0.3.3：战争数据（实时交战双方状态）
-import { activeWarsOf } from '../core/war.js?v=44.9';
+import { activeWarsOf } from '../core/war.js?v=45.10';
 // v0.3.4：战役系统（师级交战 / 组织度 / 补给 / 工事 / 增援）—— 替代「只有进度条」
 import {
   listBattles, battleView, startBattle, committableArmies, foeRemaining,
   orderRetreat, stopBattle, terrainList, BATTLE_MAX_PER_WAR, BATTLE_COMBAT_WIDTH,
   ORBITAL_BOMB_CHARGES, orbitalControlOf,
-} from '../core/battle.js?v=44.9';
+  // v0.4.5（需求 2）：指挥官 + 战役事件
+  commandersOf, assignCommander, battleById,
+} from '../core/battle.js?v=45.10';
 // v0.4.1：行星战区地图（战区归属 / 补给网络 / 战略轨道打击 / 殖民地争夺）
 import {
   ensureTheater, theaterView, attackTargetsOf, canStrikeRegion, strikeRegion,
@@ -29,8 +31,8 @@ import {
   frontInfoOf as THfrontInfo, canOpenFront as THcanFront,
   REGION_MAX_FRONTS as TH_MAX_FRONTS, SIEGE_REQUIRED as TH_SIEGE,
   regionYieldOf, colonySupportOf,
-} from '../core/theater.js?v=44.9';
-import { HOI_SEAS, HOI_BY_ID, HIST_TIMELINE } from '../data/hoi1936.js?v=44.9';
+} from '../core/theater.js?v=45.10';
+import { HOI_SEAS, HOI_BY_ID, HIST_TIMELINE } from '../data/hoi1936.js?v=45.10';
 
 // v0.4.1：地图交互状态（同样放模块级，避免每秒重绘冲掉选中项）
 // v0.4.3：plan = 多路战线规划（同时开辟多条战线），mode='plan' 时点目标只入队不立即开战
@@ -533,6 +535,59 @@ function battleCard(acc, b, refresh) {
   cols.appendChild(mineBox);
   cols.appendChild(foeBox);
   card.appendChild(cols);
+
+  // v0.4.5（需求 2）：指挥官指派 —— 让「谁来指挥这条战线」成为一个真实决策
+  if (v.status === 'active') {
+    const cmdBox = el('div', 'hoi-cmd-box');
+    const cur = v.commander;
+    cmdBox.appendChild(el('div', { class: 'ch', text: '指挥官' }));
+    if (cur) {
+      const ce = v.commanderEffect || {};
+      const tags = [];
+      if (ce.atkMul && ce.atkMul !== 1) tags.push('攻 ×' + ce.atkMul.toFixed(2));
+      if (ce.entrenchMul && ce.entrenchMul !== 1) tags.push('工事 ×' + ce.entrenchMul.toFixed(2));
+      if (ce.supplyMul && ce.supplyMul !== 1) tags.push('补给 ×' + ce.supplyMul.toFixed(2));
+      if (ce.orgRegenMul && ce.orgRegenMul !== 1) tags.push('整补 ×' + ce.orgRegenMul.toFixed(2));
+      if (ce.casualtyMul && ce.casualtyMul !== 1) tags.push('减员 ×' + ce.casualtyMul.toFixed(2));
+      if (ce.xpMul && ce.xpMul !== 1) tags.push('经验 ×' + ce.xpMul.toFixed(2));
+      if (ce.equipRecoverMul && ce.equipRecoverMul !== 1) tags.push('装备恢复 ×' + ce.equipRecoverMul.toFixed(2));
+      cmdBox.appendChild(el('div', { class: 'hoi-cmd-cur', text:
+        '★ ' + cur.nameCn + ' · ' + cur.traitName + ' · 技能 ' + (Number(cur.skill) || 1).toFixed(2) }));
+      cmdBox.appendChild(el('div', { class: 'hoi-cmd-desc', text: cur.traitDesc + (tags.length ? '（生效：' + tags.join('、') + '）' : '') }));
+    } else {
+      cmdBox.appendChild(el('div', { class: 'hoi-cmd-desc', text: '本战线暂无指挥官 —— 没有指挥加成，组织度恢复与工事累积均为基准值。' }));
+    }
+    const sel = document.createElement('select');
+    sel.className = 'hoi-cmd-sel';
+    const blank = document.createElement('option');
+    blank.value = '';
+    blank.textContent = '— 不派指挥官 —';
+    sel.appendChild(blank);
+    for (const c of commandersOf(acc)) {
+      const o = document.createElement('option');
+      o.value = c.id;
+      o.textContent = c.nameCn + '（' + c.traitName + ' 技能 ' + (Number(c.skill) || 1).toFixed(2) + '）';
+      sel.appendChild(o);
+    }
+    sel.value = cur ? cur.id : '';
+    sel.addEventListener('change', () => {
+      const r = assignCommander(acc, battleById(acc, v.id), sel.value || null);
+      if (r && !r.ok) { alert(r.reason); return; }
+      refresh && refresh();
+    });
+    cmdBox.appendChild(sel);
+    card.appendChild(cmdBox);
+  }
+
+  // v0.4.5（需求 2）：战役事件 —— 让战争「有事情发生」看得见
+  if (v.events && v.events.length) {
+    const evBox = el('div', 'hoi-event-box');
+    evBox.appendChild(el('div', { class: 'ch', text: '战役事件' }));
+    for (const E of v.events.slice(0, 5)) {
+      evBox.appendChild(el('div', { class: 'li', text: '[' + (E.hours || 0) + 'h] 【' + (E.nameCn || '') + '】' + (E.text || '') }));
+    }
+    card.appendChild(evBox);
+  }
 
   // 交战日志
   if (v.log && v.log.length) {

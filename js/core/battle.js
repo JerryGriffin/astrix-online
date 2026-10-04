@@ -28,17 +28,17 @@
 // 约定：不 import state.js（账号对象由调用方传入），与 army.js 同构。
 // ============================================================================
 
-import { armyById, armyEffStats, armyPowerOf } from './army.js?v=44.9';
-import { fleetPowerOf } from './fleet.js?v=44.9';   // v0.4.0：空间舰队实力 → 轨道控制
-import { HOI_BY_ID } from '../data/hoi1936.js?v=44.9';
+import { armyById, armyEffStats, armyPowerOf } from './army.js?v=45.10';
+import { fleetPowerOf } from './fleet.js?v=45.10';   // v0.4.0：空间舰队实力 → 轨道控制
+import { HOI_BY_ID } from '../data/hoi1936.js?v=45.10';
 // v0.4.1：行星战区地图 —— 战斗「在哪打」、打赢后归谁、补给通不通
 import {
   ensureTheater, regionById, regionSupplyOf, refreshSupply, captureRegion,
   applyColonyProgress, decayStrikePressure, GARRISON_MAX,
   frontInfoOf, canOpenFront, REGION_MAX_FRONTS, SIEGE_REQUIRED,
-} from './theater.js?v=44.9';
+} from './theater.js?v=45.10';
 // 迫降线（与 core/war.js 同源常量；此处只读，避免反向依赖 war.js）
-import { WAR_FORCE_SURRENDER_SCORE } from './war.js?v=44.9';
+import { WAR_FORCE_SURRENDER_SCORE } from './war.js?v=45.10';
 // 注意：**不 import core/hoi1936.js** —— 它要 import 本模块来驱动敌方进攻，
 //   这里再反向 import 就成了循环依赖。战役时钟用本文件自己的 BATTLE_HOURS_PER_SEC。
 
@@ -366,8 +366,21 @@ export function startBattle(acc, war, opts) {
     supply: { mine: 1, foe: 1 },
     result: null,
     log: [],
+    // v0.4.5（需求 2）：指挥官 + 战役事件历史
+    commanderId: opts && opts.commanderId ? opts.commanderId : null,
+    commanderEffect: null,
+    events: [],
+    mineAtkMul: 1,
+    foeAtkMul: 1,
+    entrenchMul: 1,
   };
   recomputeSupply(acc, b);
+  if (b.commanderId) {
+    // 从 opts 指定（或名册第一位）挂指挥官
+    const list = commandersOf(acc);
+    const c = list.find((x) => x && x.id === b.commanderId) || list[0];
+    if (c) { b.commanderId = c.id; b._commander = c; b.commanderEffect = commanderEffectOf(b); }
+  }
   ensureBattles(acc).push(b);
   if (region) region.battleId = b.id;      // 标记该战区在交战中
   pushLog(b, (foeAttacks ? '敌 ' + war.targetName + ' 打过来' : '开辟战线：' + war.targetName)
@@ -650,11 +663,67 @@ function stepHour(acc, b) {
     if (!foeEng.length && !b.foe.some((d) => d.state !== 'done')) return 'over';
   }
 
-  // ③ 工事累积：防守方（此刻没在推进的一方）越打越难打
+  // ③ 战役事件（v0.4.5 需求 2）：让战争有转折点，而不是一条匀速下行的直线。
+  //   每个战斗小时按确定性概率抽一个事件，真实改变组织度 / 兵力 / 补给 / 工事。
+  //   事件**偏向弱势一方**（补给前突只帮落后的人、哗变两边都可能发生），
+  //   使战线出现「反扑机会」，而不是强者一路碾压。
+  const ce = b.commanderEffect || null;
+  const evRng = mulberry32((b.seed + b.hours * 40503 + 7919) >>> 0);
+  const ev = rollBattleEvent({ id: b.warId }, b.regionId, b.hours, b.seed);
+  if (ev) {
+    // pickSide：偏向当前较弱的一方（补给差 / 兵力少），制造翻盘可能
+    const mineScore = b.mine.reduce((s, d) => s + (d.state === 'done' ? 0 : (d.str || 0)), 0);
+    const foeScore = b.foe.reduce((s, d) => s + (d.state === 'done' ? 0 : (d.str || 0)), 0);
+    const weakFirst = (supply.mine <= supply.foe || mineScore <= foeScore) ? 'mine' : 'foe';
+    const evCtx = {
+      rng: evRng,
+      divs: { mine: b.mine, foe: b.foe },
+      orgDmg: {}, orgBuff: {}, strDmg: {}, xpAdd: {},
+      supplyAdd: { mine: 0, foe: 0 }, entrenchBonus: {},
+      routed: {}, toReserve: {}, hitName: {},
+      foeAtkMul: null, mineAtkMul: null,
+      terrainIsMine: !!(terrain.atk >= 1),
+      divsOf: (side) => b[side].filter((d) => d && d.state !== 'done'),
+      pickSide: () => (evRng() < 0.55 ? weakFirst : (weakFirst === 'mine' ? 'foe' : 'mine')),
+    };
+    // target 限定的事件只在对应方生效（scout/resupply 等）
+    if (ev.target === 'mine' || ev.target === 'foe') evCtx.pickSide = () => ev.target;
+    applyBattleEvent(acc, b, ev, evCtx);
+  }
+
+  // ③b 指挥官修正（v0.4.5 需求 2）：把「谁来指挥」变成真实决策
+  if (ce) {
+    if (ce.atkMul && ce.atkMul !== 1) {
+      b.mineAtkMul = ce.atkMul;
+    }
+    if (ce.entrenchMul && ce.entrenchMul !== 1) b.entrenchMul = ce.entrenchMul;
+    if (ce.supplyMul && ce.supplyMul !== 1) {
+      b.supply.mine = clamp(b.supply.mine * ce.supplyMul, 0.05, 1);
+      supply.mine = b.supply.mine;
+    }
+    if (ce.orgRegenMul && ce.orgRegenMul !== 1) {
+      for (const d of b.mine) {
+        if (d.state === 'reserve' || d.state === 'routed') {
+          d.org = Math.min(ORG_MAX, d.org + ORG_REGEN_PER_HOUR * (ce.orgRegenMul - 1) * (0.4 + 0.6 * supply.mine));
+        }
+      }
+    }
+    if (ce.equipRecoverMul && ce.equipRecoverMul !== 1) {
+      for (const d of b.mine) {
+        if ((Number(d.equip == null ? 1 : d.equip)) < 1) {
+          d.equip = clamp(d.equip + EQUIP_RECOVER_PER_HOUR * (ce.equipRecoverMul - 1), 0, 1);
+        }
+      }
+    }
+  }
+
+  // ④ 工事累积：防守方（此刻没在推进的一方）越打越难打
+  //   v0.4.5：工事累积速率受指挥官 entrenchMul 影响（工兵/防御型能更快筑起阵地）
   b.entrench = b.entrench || { mine: 0, foe: 0 };
+  const entMul = (b.entrenchMul && ce) ? ce.entrenchMul : 1;
   const mineAdvancing = mineEng.length > 0;
   if (!mineAdvancing) b.entrench.foe = Math.min(ENTRENCH_MAX, b.entrench.foe + ENTRENCH_PER_HOUR * (0.4 + 0.6 * supply.foe));
-  if (!foeEng.length) b.entrench.mine = Math.min(ENTRENCH_MAX, b.entrench.mine + ENTRENCH_PER_HOUR * (0.4 + 0.6 * supply.mine));
+  if (!foeEng.length) b.entrench.mine = Math.min(ENTRENCH_MAX, b.entrench.mine + ENTRENCH_PER_HOUR * (0.4 + 0.6 * supply.mine) * entMul);
 
   // ④ 攻防值与突破（breakthrough）
   //   v0.4.0 **低重力修正**：gravity < 1 时进攻方机动性提升、守方阵地更难维持
@@ -708,16 +777,23 @@ function stepHour(acc, b) {
   //    v0.4.2：乘上「同来源平摊 × 夹击加成」
   const overlap = Number(b.overlapShare) || 1;
   const flankMul = 1 + (Number(flank) || 0);
-  const dmgOrgFoe = DMG_K * atkP * (0.55 + 0.9 * ratio) * (1 + breakthrough) * casMine * overlap * flankMul;
-  const dmgStrFoe = DMG_K * atkP * ratio * 0.55 * casMine * overlap * flankMul;
+  // v0.4.5（需求 2）：指挥官对**我方进攻**的加成，以及事件带来的短时攻击力修正。
+  //   注意 assault 类的加成只作用于进攻方向，防御型指挥官不会白送攻击力。
+  const cmdAtk = (b.mineAtkMul && ce) ? Math.max(0.5, b.mineAtkMul) : 1;
+  const evFoeAtk = (b.foeAtkMul == null) ? 1 : Math.max(0.5, b.foeAtkMul);
+  const dmgOrgFoe = DMG_K * atkP * (0.55 + 0.9 * ratio) * (1 + breakthrough) * casMine * overlap * flankMul * cmdAtk * evFoeAtk;
+  const dmgStrFoe = DMG_K * atkP * ratio * 0.55 * casMine * overlap * flankMul * cmdAtk * evFoeAtk;
   const dmgOrgMine = DMG_K * defP * (0.55 + 0.9 * (1 - ratio)) * (1 + b.breakthrough.foe) * casFoe;
-  const dmgStrMine = DMG_K * defP * (1 - ratio) * 0.55 * casFoe;
+  let dmgStrMine = DMG_K * defP * (1 - ratio) * 0.55 * casFoe;
+  // 后勤型指挥官降低我方减员（只削兵力伤害，不影响组织度 —— 那是「挨打」的度量）
+  if (ce && ce.casualtyMul && ce.casualtyMul !== 1) dmgStrMine *= ce.casualtyMul;
 
   const newlyRoutedMine = applyDamage(mineEng, dmgOrgMine, dmgStrMine, rng, b, 'mine', foeEng);
   const newlyRoutedFoe = applyDamage(foeEng, dmgOrgFoe, dmgStrFoe, rng, b, 'foe', mineEng);
 
   // ⑥ 经验（参战的师涨经验，HOI4 veteran）
-  for (const d of mineEng) d.xp = (Number(d.xp) || 0) + XP_ATK_PER_HOUR;
+  const cmdXp = (ce && ce.xpMul) ? ce.xpMul : 1;
+  for (const d of mineEng) d.xp = (Number(d.xp) || 0) + XP_ATK_PER_HOUR * cmdXp;
 
   if (newlyRoutedFoe) pushLog(b, '敌方 ' + newlyRoutedFoe + ' 个师组织度被打空，撤出战斗');
   if (newlyRoutedMine) pushLog(b, '我方 ' + newlyRoutedMine + ' 个师被打退，正在整补');
@@ -735,6 +811,333 @@ function stepHour(acc, b) {
  *   这是地球战争里不存在的机制 —— 行星表面本身会打你。
  *   同时让「补给」有第二条被消耗的路径：尘暴/毒气直接压低本小时补给。
  */
+// ============================================================================
+// v0.4.5 需求 2：战役事件 —— 让战争「有事情发生」，而不只是数值互砍
+// ============================================================================
+//
+// v0.4.4 之前的战役，节奏是完全均匀的：每个战斗小时双方的伤害按同一套
+// 公式结算，胜负几乎只取决于初始战力对比 + 一点点地貌随机。
+// 于是「战争过程」在体感上是**一条直线**——玩家看着进度条匀速下滑，
+// 既没有转折点，也没有任何值得记住的时刻。
+//
+// 这里引入**战役事件**：每个战斗小时按概率抽一个事件，事件会真实改变
+// 双方的组织度 / 兵力 / 补给 / 工事 / 宽度，并且**偏向弱势一方**
+// （给落后的人翻盘机会），使战线出现节奏感与戏剧性。
+//
+// 设计原则：
+//   · 事件对双方**对称可选**（同一个事件可能落在任一方），不是单方面惩罚
+//   · 有正（己方得利）也有负（己方受损），玩家要判断当前局面该不该赌
+//   · 全部走确定性随机（种子来自战局），保证双端结算一致
+// ============================================================================
+
+export const BATTLE_EVENTS = [
+  {
+    id: 'scout', nameCn: '侦察突破', target: 'any', weight: 1.0, effect: 'info',
+    desc: '侦察兵摸清了对方纵深部署：敌方接战师攻击力暂时下降。',
+    apply: (ctx) => { ctx.foeAtkMul = Math.min(ctx.foeAtkMul, 0.82); return '敌方攻击力 −18%'; },
+  },
+  {
+    id: 'sapper', nameCn: '工程兵开缺口', target: 'any', weight: 0.9, effect: 'org',
+    desc: '工兵炸开一道堑壕缺口：该方向守方组织度被压低。',
+    apply: (ctx) => {
+      const side = ctx.pickSide();
+      ctx.orgDmg[side] = (ctx.orgDmg[side] || 0) + 12;
+      return (side === 'mine' ? '我方' : '敌方') + '一名师组织度 −12（阵地被撕开）';
+    },
+  },
+  {
+    id: 'resupply', nameCn: '补给前突', target: 'mine', weight: 0.9, effect: 'supply',
+    desc: '补给线打通：本方补给回升，装备率快速恢复。',
+    apply: (ctx) => {
+      ctx.supplyAdd.mine = Math.min(1, ctx.supplyAdd.mine + 0.22);
+      return '我方补给 +22%，装备率加速恢复';
+    },
+  },
+  {
+    id: 'enemyResupply', nameCn: '敌方补给到位', target: 'foe', weight: 0.9, effect: 'supply',
+    desc: '对方后勤线打通：敌方补给回升，工事累积加快。',
+    apply: (ctx) => {
+      ctx.supplyAdd.foe = Math.min(1, ctx.supplyAdd.foe + 0.22);
+      ctx.entrenchBonus.foe = (ctx.entrenchBonus.foe || 0) + 0.05;
+      return '敌方补给 +22%，工事额外 +5%';
+    },
+  },
+  {
+    id: 'generalOffensive', nameCn: '发动总攻', target: 'mine', weight: 0.7, effect: 'str',
+    desc: '全线压上：进攻方组织度大增，但自身伤亡也加重。',
+    apply: (ctx) => {
+      ctx.orgBuff.mine = (ctx.orgBuff.mine || 0) + 10;
+      ctx.strDmg.foe = (ctx.strDmg.foe || 0) + 8;
+      return '我方全员组织度 +10，并额外造成敌方兵力伤害';
+    },
+  },
+  {
+    id: 'attrition', nameCn: '阵地消耗战', target: 'any', weight: 1.1, effect: 'str',
+    desc: '双方反复拉锯：接战双方都掉兵力，谁的地形更有利谁少掉。',
+    apply: (ctx) => {
+      const cheap = ctx.terrainIsMine ? 'mine' : 'foe';
+      const dear = cheap === 'mine' ? 'foe' : 'mine';
+      ctx.strDmg[cheap] = (ctx.strDmg[cheap] || 0) + 2;
+      ctx.strDmg[dear] = (ctx.strDmg[dear] || 0) + 5;
+      return '接战双方持续消耗，' + (ctx.terrainIsMine ? '我方' : '敌方') + '地形有利、损耗更低';
+    },
+  },
+  {
+    id: 'bridgehead', nameCn: '夺取前进阵地', target: 'any', weight: 0.6, effect: 'org',
+    desc: '抢占一处高地：接战师获得组织度加成与小幅经验。',
+    apply: (ctx) => {
+      const side = ctx.pickSide();
+      ctx.orgBuff[side] = (ctx.orgBuff[side] || 0) + 7;
+      ctx.xpAdd[side] = (ctx.xpAdd[side] || 0) + 2;
+      return (side === 'mine' ? '我方' : '敌方') + '接战师组织度 +7、经验 +2';
+    },
+  },
+  {
+    id: 'mutiny', nameCn: '哗变', target: 'any', weight: 0.35, effect: 'org',
+    desc: '一支师拒绝进攻：其组织度大幅下降并转入溃退。',
+    apply: (ctx) => {
+      const side = ctx.pickSide();
+      const list = ctx.divsOf(side);
+      if (!list.length) { ctx.orgBuff[side] = (ctx.orgBuff[side] || 0) - 6; return (side === 'mine' ? '我方' : '敌方') + '部队士气低落'; }
+      const t = list[Math.floor(ctx.rng() * list.length) % list.length];
+      ctx.orgDmg[side] = (ctx.orgDmg[side] || 0) + 20;
+      ctx.routed[side] = true;
+      return (side === 'mine' ? '我方' : '敌方') + t.nameCn + ' 哗变，组织度 −20 并溃退';
+    },
+  },
+  {
+    id: 'reconBreach', nameCn: '电子干扰', target: 'any', weight: 0.7, effect: 'width',
+    desc: '干扰对方战场指挥：其一个师被迫转入预备队。',
+    apply: (ctx) => {
+      const side = ctx.pickSide();
+      const list = ctx.divsOf(side).filter((d) => d && d.state === 'front');
+      if (!list.length) return '干扰未产生效果';
+      const t = list[Math.floor(ctx.rng() * list.length) % list.length];
+      ctx.toReserve[side] = (ctx.toReserve[side] || 0) + 1;
+      return (side === 'mine' ? '我方' : '敌方') + t.nameCn + ' 被干扰指挥，暂时退出接战';
+    },
+  },
+  {
+    id: 'acePilot', nameCn: '王牌飞行员出击', target: 'any', weight: 0.6, effect: 'str',
+    desc: '轨道火力精准支援：随机一名接敌师兵力大幅下降。',
+    apply: (ctx) => {
+      const side = ctx.pickSide();
+      const list = ctx.divsOf(side);
+      if (!list.length) return '没有可打击目标';
+      const t = list[Math.floor(ctx.rng() * list.length) % list.length];
+      ctx.strDmg[side] = (ctx.strDmg[side] || 0) + 11;
+      ctx.hitName[side] = t.nameCn;
+      return (side === 'mine' ? '我方' : '敌方') + t.nameCn + ' 遭到精准打击，兵力重挫';
+    },
+  },
+];
+
+/** 每小时触发战役事件的基准概率 */
+export const BATTLE_EVENT_CHANCE = 0.26;
+
+/**
+ * 抽一个战役事件（**确定性**：同 warId/regionId/hours/seed 必得同一结果）。
+ * 双端结算依赖这一点，所以这里绝不使用 Math.random()。
+ */
+export function rollBattleEvent(war, regionId, hours, seed) {
+  if (!BATTLE_EVENTS.length) return null;
+  let h = (Number(seed) || 0) >>> 0;
+  const s = String((war && war.id) || '') + '|' + String(regionId || '') + '|' + String(hours);
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619) >>> 0;      // FNV-1a
+  }
+  h = (h ^ (h >>> 15)) >>> 0;
+  const r0 = (h % 10000) / 10000;
+  if (r0 >= BATTLE_EVENT_CHANCE) return null;
+  // 按 weight 加权抽（复用同一个 hash 的后续位，避免二次随机源）
+  let total = 0;
+  for (const e of BATTLE_EVENTS) total += (e.weight || 1);
+  let pick = ((h >>> 7) % 100000) / 100000 * total;
+  for (const e of BATTLE_EVENTS) {
+    pick -= (e.weight || 1);
+    if (pick <= 0) return e;
+  }
+  return BATTLE_EVENTS[0];
+}
+
+/**
+ * 执行一个事件：把 ctx 里累积的修正应用到战场与双方师。
+ * ctx 由 stepHour 构造（保证事件与战斗同处一个确定性种子体系）。
+ */
+function applyBattleEvent(acc, b, ev, ctx) {
+  const text = ev.apply(ctx);
+  // 把 ctx 里累积的即时伤害/增益落到实际对象上
+  for (const side of ['mine', 'foe']) {
+    const divs = ctx.divs[side];
+    const od = ctx.orgDmg[side] || 0;
+    const ob = ctx.orgBuff[side] || 0;
+    const sd = ctx.strDmg[side] || 0;
+    const xa = ctx.xpAdd[side] || 0;
+    if (!divs || (!od && !ob && !sd && !xa)) continue;
+    for (const d of divs) {
+      if (od) d.org = Math.max(0, d.org - od * (d.state === 'front' ? 1 : 0.5));
+      if (ob) d.org = Math.min(ORG_MAX, d.org + ob);
+      if (sd) d.str = Math.max(0, d.str - sd);
+      if (xa) d.xp = (Number(d.xp) || 0) + xa;
+    }
+    if (ctx.routed[side]) {
+      const eng = divs.filter((d) => d.state === 'front');
+      if (eng.length) { eng[0].state = 'routed'; eng[0].hoursOut = 0; }
+    }
+    if (ctx.toReserve[side]) {
+      let n = ctx.toReserve[side];
+      for (const d of divs) {
+        if (n <= 0) break;
+        if (d.state === 'front') { d.state = 'reserve'; n--; }
+      }
+    }
+  }
+  // 补给
+  b.supply.mine = clamp(b.supply.mine + (ctx.supplyAdd.mine || 0), 0.05, 1);
+  b.supply.foe = clamp(b.supply.foe + (ctx.supplyAdd.foe || 0), 0.05, 1);
+  // 工事
+  if (ctx.entrenchBonus.foe) b.entrench.foe = Math.min(ENTRENCH_MAX, (Number(b.entrench.foe) || 0) + ctx.entrenchBonus.foe);
+  if (ctx.entrenchBonus.mine) b.entrench.mine = Math.min(ENTRENCH_MAX, (Number(b.entrench.mine) || 0) + ctx.entrenchBonus.mine);
+  // 攻击力修正（作用于下一个小时的结算）
+  b.foeAtkMul = ctx.foeAtkMul != null ? ctx.foeAtkMul : (b.foeAtkMul || 1);
+  b.mineAtkMul = ctx.mineAtkMul != null ? ctx.mineAtkMul : (b.mineAtkMul || 1);
+  // 事件历史（供 UI 展示「战争过程」）
+  b.events = Array.isArray(b.events) ? b.events : [];
+  b.events.push({ at: Date.now(), hours: b.hours, eventId: ev.id, nameCn: ev.nameCn, text });
+  if (b.events.length > LOG_CAP) b.events.shift();
+  pushLog(b, '【' + ev.nameCn + '】' + text);
+}
+
+// ============================================================================
+// v0.4.5 需求 2：指挥官 —— 让「谁来指挥」成为一个真实决策
+// ============================================================================
+//
+// 此前一场战役只有「谁的师多、谁的战力高」，没有任何指挥层面的变量。
+// 现在每场战役可以指派一名**指挥官**，其特质会同时影响组织度恢复、
+// 工事累积、补给维持、攻击力与减员 —— 于是「把谁放在哪条战线」
+// 变成一个真实的战术决策（HOI4 的将领系统思路）。
+//
+// 指挥官按确定性随机生成（种子 = 军队 id），双端结算一致。
+// ============================================================================
+
+export const COMMANDER_TRAITS = {
+  assault: {
+    id: 'assault', nameCn: '突击型', desc: '偏重攻势：攻击力 +8%，但工事累积减半。',
+    atkMul: 1.08, entrenchMul: 0.5,
+  },
+  defensive: {
+    id: 'defensive', nameCn: '防御型', desc: '偏重固守：工事累积 +60%，攻击力 −4%。',
+    atkMul: 0.96, entrenchMul: 1.6,
+  },
+  engineer: {
+    id: 'engineer', nameCn: '工兵型', desc: '工事累积 +30%，组织度恢复 +20%。',
+    atkMul: 1.0, entrenchMul: 1.3, orgRegenMul: 1.2,
+  },
+  logistics: {
+    id: 'logistics', nameCn: '后勤型', desc: '补给维持 +18%，兵力损失 −10%。',
+    atkMul: 1.0, supplyMul: 1.18, casualtyMul: 0.9,
+  },
+  veteran: {
+    id: 'veteran', nameCn: '老兵型', desc: '经验获取 +50%，攻击力 +4%。',
+    atkMul: 1.04, xpMul: 1.5,
+  },
+  raider: {
+    id: 'raider', nameCn: '袭扰型', desc: '装备率恢复 +60%（补给中断时更抗打）。',
+    atkMul: 1.0, equipRecoverMul: 1.6,
+  },
+};
+
+const COMMANDER_SURNAMES = ['陈', '林', '赵', '周', '徐', '沈', '韩', '杨', '朱', '秦', '许', '何'];
+const COMMANDER_GIVEN = ['砚', '澜', '澈', '燧', '穹', '骥', '珩', '钊', '沅', '朔', '嶂', '岐'];
+export const COMMANDER_MAX = 12;      // 最多可拥有的指挥官数
+
+/** 确定性生成一名指挥官（同一 seed 永远同一个结果） */
+export function rollCommander(id, seed) {
+  let h = (Number(seed) || 0) >>> 0;
+  const s = String(id || 'gen');
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619) >>> 0;
+  }
+  h = Math.imul(h ^ (h >>> 13), 2654435761) >>> 0;
+  const traits = Object.keys(COMMANDER_TRAITS);
+  const traitId = traits[h % traits.length];
+  const t = COMMANDER_TRAITS[traitId];
+  return {
+    id: String(id || ('gen' + (h >>> 0))),
+    nameCn: COMMANDER_SURNAMES[(h >>> 5) % COMMANDER_SURNAMES.length]
+      + COMMANDER_GIVEN[(h >>> 11) % COMMANDER_GIVEN.length],
+    traitId,
+    traitName: t.nameCn,
+    traitDesc: t.desc,
+    skill: 1 + ((h >>> 17) % 4) * 0.25,     // 1.0 ~ 1.75（技能等级，影响所有修正幅度）
+  };
+}
+
+/** 账号的指挥官名册（首次调用时按军队生成） */
+export function commandersOf(acc) {
+  if (!acc) return [];
+  if (!Array.isArray(acc.commanders)) acc.commanders = [];
+  if (!acc.commanders.length) {
+    const armies = Array.isArray(acc.armies) ? acc.armies : [];
+    for (const a of armies.slice(0, COMMANDER_MAX)) {
+      if (!a || !a.id) continue;
+      acc.commanders.push(rollCommander(a.id, a.id.length * 7919));
+    }
+    if (!acc.commanders.length) {
+      acc.commanders.push(rollCommander('cmd1', 12345));
+    }
+  }
+  return acc.commanders;
+}
+
+/** 指派指挥官到某场战役（commanderId 传 null 表示撤换） */
+export function assignCommander(acc, battle, commanderId) {
+  if (!battle) return { ok: false, reason: '战役不存在' };
+  if (commanderId == null || commanderId === '') {
+    const old = battle.commanderId || null;
+    battle.commanderId = null;
+    battle._commander = null;
+    battle.commanderEffect = null;
+    return { ok: true, commanderId: null, old };
+  }
+  const list = commandersOf(acc);
+  const c = list.find((x) => x && x.id === commanderId);
+  if (!c) return { ok: false, reason: '找不到该指挥官' };
+  battle.commanderId = c.id;
+  // 把指挥官对象拷进 battle —— commanderEffectOf 刻意不持有 acc（避免循环引用）
+  battle._commander = c;
+  battle.commanderEffect = commanderEffectOf(battle);
+  return { ok: true, commanderId: c.id, commander: c };
+}
+
+/** 指挥官对该战役的修正（已含技能等级） */
+export function commanderEffectOf(battle) {
+  if (!battle) return null;
+  // ⚠️ 这里刻意**不持有 acc 引用**（battle.__acc）—— battle 是 acc 的一部分，
+  //   反向引用会让存档 JSON.stringify 抛「循环结构」错误。
+  //   指挥官对象本身在开局时拷进 battle._commander，故不需要 acc。
+  const c = battle._commander || null;
+  if (!c || !battle.commanderId) return null;
+  const t = COMMANDER_TRAITS[c.traitId] || COMMANDER_TRAITS.defensive;
+  const sk = Number(c.skill) || 1;
+  return {
+    commanderId: c.id,
+    nameCn: c.nameCn,
+    traitId: t.id,
+    traitName: t.nameCn,
+    skill: sk,
+    atkMul: 1 + ((Number(t.atkMul) || 1) - 1) * sk,
+    entrenchMul: 1 + ((Number(t.entrenchMul) || 1) - 1) * sk,
+    orgRegenMul: 1 + ((Number(t.orgRegenMul) || 1) - 1) * sk,
+    supplyMul: 1 + ((Number(t.supplyMul) || 1) - 1) * sk,
+    casualtyMul: 1 + ((Number(t.casualtyMul) || 1) - 1) * sk,
+    xpMul: 1 + ((Number(t.xpMul) || 1) - 1) * sk,
+    equipRecoverMul: 1 + ((Number(t.equipRecoverMul) || 1) - 1) * sk,
+  };
+}
+
 function tryHazards(acc, b, rng, mineEng, foeEng, terrain, grav) {
   const haz = Number(terrain.hazard) || 0;
   if (!(haz > 0)) return;
@@ -1177,6 +1580,12 @@ export function battleView(acc, battleId) {
     foe: (b.foe || []).map((d) => divView(d, false)),
     result: b.result || null,
     log: (b.log || []).slice(0, 12),
+    // v0.4.5（需求 2）：指挥官与战役事件历史（让战争「有事情发生」可见）
+    commander: b.commanderId
+      ? (commandersOf(acc).find((x) => x && x.id === b.commanderId) || b._commander || null)
+      : null,
+    commanderEffect: b.commanderEffect || null,
+    events: (b.events || []).slice().reverse().slice(0, 10),
     // 预估：我方剩余可战之师是否够维持战线（HOI4 的红条警告）
     warning: mineEng === 0 ? '我方无师接战 —— 战线即将崩溃'
       : (b.mine || []).filter((d) => d.state === 'routed').length >= Math.ceil((b.mine || []).length / 2)

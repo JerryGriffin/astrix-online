@@ -3,31 +3,31 @@
 // 更新：v0.1.1 五指令改为持续任务（startMission，任务行显示倒计时），
 //       新增船载仓库面板；编队 / 五指令区块挂船坞门禁；交易池区 2s 心跳局部刷新。
 
-import { fmtNum, fmtRate, fmtTime } from '../core/format.js?v=44.9';
+import { fmtNum, fmtRate, fmtTime } from '../core/format.js?v=45.10';
 import {
   listFleets, createFleet, disbandFleet, addShipToFleet, removeShipFromFleet,
   fleetSpeedOf, fleetPowerOf, executeCommand,
   startMission, cancelMission, fleetMissionLabel, defenseBonusOf,
   shipCargoOf, loadShipCargo, unloadShipCargo,
   shipCargoMassOf, shipCargoCellsOf, shipCargoCellsMax, effectiveSpeedOf,
-} from '../core/fleet.js?v=44.9';
-import { equipmentList } from '../core/shipyard.js?v=44.9';
+} from '../core/fleet.js?v=45.10';
+import { equipmentList } from '../core/shipyard.js?v=45.10';
 import {
   MANAGEMENT_MODES, MANAGEMENT_BY_ID, modeOf, setManagement,
   TERRITORY_ASSIMILATE_SEC, TERRITORY_HAPPY_THRESHOLD,
-} from '../core/planetgen.js?v=44.9';
+} from '../core/planetgen.js?v=45.10';
 import {
   SHOP_PLANET, shopPrices, sell, pendingOrders, deliverOrder, ascoinBalance,
   shopStateOf, applySharedPrice,
   marketBuy, marketSell, warehouseOf, ensureShopWarehouse,
-} from '../core/shop.js?v=44.9';
+} from '../core/shop.js?v=45.10';
 import {
   createAuction, placeBid, activeAuctions, auctionLog,
   myAuctionableResources, myAuctionableEquipment, myAuctionableShips, ensureAuctions,
-} from '../core/auction.js?v=44.9';
-import { getPlanetInstance, currentAccount, ownedOf, STATE } from '../core/state.js?v=44.9';
-import { cloudUser, fetchSharedWarehouse, upsertSharedWarehouseRow, upsertSharedPriceRow } from '../core/cloud.js?v=44.9';
-import { MATERIALS } from '../data/materials.js?v=44.9';
+} from '../core/auction.js?v=45.10';
+import { getPlanetInstance, currentAccount, ownedOf, STATE } from '../core/state.js?v=45.10';
+import { cloudUser, fetchSharedWarehouse, upsertSharedWarehouseRow, upsertSharedPriceRow } from '../core/cloud.js?v=45.10';
+import { MATERIALS } from '../data/materials.js?v=45.10';
 
 // HTML 转义（防 XSS，与其它面板一致）
 function esc(s) {
@@ -54,7 +54,7 @@ const CMD_TIP = {
   explore: '派出舰队探索未知星域，任务完成后结算：大概率发现星球（小概率是随机星球），也可能遇袭或一无所获',
   defense: '舰队驻留母星空域执行低空防卫，立即生效；手动取消任务才结束',
   patrol: '派出舰队巡航，任务完成后结算：可能探测到其它编队并交战',
-  transport: '需要编队里有运输船；把物资运到目的地星球，抵达后自动卸货',
+  transport: '把物资运到目的地星球，抵达后自动卸货。**任何有货舱的船都能带货**，不强制运输船（运输船货舱更大、更划算）',
   land: '军队系统开发中，暂时不可用',
 };
 

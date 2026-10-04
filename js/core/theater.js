@@ -29,7 +29,7 @@
 //   · 不 import state.js（账号对象由调用方传入），与 battle.js 同构。
 // ============================================================================
 
-import { HOI_BY_ID, HOI_MAIN_NATIONS } from '../data/hoi1936.js?v=44.9';
+import { HOI_BY_ID, HOI_MAIN_NATIONS } from '../data/hoi1936.js?v=45.10';
 
 export const THEATER_COLS = 6;
 export const THEATER_ROWS = 6;
@@ -475,8 +475,11 @@ export function tickRegions(acc, dtSec) {
     }
     if (r.owner === me) {
       // 我方且已连通：驻防随时间增长（占领要站得住），断供则不增长
+      // v0.4.5（需求 4）：驻防上限按条约类型缩放 —— 殖民化只需 35% 驻军，
+      //   吞并需要满员把守。这是「殖民化 vs 吞并」的真实取舍。
+      const cap = GARRISON_MAX * treatyGarrisonMulOf(r);
       if (r.connected) {
-        r.garrison = Math.min(GARRISON_MAX, (Number(r.garrison) || 0) + GARRISON_GROWTH * dt);
+        r.garrison = Math.min(cap, (Number(r.garrison) || 0) + GARRISON_GROWTH * dt);
       }
     } else if (r.owner) {
       // 敌方：缓慢恢复驻防（守住阵地），被我方打击过的恢复更慢
@@ -510,7 +513,9 @@ export function regionYieldOf(acc) {
     else if (r.structure === 'mine') base = stMul;
     else base = 0.45;                    // 空战区只有基础采集
     const table = REGION_OUTPUT[r.terrain] || {};
-    const mul = base * supplyMul * garMul;
+    // v0.4.5（需求 4）：条约殖民化战区产出 ×1.6 —— 这是「殖民化」相对「吞并」的核心收益，
+    //   换来的是更低的驻军需求与更脆的防守。
+    const mul = base * supplyMul * garMul * treatyOutputMulOf(r);
     if (mul <= 0) continue;
     for (const mat in table) {
       // 防御：气体一律不入物品栏（走星球大气储量），见 REGION_OUTPUT 上方说明
@@ -587,6 +592,116 @@ export function captureRegion(acc, war, region, mySideWon) {
   }
   refreshSupply(acc);
   return { owner: me, colony, lost: false };
+}
+
+// ============================================================================
+// v0.4.5 需求 4：和平会议 —— 把条约真正落到**地图领土**上
+// ============================================================================
+// 此前 war.js#applyPostwarChoice 只做「工业值折半并入 + 挂个傀儡名字」，
+//   **地图上一个战区都不会变** —— 打赢一场战争与占地完全脱节。
+//   现在条约直接改写战区归属，并且三种占领方式有**真实的机制差异**：
+//     · annex  吞并    → 普通战区：驻军需求满、补给压力大，但产出正常
+//     · colony 殖民化  → 标记为 treatyColony：产出 ×1.6、驻军需求降到 35%，
+//                        但一旦被反扑夺回就永久损失（记入 lostColonies）
+//     · partition 瓜分 → 按盟友数瓜分，分给盟友的战区直接离我方补给网络
+// ============================================================================
+
+/** 战区「条约占领」标记（吞并 / 殖民化 / 瓜分） */
+export const TREATY_COLONY_OUTPUT_MUL = 1.6;   // 殖民化产出加成
+export const TREATY_COLONY_GARRISON_MUL = 0.35; // 殖民化驻军需求（不需重兵把守）
+export const TREATY_ANNEX_GARRISON_MUL = 1.0;   // 吞并驻军需求
+
+/** 结算一份和约对地图的实际改动。返回受影响战区与得失明细，供 UI 展示。 */
+export function applyTreatyToTheater(acc, war, optionId, allyCount) {
+  const t = ensureTheater(acc);
+  if (!t) return null;
+  const me = t.myNation;
+  const foe = String((war && war.targetId) || '');
+  if (!foe) return null;
+  const mine = regionsOf(acc, me);
+  const foeRegions = t.regions.filter((r) => r && r.owner === foe);
+
+  // ---- 只掠夺（赔款）：不动领土 ----
+  if (optionId === 'reparations' || optionId === 'satellite' || optionId === 'collaboration') {
+    // 卫星国 / 合作政府：对方保留本土 —— 但**我方保留已夺下的战区**（那是我方打下来的）
+    //   同时清除这些战区的围城进度（战争已结束，不再需要围城）
+    for (const r of mine) if (Number(r.siege) > 0) r.siege = 0;
+    refreshSupply(acc);
+    return { optionId, taken: [], toAllies: [], colonies: [], kept: mine.length, mode: optionId };
+  }
+
+  let taken = [];
+  let toAllies = [];
+  let colonies = [];
+
+  if (optionId === 'partition') {
+    // 瓜分：按盟友数量均分（含我方）。盟友越多我方分到越少。
+    const n = Math.max(1, Math.floor((Number(allyCount) || 0)) + 1);
+    const mineCount = Math.floor(foeRegions.length / n);
+    const mineTake = foeRegions.slice(0, mineCount);
+    const allyTake = foeRegions.slice(mineCount);
+    for (const r of mineTake) {
+      r.owner = me;
+      r.treaty = 'annex';
+      r.garrison = Math.min(GARRISON_MAX, (Number(r.garrison) || 0) * 0.2 + 0.05);
+      r.siege = 0;
+      r.lastCaptureAt = Date.now();
+      taken.push(r);
+    }
+    // 分给盟友的战区：脱离我方补给网络，驻军由「盟友」驻守（记为不可被我方调度）
+    for (const r of allyTake) {
+      r.owner = `ally_${me}`;
+      r.treaty = 'partition_ally';
+      r.siege = 0;
+      toAllies.push(r);
+    }
+  } else {
+    // 吞并 / 殖民化：取得全部战区，差别在驻军需求与产出
+    const mode = optionId === 'colonization' ? 'colony' : 'annex';
+    for (const r of foeRegions) {
+      r.owner = me;
+      r.treaty = mode;
+      r.siege = 0;
+      r.lastCaptureAt = Date.now();
+      if (mode === 'colony') {
+        // 殖民化：轻驻守即可，产出更高
+        r.garrison = Math.min(GARRISON_MAX,
+          (Number(r.garrison) || 0) * TREATY_COLONY_GARRISON_MUL + 0.03);
+        colonies.push(r);
+      } else {
+        r.garrison = Math.min(GARRISON_MAX,
+          (Number(r.garrison) || 0) * TREATY_ANNEX_GARRISON_MUL * 0.2 + 0.05);
+        taken.push(r);
+      }
+    }
+  }
+
+  // 敌方势力在地图上被清除（吞并/殖民化）→ 记入战史
+  if (optionId === 'annex' || optionId === 'colonization') {
+    t.annexed = Array.isArray(t.annexed) ? t.annexed : [];
+    if (!t.annexed.includes(foe)) t.annexed.push(foe);
+  }
+
+  refreshSupply(acc);
+  return {
+    optionId,
+    taken, toAllies, colonies,
+    kept: regionsOf(acc, me).length,
+    allyCount: Math.max(0, Number(allyCount) || 0),
+    mode: optionId,
+  };
+}
+
+/** 战区产出系数：条约殖民化 ×1.6（普通战区 ×1.0） */
+export function treatyOutputMulOf(region) {
+  return region && region.treaty === 'colony' ? TREATY_COLONY_OUTPUT_MUL : 1;
+}
+
+/** 战区驻军需求系数：殖民化只需轻驻（0.35），吞并需满员 */
+export function treatyGarrisonMulOf(region) {
+  if (!region) return 1;
+  if (region.treaty === 'colony') return TREATY_COLONY_GARRISON_MUL;
+  return TREATY_ANNEX_GARRISON_MUL;
 }
 
 /** 敌方师池的键 = 战争 id（buildFoePool / aiFlankPlans 共用） */

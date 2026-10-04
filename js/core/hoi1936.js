@@ -12,15 +12,15 @@
 import { HOI_NATIONS, HOI_BY_ID, HOI_MAIN_NATIONS, HOI_MAIN_BY_ID, HOI_DEEP, HOI_SEAS, ARMY_MEN, popOf, BLOC_NAME, HOI_SCENARIO_ID,
   workforceOf, ARMY_POWER_PER_DIV, NAVY_MUL, GEAR_PARTS, SHIP_NAMES, ARMY_BP_NAME, HOI_BG, SHIP_CLASSES, POST_WAR_OPTIONS, GER_PUPPETS, ARMY_BP_LINE, warshipTonnageOf, WAR_LINE, EXTRA_FOCUS_TEMPLATE, JUSTIFY_DAYS, NATION_SEA_REGION, SEA_INITIAL_CONTROL, NAVAL_INVASION_CONTROL,
   // v0.3.3：历史事件时间表（「战争按历史来，不要随便乱宣战」）
-  HIST_TIMELINE, histEventsAt, histWarBetween, histWarTargetsFor } from '../data/hoi1936.js?v=44.9';
-import { BUILDING_BY_ID } from '../data/buildings.js?v=44.9';
-import { ARMY_BP_BY_ID, ARMY_BLUEPRINTS } from '../data/army_parts.js?v=44.9';
-import { JOBS_BY_BUILDING, assignWorkers, jobCapacity, getAvailable } from './population.js?v=44.9';
-import { ELITE_DIVISIONS, ELITE_MUL } from '../data/hoi1936.js?v=44.9';
+  HIST_TIMELINE, histEventsAt, histWarBetween, histWarTargetsFor } from '../data/hoi1936.js?v=45.10';
+import { BUILDING_BY_ID } from '../data/buildings.js?v=45.10';
+import { ARMY_BP_BY_ID, ARMY_BLUEPRINTS } from '../data/army_parts.js?v=45.10';
+import { JOBS_BY_BUILDING, assignWorkers, jobCapacity, getAvailable } from './population.js?v=45.10';
+import { ELITE_DIVISIONS, ELITE_MUL } from '../data/hoi1936.js?v=45.10';
 // v0.3.3：战争槽位上限（与 core/war.js 同源；war.js 不 import 本文件，无循环依赖）
-import { WAR_MAX_ACTIVE } from './war.js?v=44.9';
+import { WAR_MAX_ACTIVE } from './war.js?v=45.10';
 // v0.3.4：战役系统（敌方主动进攻 + 战线管理）。battle.js 不 import 本文件，无循环依赖。
-import { startBattle, listBattles, BATTLE_MAX_PER_WAR, IDLE_PROGRESS_PER_DAY } from './battle.js?v=44.9';
+import { startBattle, listBattles, BATTLE_MAX_PER_WAR, IDLE_PROGRESS_PER_DAY } from './battle.js?v=45.10';
 
 // 依赖注入（避免与 state.js / production.js 形成循环导入）
 let _getInst = null;
@@ -275,7 +275,11 @@ export function setupArmies(acc, nation) {
   for (let i = 0; i < count; i++) {
     const bpName = bpLine[i % bpLine.length];
     // v0.2.9：按兵种给战力 —— 第 3 类（装甲/突击编制）大幅增强
-    const slotMul = [1.0, 1.15, 1.5][i % 3] || 1;
+    // v0.4.5（需求 6）：兵种槽位倍率 —— 装甲/突击编制大幅加强（原 1.0 / 1.15 / 1.5）。
+//   装甲师与突击编制是**突破敌方防线**的主力，给到 1.0 / 1.5 / 2.4：
+//   第 3 张（装甲/突击）单独就能压制普通步兵编制，配合硬攻/装甲/穿甲形成明确分工。
+const SLOT_POWER_MUL = [1.0, 1.5, 2.4];
+    const slotMul = SLOT_POWER_MUL[i % 3] || 1;
     acc.armies.push({
       id: 'army_' + n.id + '_' + i,
       nameCn: n.nameCn + ' 第' + (i + 1) + ' ' + bpName,
@@ -298,7 +302,7 @@ export function setupArmies(acc, nation) {
     // 用蓝图表的实际顺序（避免硬编码 id 与实际数据不符）
     const BP_IDS = (ARMY_BLUEPRINTS || []).map((b) => b && b.id).filter(Boolean);
     if (!BP_IDS.length) BP_IDS.push('ab_ranger', 'ab_bulwark', 'ab_thunder');
-    const POWER_MUL_BY_SLOT = [1.0, 1.15, 1.5];   // 第二/第三张（装甲/机械化和突击编制）更强
+    const POWER_MUL_BY_SLOT = SLOT_POWER_MUL;   // 第二/第三张（装甲/机械化和突击编制）更强
     for (let i = 0; i < Math.min(3, BP_IDS.length); i++) {
       const bp = ARMY_BP_BY_ID[BP_IDS[i]];
       if (!bp) continue;
