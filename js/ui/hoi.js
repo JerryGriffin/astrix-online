@@ -1,19 +1,40 @@
-// 国策与海域面板（v0.2.6 官方 mod 1936 剧本）
+// 国策与轨道圈层面板（v0.2.6 官方 mod 1936 剧本）
+// v0.4.0 太空化：原「海域 / 制海权 / 海军 / 空军」整套二战地球语境已改为
+//   **轨道圈层 / 轨道控制 / 空间舰队 / 轨道火力**，玩法逻辑保留、命名去二战化。
+//   · 轨道圈层：母星行星的 7 个轨道圈层，争夺轨道控制权（决定陆战补给上限与能否轨道轰炸）
 //   · 顶部：剧本日历（到天）、国家、阵营、人口、军队 / 舰队概览
 //   · 国策树：工业 / 军事 / 外交三支，各两支；按游戏天数推进，完成即生效
-//   · 海域：六个 HOI4 风格海域，制海权争夺 + 海战结算
-import { fmtNum } from '../core/format.js?v=33.2';
-import { currentAccount, getPlanetInstance } from '../core/state.js?v=33.2';
-import { listArmies, totalArmyPowerOf } from '../core/army.js?v=33.2';
-import { listFleets, fleetPowerOf } from '../core/fleet.js?v=33.2';
+//   · 轨道圈层：母星行星的 7 个轨道圈层，争夺轨道控制权
+import { fmtNum } from '../core/format.js?v=41.6';
+import { currentAccount, getPlanetInstance } from '../core/state.js?v=41.6';
+import { listArmies, totalArmyPowerOf } from '../core/army.js?v=41.6';
+import { listFleets, fleetPowerOf } from '../core/fleet.js?v=41.6';
 import {
   scenarioDateOf, gameDaysOf, ensureFocus, focusOptionsOf, startFocus,
   ensureSeas, contestSea, blocNameOf, nationOf, deepOf, enemySeaPressure, backgroundOf, HOI_SCENARIO_ID,
   listHistTargets, histWarGateFor,
-} from '../core/hoi1936.js?v=33.2';
+} from '../core/hoi1936.js?v=41.6';
 // v0.3.3：战争数据（实时交战双方状态）
-import { activeWarsOf } from '../core/war.js?v=33.2';
-import { HOI_SEAS, HOI_BY_ID, HIST_TIMELINE } from '../data/hoi1936.js?v=33.2';
+import { activeWarsOf } from '../core/war.js?v=41.6';
+// v0.3.4：战役系统（师级交战 / 组织度 / 补给 / 工事 / 增援）—— 替代「只有进度条」
+import {
+  listBattles, battleView, startBattle, committableArmies, foeRemaining,
+  orderRetreat, stopBattle, terrainList, BATTLE_MAX_PER_WAR, BATTLE_COMBAT_WIDTH,
+  ORBITAL_BOMB_CHARGES, orbitalControlOf,
+} from '../core/battle.js?v=41.6';
+// v0.4.1：行星战区地图（战区归属 / 补给网络 / 战略轨道打击 / 殖民地争夺）
+import {
+  ensureTheater, theaterView, attackTargetsOf, canStrikeRegion, strikeRegion,
+  colonyIncomeOf, REGION_STRUCTURES, STRIKE_MAX,
+} from '../core/theater.js?v=41.6';
+import { HOI_SEAS, HOI_BY_ID, HIST_TIMELINE } from '../data/hoi1936.js?v=41.6';
+
+// v0.4.1：地图交互状态（同样放模块级，避免每秒重绘冲掉选中项）
+const _mapSel = { regionId: null };
+
+// v0.3.4：开辟战线的选择状态放**模块级** —— 本页每秒整块重绘（见文件末尾 _hoiTimer），
+//   若把勾选存在 DOM 里会被每次重绘冲掉，用户根本没法挑兵。
+const _lineSel = { warId: null, ids: [], terrain: 'plain', msg: '' };
 
 function el(tag, attrs = {}, children = []) {
   const e = document.createElement(tag);
@@ -79,8 +100,439 @@ const CSS = `
   .hoi-war-chip.hot { color:#f09595; border-color:rgba(240,149,149,.5); }
 `;
 
+// ============================================================================
+// v0.4.1：行星战区地图 —— 把抽象战线变成一张能推进的地图
+// ============================================================================
+const TERRAIN_CN = {
+  regolith: '月壤平原', crater: '环形山', canyon: '深峡谷',
+  dust: '尘暴区', lava: '熔岩地', ice: '冰盖', dome: '殖民地穹顶',
+};
+const TERRAIN_GRAV = {
+  regolith: 0.66, crater: 0.90, canyon: 0.95,
+  dust: 0.90, lava: 1.04, ice: 0.97, dome: 1.00,
+};
+const STRUCT_SYM = { orbital: 'O', depot: 'D', colony: 'C', mine: 'M', dome: 'Q' };
+
+/** 行星战区地图（网格 + 选中详情 + 进攻/打击按钮） */
+function buildTheaterMap(acc, war, refresh) {
+  const wrap = el('div', 'hoi-map-wrap');
+  const v = theaterView(acc);
+  if (!v) return wrap;
+
+  const head = el('div', 'hoi-map-head');
+  head.appendChild(el('span', { class: 'hoi-map-title', text: '行星战区图 ' + v.cols + '×' + v.rows }));
+  const inc = v.colonyIncome;
+  head.appendChild(el('span', { class: 'hoi-sub',
+    text: '殖民地 ' + inc.count + ' 处（' + inc.popM + ' 百万人口'
+      + (inc.lostPopM ? '，已失 ' + inc.lostPopM + ' 百万' : '') + '）'
+      + '　补给网络覆盖 ' + v.reach + ' 战区'
+      + '　轨道打击 ' + v.strikes + '/' + v.strikeMax }));
+  wrap.appendChild(head);
+
+  // ---- 网格 ----
+  const grid = el('div', 'hoi-map');
+  grid.style.gridTemplateColumns = 'repeat(' + v.cols + ', minmax(0,1fr))';
+  const ctrl = orbitalControlOf(acc, war && war.targetId);
+  for (const r of v.regions) {
+    const cell = el('button', 'hoi-cell');
+    cell.type = 'button';
+    cell.className = 'hoi-cell'
+      + (r.isMine ? ' mine' : (r.owner ? ' foe' : ' neutral'))
+      + (_mapSel.regionId === r.id ? ' sel' : '')
+      + (r.battleId ? ' fighting' : '')
+      + (r.structure === 'colony' ? ' has-colony' : '');
+    cell.appendChild(el('span', { class: 'sym', text: STRUCT_SYM[r.structure] || '·' }));
+    cell.appendChild(el('span', { class: 'nm', text: r.nameCn || r.id }));
+    cell.appendChild(el('span', { class: 'terr', text: TERRAIN_CN[r.terrain] || r.terrain }));
+    const tags = [];
+    if (r.isMine && !r.connected) tags.push('断供');
+    if (r.strikePressure > 0.25) tags.push('被打击');
+    if (r.battleId) tags.push('交战中');
+    if (r.structure === 'colony') tags.push(r.popM + 'M');
+    if (tags.length) cell.appendChild(el('span', { class: 'tags', text: tags.join('·') }));
+    cell.title = (r.nameCn || r.id) + '｜' + (TERRAIN_CN[r.terrain] || r.terrain)
+      + '（' + (TERRAIN_GRAV[r.terrain] || 1).toFixed(2) + 'g）'
+      + '｜属主：' + (r.owner ? ((HOI_BY_ID[r.owner] || {}).nameCn || r.owner) : '中立')
+      + (r.structureCn ? '｜' + r.structureCn : '')
+      + '｜驻防 ' + Math.round(r.garrison * 100) + '%'
+      + '｜补给 ' + Math.round(r.supply * 100) + '%';
+    cell.addEventListener('click', () => {
+      _mapSel.regionId = (_mapSel.regionId === r.id ? null : r.id);
+      refresh && refresh();
+    });
+    grid.appendChild(cell);
+  }
+  wrap.appendChild(grid);
+
+  // ---- 选中战区详情 + 操作 ----
+  if (_mapSel.regionId) {
+    const r = v.regions.find((x) => x.id === _mapSel.regionId);
+    if (r) wrap.appendChild(buildRegionPanel(acc, war, r, ctrl, refresh));
+  } else {
+    wrap.appendChild(el('div', 'hoi-note',
+      '点击战区查看详情：从**相邻战区**发动进攻，或对敌方战区实施**战略轨道打击**。'
+      + '补给只在我方连片战区内流通 —— 补给网络没覆盖的战区会挨饿，所以推进要「打穿走廊」。'));
+  }
+  return wrap;
+}
+
+/** 选中战区的详情与操作 */
+function buildRegionPanel(acc, war, r, ctrl, refresh) {
+  const t = ensureTheater(acc);
+  const raw = (t.regions || []).find((x) => x.id === r.id);
+  const box = el('div', 'hoi-region');
+  const ownerNation = r.owner ? ((HOI_BY_ID[r.owner] || {}).nameCn || r.owner) : '中立';
+  const meta = el('div', 'hoi-region-head');
+  meta.appendChild(el('span', { class: 'nm', text: r.nameCn || r.id }));
+  meta.appendChild(el('span', { class: 'hoi-sub',
+    text: (TERRAIN_CN[r.terrain] || r.terrain) + '（' + (TERRAIN_GRAV[r.terrain] || 1).toFixed(2) + 'g）'
+      + '　属主：' + ownerNation
+      + (r.structureCn ? '　' + r.structureCn : '')
+      + (r.structure === 'colony' ? '（' + r.popM + ' 百万）' : '')
+      + '　驻防 ' + Math.round(r.garrison * 100) + '%'
+      + '　补给 ' + Math.round(r.supply * 100) + '%'
+      + (r.connected ? '' : '　断供')
+      + (r.strikePressure > 0.2 ? '　防线瘫 ' + Math.round(r.strikePressure * 100) + '%' : '') }));
+  box.appendChild(meta);
+  const st = r.structure && REGION_STRUCTURES[r.structure];
+  if (st) box.appendChild(el('div', { class: 'hoi-note', text: st.desc }));
+
+  const row = el('div', 'hoi-region-acts');
+  const view = theaterView(acc);
+
+  // ---- 从我方战区向相邻目标进攻 ----
+  if (raw && r.isMine && war && war.status === 'active') {
+    const avail = committableArmies(acc, war.id);
+    const targets = [];
+    try { for (const x of attackTargetsOf(acc, raw)) if (x && x.id) targets.push(x); } catch (e) { /* 忽略 */ }
+    if (targets.length) {
+      row.appendChild(el('span', 'hoi-note', '由此进攻：'));
+      for (const tg of targets) {
+        const tName = tg.owner ? ((HOI_BY_ID[tg.owner] || {}).nameCn || tg.owner) : '中立';
+        const btn = el('button', 'hoi-mini-btn' + (tg.owner ? '' : ' neutral'),
+          (tg.nameCn || tg.id) + '·' + tName
+          + (tg.owner ? ' 驻防' + Math.round((tg.garrison || 0) * 100) + '%' : '')
+          + (tg.structure === 'colony' ? ' ★殖民地' : ''));
+        btn.disabled = !(avail && avail.length) || !!tg.battleId;
+        btn.title = tg.battleId ? '该战区已在交战中'
+          : (!(avail && avail.length) ? '没有可用师（都在其他战线或兵员已耗尽）' : '从 ' + r.nameCn + ' 发起进攻');
+        btn.addEventListener('click', () => {
+          const pick = (avail || []).slice(0, BATTLE_COMBAT_WIDTH + 1).map((a) => a.id);
+          const r2 = startBattle(acc, war, { regionId: tg.id, armyIds: pick });
+          if (!r2.ok) { alert(r2.reason); return; }
+          if (r2.region) _mapSel.regionId = r2.region.id;
+          refresh && refresh();
+        });
+        row.appendChild(btn);
+      }
+    } else {
+      row.appendChild(el('span', 'hoi-note', '周边没有可进攻目标。'));
+    }
+  }
+
+  // ---- 战略轨道打击（跨战区）----
+  if (!r.isMine) {
+    const gate = canStrikeRegion(acc, raw, ctrl);
+    const btn = el('button', 'hoi-mini-btn danger',
+      '轨道打击（余 ' + (view ? view.strikes : 0) + '）');
+    btn.disabled = !gate.ok;
+    btn.title = gate.ok ? '从轨道瘫痪该战区守军，使其更易被登陆' : gate.reason;
+    btn.addEventListener('click', () => {
+      const res = strikeRegion(acc, raw, ctrl);
+      if (!res.ok) { alert(res.reason); return; }
+      alert(res.desc);
+      refresh && refresh();
+    });
+    row.appendChild(btn);
+    if (!gate.ok) row.appendChild(el('span', { class: 'hoi-note', text: gate.reason }));
+  }
+  box.appendChild(row);
+  return box;
+}
+
+// ============================================================================
+// v0.3.4：战线面板 —— 把「只有一根进度条」换成看得见的师级交战
+// ============================================================================
+
+/** 一条细进度条（组织度 / 兵力 / 工事 / 突破 共用） */
+function miniBar(ratio, color, cls) {
+  const b = el('div', 'hoi-mini' + (cls ? ' ' + cls : ''));
+  const pct = Math.max(0, Math.min(100, (Number(ratio) || 0) * 100));
+  b.appendChild(el('i', { style: 'width:' + pct + '%;background:' + color }));
+  return b;
+}
+
+/** 一个师的一行：名称 / 状态 / 组织度 / 兵力 */
+function divisionRow(d, onRetreat) {
+  const row = el('div', 'hoi-div' + (d.isMine ? '' : ' foe'));
+  const top = el('div', 'hoi-div-top');
+  top.appendChild(el('span', { class: 'nm', text: d.nameCn }));
+  top.appendChild(el('span', { class: 'st s-' + d.state, text: d.stateCn }));
+  row.appendChild(top);
+  const bars = el('div', 'hoi-div-bars');
+  const orgWrap = el('div', 'w');
+  orgWrap.appendChild(el('span', { class: 'lb', text: '组织' }));
+  orgWrap.appendChild(miniBar(d.org / (d.orgMax || 100), d.org > 50 ? '#7cd7ff' : (d.org > 0 ? '#f0c76b' : '#f09595')));
+  bars.appendChild(orgWrap);
+  const strWrap = el('div', 'w');
+  strWrap.appendChild(el('span', { class: 'lb', text: '兵力' }));
+  strWrap.appendChild(miniBar(d.strRatio, d.strRatio > 0.6 ? '#9FE1CB' : (d.strRatio > 0 ? '#f0c76b' : '#f09595')));
+  bars.appendChild(strWrap);
+  // v0.3.5：装备率（后勤）—— 补给断了它就掉，掉光战斗力腰斩
+  const eqWrap = el('div', 'w');
+  eqWrap.appendChild(el('span', { class: 'lb', text: '装备' }));
+  eqWrap.appendChild(miniBar(d.equip / 100, d.equip > 60 ? '#9FE1CB' : (d.equip > 30 ? '#f0c76b' : '#f09595')));
+  bars.appendChild(eqWrap);
+  row.appendChild(bars);
+  // 六项 HOI4 属性：软攻 / 硬攻 / 突破 / 防御 / 装甲 / 穿甲
+  row.appendChild(el('div', { class: 'hoi-div-meta',
+    text: '软' + d.softAtk + ' 硬' + d.hardAtk + ' 突' + d.breakthrough + ' 防' + d.defense
+      + ' · 装甲' + Math.round(d.armor * 100) + '% 穿' + Math.round(d.pierce * 100) + '%'
+      + ' · 经' + d.xp }));
+  row.appendChild(el('div', { class: 'hoi-div-kind', text: d.kindCn }));
+  // 撤退令（HOI4 的撤退命令）：只在我方、且仍接战时给
+  if (d.isMine && d.armyId && d.state !== 'done' && onRetreat) {
+    const rb = el('button', 'hoi-mini-btn', '撤出');
+    rb.addEventListener('click', onRetreat);
+    row.appendChild(rb);
+  }
+  return row;
+}
+
+/** 一个战场的卡片 */
+function battleCard(acc, b, refresh) {
+  const v = battleView(acc, b.id);
+  const card = el('div', 'hoi-battle');
+
+  const top = el('div', 'hoi-battle-top');
+  top.appendChild(el('span', { class: 'hoi-battle-title',
+    text: (v.attackerCn || '交战') + ' · ' + v.terrainCn }));
+  top.appendChild(el('span', { class: 'hoi-sub',
+    text: '交战 ' + v.hours + '/' + v.maxHours + ' 小时 · 接战 ' + v.mineEngaged + ' vs ' + v.foeEngaged
+      + '（战斗宽度 ' + v.width + '）' }));
+  card.appendChild(top);
+
+  if (v.warning) card.appendChild(el('div', 'hoi-warn', v.warning));
+
+  // 关键读数：补给 / 工事 / 突破 / 攻防
+  const stats = el('div', 'hoi-battle-stats');
+  function stat(k, v2, ratio, color) {
+    const s = el('div', 's');
+    s.appendChild(el('span', { class: 'k', text: k }));
+    const val = el('span', { class: 'v', text: v2 });
+    s.appendChild(val);
+    if (ratio != null) s.appendChild(miniBar(ratio, color));
+    return s;
+  }
+  stats.appendChild(stat('我方补给', Math.round(v.supply.mine * 100) + '%', v.supply.mine,
+    v.supply.mine > 0.6 ? '#9FE1CB' : '#f0c76b'));
+  stats.appendChild(stat('敌方补给', Math.round(v.supply.foe * 100) + '%', v.supply.foe,
+    v.supply.foe > 0.6 ? '#f09595' : '#7cd7ff'));
+  // v0.3.5：制海权 → 补给上限（v0.4.0 起叫「轨道控制」，且受空间舰队实力影响）
+  stats.appendChild(stat('轨道控制（补给上限）', Math.round((v.orbitalControl == null ? 0.5 : v.orbitalControl) * 100) + '%',
+    v.orbitalControl, v.orbitalControl > 0.6 ? '#7cd7ff' : '#f0c76b'));
+  // v0.4.0：轨道轰炸余弹（ORBITAL_BOMB_CHARGES 是本模块顶部直接 import 的绑定，不是 B.* ）
+  stats.appendChild(stat('轨道轰炸弹', (v.orbital ? v.orbital.charges : 0) + ' / ' + ORBITAL_BOMB_CHARGES
+    + (v.orbital && v.orbital.used ? '（已用 ' + v.orbital.used + '）' : ''),
+    v.orbital ? v.orbital.charges / ORBITAL_BOMB_CHARGES : 0, '#f09595'));
+  // v0.4.0：低重力 —— 太空独有的战术维度
+  stats.appendChild(stat('重力', (v.gravity == null ? 1 : v.gravity).toFixed(2) + ' g'
+    + (v.gravity < 0.9 ? '（利攻）' : (v.gravity > 1.01 ? '（利守）' : '')),
+    v.gravity == null ? 1 : v.gravity, '#9FE1CB'));
+  // v0.4.0：轨道火力 / 无人机群（读 airforce 字段，但不再是二战飞机）
+  stats.appendChild(stat('轨道火力 我/敌', (v.air ? v.air.mineAir : 0) + ' / ' + (v.air ? v.air.foeAir : 0),
+    v.air ? v.air.supMine : 0.5, v.air && v.air.supMine > 0.5 ? '#9FE1CB' : '#f0c76b'));
+  stats.appendChild(stat('近距支援 我/敌',
+    '×' + (v.air ? v.air.casMine.toFixed(2) : '1.00') + ' / ×' + (v.air ? v.air.casFoe.toFixed(2) : '1.00'),
+    null, '#7cd7ff'));
+  stats.appendChild(stat('我方工事', Math.round(v.entrench.mine * 100) + '%', v.entrench.mine, '#7cd7ff'));
+  stats.appendChild(stat('敌方工事', Math.round(v.entrench.foe * 100) + '%', v.entrench.foe, '#f09595'));
+  stats.appendChild(stat('突破', Math.round((v.breakthrough.mine || 0) * 100) + '%', v.breakthrough.mine, '#9FE1CB'));
+  stats.appendChild(stat('压制', Math.round((v.breakthrough.foe || 0) * 100) + '%', v.breakthrough.foe, '#f09595'));
+  stats.appendChild(stat('本时辰攻/防读数', (v.lastPower.atk || 0) + ' / ' + (v.lastPower.def || 0), null, '#7cd7ff'));
+  card.appendChild(stats);
+
+  // 双方师列表
+  const cols = el('div', 'hoi-battle-cols');
+  const mineBox = el('div', 'col mine');
+  mineBox.appendChild(el('div', { class: 'ch', text: '我方 ' + v.mine.length + ' 个师' }));
+  for (const d of v.mine) {
+    mineBox.appendChild(divisionRow(d, () => {
+      const r = orderRetreat(acc, v.id, d.armyId);
+      if (r && !r.ok) alert(r.reason);
+      refresh && refresh();
+    }));
+  }
+  const foeBox = el('div', 'col foe');
+  foeBox.appendChild(el('div', { class: 'ch', text: '敌方 ' + v.foe.length + ' 个师' }));
+  for (const d of v.foe) foeBox.appendChild(divisionRow(d, null));
+  cols.appendChild(mineBox);
+  cols.appendChild(foeBox);
+  card.appendChild(cols);
+
+  // 交战日志
+  if (v.log && v.log.length) {
+    const lg = el('div', 'hoi-battle-log');
+    lg.appendChild(el('div', { class: 'ch', text: '交战记录' }));
+    for (const L of v.log.slice(0, 6)) {
+      lg.appendChild(el('div', { class: 'li', text: '· [' + (L.hours || 0) + 'h] ' + (L.text || '') }));
+    }
+    card.appendChild(lg);
+  }
+
+  // 操作：结束战线（HOI4 的「停止战斗 / 撤离」）
+  const acts = el('div', 'hoi-battle-acts');
+  const stopBtn = el('button', 'hoi-mini-btn danger', '全线撤出（结束本战场）');
+  stopBtn.addEventListener('click', () => {
+    const r = stopBattle(acc, v.id, '玩家下令全线撤出');
+    if (r && !r.ok) alert(r.reason);
+    refresh && refresh();
+  });
+  acts.appendChild(stopBtn);
+  card.appendChild(acts);
+  return card;
+}
+
+/** 「开辟新战线」控制区：挑师 + 选地形 + 开打 */
+function buildOpenLine(acc, war, refresh) {
+  const box = el('div', 'hoi-open');
+  if (_lineSel.warId !== war.id) { _lineSel.warId = war.id; _lineSel.ids = []; _lineSel.msg = ''; }
+
+  const active = listBattles(acc, war.id).filter((b) => b.status === 'active');
+  const pool = foeRemaining(acc, war.id);
+  const avail = committableArmies(acc, war.id);
+
+  box.appendChild(el('div', 'hoi-sub', '开辟新战线（HOI4 式：选师 + 选地形，同时接战上限 '
+    + BATTLE_COMBAT_WIDTH + ' 个师）'));
+
+  if (active.length >= BATTLE_MAX_PER_WAR) {
+    box.appendChild(el('div', 'hoi-warn', '同时最多 ' + BATTLE_MAX_PER_WAR + ' 个战场，先等一个分出胜负。'));
+    return box;
+  }
+  if (pool && pool.divisions <= 0) {
+    box.appendChild(el('div', 'hoi-warn', '对方已无可调之师（已被打垮）—— 现在可以发动迫降。'));
+    return box;
+  }
+  if (!avail.length) {
+    box.appendChild(el('div', 'hoi-warn', '没有可用师：所有师都已投入其他战线，或兵员已耗尽（去补员）。'));
+    return box;
+  }
+
+  const list = el('div', 'hoi-open-list');
+  for (const a of avail.slice(0, 60)) {
+    const lab = el('label', 'hoi-pick');
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.checked = _lineSel.ids.indexOf(a.id) >= 0;
+    cb.addEventListener('change', () => {
+      const i = _lineSel.ids.indexOf(a.id);
+      if (i >= 0) _lineSel.ids.splice(i, 1); else _lineSel.ids.push(a.id);
+    });
+    lab.appendChild(cb);
+    lab.appendChild(el('span', { class: 'nm', text: a.nameCn }));
+    lab.appendChild(el('span', { class: 'hoi-sub',
+      text: '[' + a.kindCn + '] ' + a.men + '人 软' + a.softAtk + '/硬' + a.hardAtk
+        + ' 防' + a.defense + ' 装' + Math.round(a.armor * 100) + '% 穿' + Math.round(a.pierce * 100) + '%'
+        + (a.elite ? ' 王牌' : '') }));
+    list.appendChild(lab);
+  }
+  box.appendChild(list);
+
+  const row = el('div', 'hoi-open-row');
+  const tsel = document.createElement('select');
+  tsel.className = 'hoi-sel';
+  for (const t of terrainList()) {
+    const o = document.createElement('option');
+    o.value = t.id;
+    o.textContent = t.nameCn + '（' + t.gravity.toFixed(2) + 'g' + (t.hazard > 0.02 ? ' · 高危' : '') + '）';
+    if (t.id === _lineSel.terrain) o.selected = true;
+    tsel.appendChild(o);
+  }
+  tsel.addEventListener('change', () => { _lineSel.terrain = tsel.value; });
+  row.appendChild(el('span', 'hoi-note', '地形：'));
+  row.appendChild(tsel);
+
+  const allBtn = el('button', 'hoi-mini-btn', '全选');
+  allBtn.addEventListener('click', () => { _lineSel.ids = avail.map((a) => a.id); });
+  row.appendChild(allBtn);
+  const noneBtn = el('button', 'hoi-mini-btn', '清空');
+  noneBtn.addEventListener('click', () => { _lineSel.ids = []; });
+  row.appendChild(noneBtn);
+
+  const go = el('button', 'btn btn-primary hoi-go', '开辟战线（已选 ' + _lineSel.ids.length + ' 个师）');
+  go.addEventListener('click', () => {
+    const r = startBattle(acc, war, { armyIds: _lineSel.ids.slice(), terrain: _lineSel.terrain });
+    if (!r.ok) { _lineSel.msg = r.reason || '无法开辟战线'; alert(_lineSel.msg); refresh && refresh(); return; }
+    _lineSel.ids = [];
+    _lineSel.msg = '';
+    refresh && refresh();
+  });
+  row.appendChild(go);
+  box.appendChild(row);
+
+  box.appendChild(el('div', 'hoi-note',
+    'v0.4.0 太空化：'
+    + '**地形是行星地貌**，不再是地球的平原/城市。'
+    + '低重力（月壤平原 0.66g）让进攻方机动占优、守方阵地难维持 —— 净效果利攻不利守；'
+    + '殖民地穹顶防御加成最高（1.45）但被破后没有退路。'
+    + '尘暴区/熔岩地等高危地貌会随机触发**地貌灾害**（陨石撞击 / 地陷 / 毒气喷出 / 尘暴），'
+    + '直接打掉部队组织度与兵力 —— 行星表面本身也会打你。'));
+  box.appendChild(el('div', 'hoi-note',
+    '**轨道控制决定补给**：圈层控制 × 空间舰队优势（0.55~1.0）。'
+    + '完全没有舰队时轨道控制封顶 55%，低于 60% 的**轨道轰炸**门槛 —— '
+    + '没有舰船就没有从天上打的手段。控制轨道后每场战役可投 4 发轰炸，'
+    + '直接削对方组织度、兵力与工事。太空战争是先夺轨道、再打地面。'));
+  return box;
+}
+
+/** 战线总面板 */
+function buildBattleSection(acc, war, refresh) {
+  const sec = el('div', 'hoi-battles');
+  const battles = listBattles(acc, war.id);
+  const active = battles.filter((b) => b.status === 'active');
+  const done = battles.filter((b) => b.status !== 'active').slice(-4).reverse();
+  const pool = foeRemaining(acc, war.id);
+
+  const h = el('div', 'hoi-battle-h');
+  h.appendChild(el('span', null, '战线 · 师级交战'));
+  h.appendChild(el('span', { class: 'hoi-sub',
+    text: '进行中 ' + active.length + '/' + BATTLE_MAX_PER_WAR
+      + (pool ? '　敌方余 ' + pool.divisions + ' 个师（累计击溃 ' + pool.killed + '）' : '') }));
+  sec.appendChild(h);
+
+  if (!active.length) {
+    sec.appendChild(el('div', 'hoi-note',
+      '尚未开辟战线。选好师与地形后点「开辟战线」，或等待敌方主动进攻。'));
+  }
+  for (const b of active) sec.appendChild(battleCard(acc, b, refresh));
+
+  sec.appendChild(buildOpenLine(acc, war, refresh));
+
+  if (done.length) {
+    const dh = el('div', 'hoi-done');
+    dh.appendChild(el('div', { class: 'ch', text: '近期结束的战役' }));
+    for (const b of done) {
+      const r = b.result || {};
+      const txt = r.stalemate ? '僵持未决' : (r.attackerWin ? '胜利' : '失利');
+      dh.appendChild(el('div', { class: 'li', text:
+        '· ' + ((BATTLE_TERRAIN_CN(b.terrain)) || '') + '　' + txt
+        + '　' + (r.hours || 0) + ' 小时　我方损失 ' + (r.lostMen || 0) + ' 人　击溃敌方 ' + (r.foeKilled || 0) + ' 师' }));
+    }
+    sec.appendChild(dh);
+  }
+  return sec;
+}
+
+// 地形中文名（buildBattleSection 结束战役列表用；避免重复 import 整个常量表）
+function BATTLE_TERRAIN_CN(id) {
+  const t = terrainList().find((x) => x.id === id);
+  return t ? t.nameCn : '';
+}
+
 export function renderHoi(root, ctx) {
   const acc = currentAccount();
+  // v0.3.4：战线操作（开辟/撤出/结束）后立刻重绘，不必等下一秒的定时器
+  const refresh = () => renderHoi(root, ctx);
   root.innerHTML = '';
   if (!acc || acc.scenario !== HOI_SCENARIO_ID) {
     // 非 1936 存档：本页无内容可刷，但仍需清掉上一轮可能残留的定时器
@@ -111,7 +563,7 @@ export function renderHoi(root, ctx) {
     + '　|　剧本已进行 ' + Math.floor(gameDaysOf(acc)) + ' 天'));
   if (n) {
     head.appendChild(el('div', 'hoi-sub',
-      '本体编制：' + (deep.armyName || '步兵师') + '（每支 ' + 500 + ' 人）'
+      '本体编制：' + (deep.armyName || '登陆兵师') + '（每支 ' + 500 + ' 人）'
       + '　|　史实海军 ' + n.navy + ' 舰 → 游戏内 ' + acc.ships.length + ' 艘 / ' + navies.length + ' 支舰队'));
   }
   const stats = el('div', 'hoi-stats');
@@ -126,7 +578,7 @@ export function renderHoi(root, ctx) {
   addStat('国内工业', n ? String(n.ic) : '—');
   addStat('工业建筑', fmtNum(homeInst.hoiIndustry ? homeInst.hoiIndustry.buildings : 0) + ' 座');
   addStat('产线工人', fmtNum(acc.hoiWorkforce || 0));
-  addStat('海军传统', '×' + (Number(acc.hoiNavyMul) || 1).toFixed(2));
+  addStat('舰队传统', '×' + (Number(acc.hoiNavyMul) || 1).toFixed(2));
   head.appendChild(stats);
   const bg = backgroundOf(acc);
   if (bg) {
@@ -313,20 +765,26 @@ export function renderHoi(root, ctx) {
       body.appendChild(side(foeName, foe ? foe.flag : '🏳', foe ? foe.capital : '', [
         // v0.3.3：敌方为 1936 基准静态值（列强数据表），非其实时发展值
         ['陆军（1936 基准）', (foe ? foe.divisions : '?') + ' 个师'],
-        ['工业 / 海军 / 空军（1936 基准）',
+        ['工业 / 舰队 / 轨道火力（1936 基准）',
           (foe ? foe.ic : '?') + ' / ' + (foe ? foe.navy : '?') + ' / ' + (foe ? foe.airforce : '?')],
         ['人口（1936 基准）', (foe ? foe.popM : '?') + ' 百万'],
         ['战争分数', String(Number(w.theirScore) || 0) + '（' + (100 - myPct) + '%）'],
       ]));
 
-      // 推进条 + 战报
+      // 推进条：v0.3.4 起它只是**战役胜负的结果**，不再自行滑动（见 battle.js）
       const prog = Math.max(0, Math.min(100, Number(w.progress) || 0));
       const bar = el('div', { style: 'flex:1 1 100%;' });
-      bar.appendChild(el('div', { class: 'hoi-note', text: '战场推进 ' + Math.round(prog) + '%（推进≥70% 可发动迫降）' }));
+      bar.appendChild(el('div', { class: 'hoi-note', text: '战线推进 ' + Math.round(prog)
+        + '%　（由战役胜负推动：打赢一场 +14%，打退敌方进攻仅 +3%，推进≥70% 可发动迫降）' }));
       const pb = el('div', 'hoi-bar');
       pb.appendChild(el('i', { style: 'width:' + prog + '%;background:' + (prog >= 70 ? '#9FE1CB' : '#f09595') }));
       bar.appendChild(pb);
       body.appendChild(bar);
+
+      // ===== v0.4.1：行星战区地图（先看地图，再决定在哪开战）=====
+      body.appendChild(buildTheaterMap(acc, w, refresh));
+      // ===== v0.3.4：战线（真实交战）=====
+      body.appendChild(buildBattleSection(acc, w, refresh));
 
       const logs = Array.isArray(w.log) ? w.log.slice(0, 3) : [];
       if (logs.length) {
@@ -341,14 +799,14 @@ export function renderHoi(root, ctx) {
   }
   panel.appendChild(warSec);
 
-  // ---- 海域 ----
+  // ---- 轨道圈层 ----
   const seaSec = el('div', 'hoi-sec');
   const pressure = enemySeaPressure(acc);
   seaSec.appendChild(el('div', 'hoi-sec-h', [
-    el('span', null, '海域与制海权'),
-    el('span', { class: 'hoi-sub', text: '敌方海上压力 ' + fmtNum(Math.round(pressure)) + (pressure ? '' : '（当前无敌意海军）') }),
+    el('span', null, '轨道圈层与控制权'),
+    el('span', { class: 'hoi-sub', text: '敌方轨道压力 ' + fmtNum(Math.round(pressure)) + (pressure ? '' : '（当前无敌意舰队）') }),
   ]));
-  seaSec.appendChild(el('div', 'hoi-note', '派舰队巡航以争夺制海权（0~100%）。海战按双方舰队实力结算，失利会有舰艇损失。'));
+  seaSec.appendChild(el('div', 'hoi-note', '派空间舰队巡航以争夺轨道控制权（0~100%）。轨道战按双方舰队实力结算，失利会有舰艇损失。轨道控制直接决定地面补给上限，并解锁轨道轰炸 —— 先夺轨道、再打地面。'));
   const seaBtnRow = el('div', 'hoi-branch');
   const seaSel = document.createElement('select');
   seaSel.style.cssText = 'min-height:40px;border-radius:8px;background:#2d3e50;color:#fff;border:none;padding:0 8px;';
@@ -375,12 +833,12 @@ export function renderHoi(root, ctx) {
     nm.lastChild.style.cssText = 'font-size:11px;opacity:.65;';
     row.appendChild(nm);
     const ctl = el('div', 'ctl');
-    ctl.appendChild(el('div', { class: 'hoi-note', text: '制海权 ' + Math.round(s.control * 100) + '%' }));
+    ctl.appendChild(el('div', { class: 'hoi-note', text: '轨道控制 ' + Math.round(s.control * 100) + '%' }));
     const bar = el('div', 'hoi-bar');
     bar.appendChild(el('i', { style: 'width:' + Math.round(s.control * 100) + '%;background:' + (s.control >= 0.5 ? '#9FE1CB' : '#f09595') }));
     ctl.appendChild(bar);
     row.appendChild(ctl);
-    const go = el('button', null, '巡航争夺');
+    const go = el('button', null, '巡航争夺轨道');
     go.addEventListener('click', () => {
       const fl = navies.find((x) => x.id === seaSel.value);
       if (!fl) { alert('先组建 / 选择一支舰队。'); return; }
@@ -410,7 +868,7 @@ export function renderHoi(root, ctx) {
   // ---- 口径说明 ----
   panel.appendChild(el('p', 'hoi-note',
     '说明：本页为官方 mod「1936 剧本」专属。交战采用钢铁雄心式多回合结算（编队宽度 3、组织度耗尽撤退）；'
-    + '海战按舰队实力与真实海军规模换算（含海军传统加成）；国策按游戏天数推进，'
+    + '轨道战按舰队实力与真实海军规模换算（含舰队传统加成）；国策按游戏天数推进，'
     + '同支国策需按序解锁，外交线两策互斥。'
     + '战争严格按历史时间表推进：只有踩到对应史实节点才可宣战，AI 也只在节点日开战；'
     + '「战争」栏可下拉选择进行中的战争并查看双方实时状态（我方为真实 army/fleet/工业，'

@@ -403,14 +403,20 @@ export const HOI_DEEP = {
 };
 
 // 海域（HOI4 风格战区海域；navyStr = 巡航需要的综合实力基准）
+// v0.4.0 **太空化**：原先这里是北海 / 波罗的海 / 英吉利海峡 / 地中海 / 大西洋 /
+//   西太平洋 / 日本海 —— 一整套二战地球地理，与「太空殖民」设定冲突。
+//   现改为**母星行星的轨道圈层**：争夺的不是海面，而是**轨道控制权**
+//   （谁控制轨道，谁就能投送兵力、呼叫轨道轰炸，并决定地面部队的补给上限）。
+//   ⚠️ `id` 故意**保持不变**（存档里 acc.hoiSeas 按 id 索引，改名会导致老存档丢数据），
+//   只改 nameCn 并补充轨道语义字段。base / region 的数值口径不变，保证平衡不被这次改名带动。
 export const HOI_SEAS = [
-  { id: 'north_sea', nameCn: '北海', base: 400, region: 'europe' },
-  { id: 'baltic', nameCn: '波罗的海', base: 300, region: 'europe' },
-  { id: 'channel', nameCn: '英吉利海峡', base: 600, region: 'europe' },
-  { id: 'med', nameCn: '地中海', base: 500, region: 'europe' },
-  { id: 'atlantic', nameCn: '大西洋', base: 900, region: 'atlantic' },
-  { id: 'pacific_w', nameCn: '西太平洋', base: 800, region: 'asia' },
-  { id: 'japan_sea', nameCn: '日本海', base: 350, region: 'asia' },
+  { id: 'north_sea', nameCn: '近地轨道', base: 400, region: 'europe', altKm: 400, orbitMin: 92, desc: '大气层上沿，轨道机动最频繁，运兵最快但易被拦截。' },
+  { id: 'baltic', nameCn: '晨昏线轨道', base: 300, region: 'europe', altKm: 12000, orbitMin: 180, desc: '永昼与永夜交界，太阳能充足，适合长期部署轨道炮。' },
+  { id: 'channel', nameCn: '同步轨道', base: 600, region: 'europe', altKm: 35786, orbitMin: 1440, desc: '地球静止轨道，轨道炮与通信中继的枢纽，制高点。' },
+  { id: 'med', nameCn: '拉格朗日点 L4', base: 500, region: 'europe', altKm: 1500000, orbitMin: 4320, desc: '地月平衡点，可长期屯兵，是深空投送的跳板。' },
+  { id: 'atlantic', nameCn: '深空门户', base: 900, region: 'atlantic', altKm: 8000000, orbitMin: 12000, desc: '星际航道入口。控制它等于扼住对方的补给命脉。' },
+  { id: 'pacific_w', nameCn: '极地轨道', base: 800, region: 'asia', altKm: 800, orbitMin: 100, desc: '高倾角轨道，俯冲能力强，轨道轰炸命中率高。' },
+  { id: 'japan_sea', nameCn: '气层防线', base: 350, region: 'asia', altKm: 60, orbitMin: 88, desc: '稠密大气层内，机动受限但可获得地表火力掩护。' },
 ];
 // 各国可争夺的海域区域（欧洲国家只能抢欧洲海域，亚洲国家抢亚洲+太平洋…）
 export const NATION_SEA_REGION = {

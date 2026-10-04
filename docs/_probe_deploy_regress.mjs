@@ -5,8 +5,8 @@
 //   任一步抛错 → 装备已扣、进度不清零 → 下 tick 重入 chk.ok → 再扣一次 → 无限循环。
 //   最恶劣形态：acc 为 null 时 listArmies(null) 返回**临时空数组**，push 随返回丢弃，
 //   不抛错、不回滚、装备照扣 → 玩家只看到进度卡在 1−ε。
-import { armyBuildTick, armyBuildCheck, listArmies } from '../js/core/army.js?v=33.2';
-import { ARMY_BP_BY_ID, armyBpPartNeeds } from '../js/data/army_parts.js?v=33.2';
+import { armyBuildTick, armyBuildCheck, listArmies } from '../js/core/army.js?v=41.6';
+import { ARMY_BP_BY_ID, armyBpPartNeeds } from '../js/data/army_parts.js?v=41.6';
 
 let pass = 0, fail = 0;
 function check(name, cond, detail) {

@@ -39,13 +39,21 @@ for (const name of rdRoot(ROOT)) {
   if (!name.endsWith('.html')) continue;
   const htmlPath = join(ROOT, name);
   const html = readFileSync(htmlPath, 'utf8');
-  const htmlNext = html.replace(/(\?v=)[^"']+/g, `$1${CACHE_TAG}`);
+  // ⚠️ 这里**不能**再写回 /(\?v=)[^"']+/g（v0.3.4 修复）：
+  //   旧正则的 `[^"']+` 贪婪且能跨 `-->` 与换行。index.html 里原本有一行注释以
+  //   「……模块文件仍靠 ?v=33.2 -->」结尾、下一行紧接着 <meta http-equiv="Cache-Control" …>，
+  //   于是匹配从注释里的 ?v= 一路吞到 `<meta http-equiv=`，把整条 meta 标签吃进注释，
+  //   **静默废掉了 HTML 自身的 no-cache 声明**（移动端「改了数据表仍显示旧数值」复发）。
+  // 现在的写法要求：值里不含引号/空白/尖括号，且**必须紧跟一个引号**才算命中。
+  //   真实属性值（href="…?v=33.2" / src="…?v=33.2" / import '…?v=33.2'）照旧全部命中；
+  //   注释正文里的 ?v= 不再被误伤。
+  const htmlNext = html.replace(/(\?v=)[^"'>\s]*(?=["'])/g, `$1${CACHE_TAG}`);
   if (htmlNext !== html) { writeFileSync(htmlPath, htmlNext); changed++; }
 }
 
 // 3) docs/*.mjs：自检脚本里对 js/ 模块的 import 也必须带**同一个** CACHE_TAG。
 //    背景（v0.1.1 render 自检 13 项级联失败）：ESM 按 URL 区分模块实例——
-//    UI 链加载的是 state.js?v=11.0，而自检脚本若 import '../js/core/state.js?v=33.2'（无串）
+//    UI 链加载的是 state.js?v=11.0，而自检脚本若 import '../js/core/state.js?v=41.6'（无串）
 //    就会得到**第二份模块实例**（STATE 双份），于是 S.currentAccount() 恒为 null，
 //    表现为「Cannot set properties of null (setting 'tech')」并级联炸掉整条船坞链。
 //    所以这里与 js/ 用同一个正则，无串的补上、旧串的剥掉重写。

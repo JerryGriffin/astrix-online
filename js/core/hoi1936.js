@@ -12,13 +12,15 @@
 import { HOI_NATIONS, HOI_BY_ID, HOI_MAIN_NATIONS, HOI_MAIN_BY_ID, HOI_DEEP, HOI_SEAS, ARMY_MEN, popOf, BLOC_NAME, HOI_SCENARIO_ID,
   workforceOf, ARMY_POWER_PER_DIV, NAVY_MUL, GEAR_PARTS, SHIP_NAMES, ARMY_BP_NAME, HOI_BG, SHIP_CLASSES, POST_WAR_OPTIONS, GER_PUPPETS, ARMY_BP_LINE, warshipTonnageOf, WAR_LINE, EXTRA_FOCUS_TEMPLATE, JUSTIFY_DAYS, NATION_SEA_REGION, SEA_INITIAL_CONTROL, NAVAL_INVASION_CONTROL,
   // v0.3.3：历史事件时间表（「战争按历史来，不要随便乱宣战」）
-  HIST_TIMELINE, histEventsAt, histWarBetween, histWarTargetsFor } from '../data/hoi1936.js?v=33.2';
-import { BUILDING_BY_ID } from '../data/buildings.js?v=33.2';
-import { ARMY_BP_BY_ID, ARMY_BLUEPRINTS } from '../data/army_parts.js?v=33.2';
-import { JOBS_BY_BUILDING, assignWorkers, jobCapacity, getAvailable } from './population.js?v=33.2';
-import { ELITE_DIVISIONS, ELITE_MUL } from '../data/hoi1936.js?v=33.2';
+  HIST_TIMELINE, histEventsAt, histWarBetween, histWarTargetsFor } from '../data/hoi1936.js?v=41.6';
+import { BUILDING_BY_ID } from '../data/buildings.js?v=41.6';
+import { ARMY_BP_BY_ID, ARMY_BLUEPRINTS } from '../data/army_parts.js?v=41.6';
+import { JOBS_BY_BUILDING, assignWorkers, jobCapacity, getAvailable } from './population.js?v=41.6';
+import { ELITE_DIVISIONS, ELITE_MUL } from '../data/hoi1936.js?v=41.6';
 // v0.3.3：战争槽位上限（与 core/war.js 同源；war.js 不 import 本文件，无循环依赖）
-import { WAR_MAX_ACTIVE } from './war.js?v=33.2';
+import { WAR_MAX_ACTIVE } from './war.js?v=41.6';
+// v0.3.4：战役系统（敌方主动进攻 + 战线管理）。battle.js 不 import 本文件，无循环依赖。
+import { startBattle, listBattles, BATTLE_MAX_PER_WAR, IDLE_PROGRESS_PER_DAY } from './battle.js?v=41.6';
 
 // 依赖注入（避免与 state.js / production.js 形成循环导入）
 let _getInst = null;
@@ -201,12 +203,12 @@ export function seaRivals(acc, seaId) {
   return sum;
 }
 
-/** 登陆门槛：跨海进攻需该战区制海权 ≥ NAVAL_INVASION_CONTROL */
+/** 投送门槛：跨战区投送兵力需该战区轨道控制 ≥ NAVAL_INVASION_CONTROL */
 export function canInvadeFrom(acc, seaId) {
   const sea = ensureSeas(acc).find((x) => x.id === seaId);
   if (!sea) return { ok: true };
   if (sea.control >= NAVAL_INVASION_CONTROL) return { ok: true, control: sea.control };
-  return { ok: false, reason: '登陆需要制海权 ≥ ' + Math.round(NAVAL_INVASION_CONTROL * 100) + '%（' + sea.nameCn + ' 当前 ' + Math.round(sea.control * 100) + '%）' };
+  return { ok: false, reason: '投送需要该战区轨道控制 ≥ ' + Math.round(NAVAL_INVASION_CONTROL * 100) + '%（' + sea.nameCn + ' 当前 ' + Math.round(sea.control * 100) + '%）' };
 }
 
 /** 敌方海上压力：与我方交战国家（含阵营）的海军实力合计 */
@@ -227,7 +229,7 @@ export function contestSea(acc, seaId, myNavyStr) {
   const sea = seas.find((s) => s.id === seaId);
   if (!sea) return { ok: false, reason: '未知海域' };
   if (!canSailIn(acc, seaId)) {
-    return { ok: false, reason: '本国海军无法在该海域行动（该海域不属于本国作战区域）' };
+    return { ok: false, reason: '本国舰队无法进入该轨道圈层（该圈层不属于本国作战区域）' };
   }
   const mine = Math.max(0, Number(myNavyStr) || 0);
   // v0.3.1：敌方压力 = 该海域内竞争国家（含 AI 巡航）的实力 + 其既有制海权
@@ -244,9 +246,9 @@ export function contestSea(acc, seaId, myNavyStr) {
   return {
     ok: true, win, control: sea.control, mine: Math.round(mine), foe: Math.round(foe), sunk,
     logs: [
-      (win ? '我方' : '敌方') + '掌握主动（我方战力 ' + Math.round(mine) + ' vs 敌方 ' + Math.round(foe) + '）',
-      '制海权 → ' + Math.round(sea.control * 100) + '%',
-      win ? '敌方护航队被驱逐' : '我方损失 ' + sunk + ' 艘舰艇',
+      (win ? '我方' : '敌方') + '掌握轨道主动（我方舰队战力 ' + Math.round(mine) + ' vs 敌方 ' + Math.round(foe) + '）',
+      '轨道控制 → ' + Math.round(sea.control * 100) + '%',
+      win ? '敌方护航编队被驱离轨道' : '我方损失 ' + sunk + ' 艘舰艇',
     ],
   };
 }
@@ -845,17 +847,20 @@ export function setupGermanPuppets(acc) {
 }
 
 /**
- * 战争推进（v0.2.6 rev9，HOI4 式）：每场战争有 0~100 的推进条 ——
- *   由双方陆军 + 舰队实力差决定推进方向与速度，战役胜利额外推进。
- *   推进越深，敌方越可能接受迫降（与战争分数并用）。
+ * 战争推进（v0.3.4 重写：进度不再自动滑动，改为「打出来的」）
  *
- * v0.3.3：**改用真实动态数据**。旧实现读 data/hoi1936.js 的 1936 **静态**
- *   divisions/ic —— 那是开局快照，玩家扩军、补员、工业发展、舰队扩充
- *   **完全不影响推进条**，导致「打了败仗却仍在推进」这类荒谬结果。
- *   现在：
- *     · 我方 = acc.armies 的实际战力 + 真实舰队战力 + 当前工业 + 国策加成
- *     · 敌方 = 1936 基准 × 战损衰减（myScore 越高、battles 越多，敌方越弱）
- *   这样「打赢 → 推进更快 → 更容易迫降」形成正反馈，与 HOI4 的战争点数逻辑一致。
+ * v0.3.3 的做法是一根**按实力差自动滑动的进度条**：
+ *     w.progress += (ratio - 0.5) * 4 * days    ratio = 我方/(我方+敌方)
+ * 玩家看得见 0~100 的绿红条，但看不见任何战斗：师不会接敌、不会因伤亡变弱，
+ * 打赢也没有部队永久损失 —— 「推进 70% 可迫降」与「真打了几场硬仗」无关。
+ *
+ * v0.3.4：进度条**降级为结果**。
+ *   · 真正的交战搬到 core/battle.js 的战役系统：师级接敌、组织度、补给、
+ *     工事、增援，战损**直接回写 acc.armies**（兵员/经验/战力），敌方师被永久消耗；
+ *   · w.progress 由**战役胜负**增减（见 battle.js#resolveBattleEnd）；
+ *   · 本函数**不再触碰 w.progress**，只负责两件事：
+ *       ① 没有战场时，敌方按实力优势主动发起进攻（否则战争完全静止）；
+ *       ② 老存档兜底：确保 wars 有 progress 初值。
  */
 export function tickWarsHoi4(acc, dtSec) {
   if (!acc || !Array.isArray(acc.wars)) return;
@@ -864,11 +869,11 @@ export function tickWarsHoi4(acc, dtSec) {
   const n = HOI_BY_ID[acc.nation];
   if (!n) return;
 
-  // ---- 我方真实实力：军队战力 + 舰队战力 + 工业（不再用 1936 静态快照）----
+  // ---- 我方真实实力（仅用于判断「该不该被敌方打」，不再用于推进进度）----
   let armyStr = 0;
   for (const a of (Array.isArray(acc.armies) ? acc.armies : [])) {
     if (!a) continue;
-    armyStr += (Number(a.power) || 0) * (1 + (Number(a.exp) || 0) / 200);   // 经验带来小幅加成
+    armyStr += (Number(a.power) || 0) * (1 + (Number(a.exp) || 0) / 200);
   }
   let icNow = 0;
   try {
@@ -876,24 +881,73 @@ export function tickWarsHoi4(acc, dtSec) {
     if (inst && inst.hoiIndustry) icNow = Number(inst.hoiIndustry.ic) || 0;
   } catch (e) { icNow = 0; }
   const atkBuff = (acc.hoiFocus && acc.hoiFocus.buffs) ? (Number(acc.hoiFocus.buffs.atkMul) || 1) : 1;
-  // 兜底：拿不到真实数据时至少用 1936 基准，不要退化成 0
   const myStr = (armyStr + icNow * 2 + n.divisions * 4) * atkBuff;
 
   for (const w of acc.wars) {
     if (!w || w.status !== 'active') continue;
+    // 老存档兜底：进度字段缺失时补 0（v0.3.3 之前没有这个字段）
+    if (w.progress == null) w.progress = 0;
+
+    // ① 该战争已有战场 → 交给 battle.js 推进，本函数不干预
+    let activeCount = 0;
+    if (Array.isArray(acc.battles)) {
+      for (const b of acc.battles) if (b && b.warId === w.id && b.status === 'active') activeCount++;
+    }
+    if (activeCount > 0) continue;
+
+    // ② 没有战场时的被动推进（v0.3.5）：占领区巩固 / 低烈度冲突。
+    //   v0.3.4 把 progress 完全交给战役后，战争在玩家不操作时会彻底静止。
+    //   这里给一个极慢的兜底漂移（0.35 / 游戏天 ⇒ 独自推到 70% 要 200 天），
+    //   只保证战争不会僵住，绝不构成「不操作也能赢」的捷径。
+    try {
+      const before = Number(w.progress) || 0;
+      if (before < 100) {
+        w.progress = Math.min(100, before + IDLE_PROGRESS_PER_DAY * days);
+      }
+    } catch (e) { /* 忽略 */ }
+
+    // ② 没有战场：敌方实力明显占优时主动打过来（HOI4 的「对方先动手」）
+    //    节拍由 _foeStrikeAt 控制，避免每秒都开新战场。
     const foe = HOI_BY_ID[String(w.targetId || '').replace(/^hoi_/, '')];
-    // ---- 敌方：1936 基准 × 战损衰减 ----
-    // 我方战争分数越高、交战次数越多，敌方损耗越大（HOI4 的战争点数同理）
     const myScore = Number(w.myScore) || 0;
-    const theirScore = Number(w.theirScore) || 0;
     const battles = Number(w.battles) || 0;
-    const wear = Math.max(0.25, 1 - (myScore * 0.012) - (battles * 0.01) + (theirScore * 0.004));
+    const wear = Math.max(0.25, 1 - (myScore * 0.012) - (battles * 0.01));
     const foeBase = foe ? (foe.divisions * 10 + foe.ic * 2) : 200;
     const foeStr = foeBase * wear;
+    if (foeStr <= myStr * 1.15) continue;          // 敌方不占优就不主动打
+    if (!foe || !foe.divisions) continue;          // 对方没师了，打不了
 
-    const ratio = myStr / Math.max(1, myStr + foeStr);          // 0~1
-    w.progress = Math.max(0, Math.min(100, (Number(w.progress) || 0) + (ratio - 0.5) * 4 * days));
-    if (w.progress >= 70 && (Number(w.myScore) || 0) < 40) w.myScore = 40;   // 推进到位 → 迫降可用
+    const last = Number(w._foeStrikeAt) || 0;
+    const coolMs = 20000;                            // 两次主动进攻至少隔 20 秒（游戏时间）
+    if (Date.now() - last < coolMs) continue;
+    w._foeStrikeAt = Date.now();
+
+    try {
+      const list = listBattles(acc, w.id);
+      if (list.filter((b) => b && b.status === 'active').length >= BATTLE_MAX_PER_WAR) continue;
+      const r = startBattle(acc, w, { side: 'foe', terrain: pickFoeTerrain(w) });
+      if (r && r.ok && r.battle) {
+        pushWarLog(acc, w, '敌方 ' + (foe.nameCn || w.targetName) + ' 主动发起进攻 —— 双方进入交战。');
+      }
+    } catch (e) { /* 单场进攻异常不拖垮心跳 */ }
+  }
+}
+
+/** 敌方进攻的战场地形（按战争进度轮换，制造不同战术处境） */
+function pickFoeTerrain(war) {
+  const list = ['plain', 'forest', 'urban', 'mountain', 'desert'];
+  const i = Math.floor((Number(war.progress) || 0) / 20) % list.length;
+  return list[i];
+}
+
+function pushWarLog(acc, war, text) {
+  const at = Date.now();
+  war.log = Array.isArray(war.log) ? war.log : [];
+  war.log.unshift({ at, text });
+  if (war.log.length > 30) war.log.length = 30;
+  if (Array.isArray(acc.warLog)) {
+    acc.warLog.unshift({ at, text });
+    if (acc.warLog.length > 60) acc.warLog.length = 60;
   }
 }
 

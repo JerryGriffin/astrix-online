@@ -7,16 +7,19 @@
   <link rel="icon" href="data:," />
   <!-- v0.1.3：静态托管没有 Cache-Control 响应头，移动端会把 index.html 与模块缓存好几天，
        于是改了数据表玩家却仍看到旧数值（化学实验室「造价还是塑料/橡胶」就是这么来的）。
-       这里用 meta 尽量让 HTML 自身不被缓存；模块文件仍靠 ?v=33.2"Cache-Control" content="no-cache, no-store, must-revalidate" />
+       这里用 meta 尽量让 HTML 自身不被缓存；模块文件则靠 js/version.js 的 CACHE_TAG 统一改写引用上的版本串来击穿 -->
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
   <meta http-equiv="Pragma" content="no-cache" />
   <meta http-equiv="Expires" content="0" />
   <!-- v= 与 js/version.js 的 VERSION 保持同步：改版本号即自动击穿浏览器缓存 -->
-  <link rel="stylesheet" href="css/base.css?v=33.2" />
-  <link rel="stylesheet" href="css/start.css?v=33.2" />
-  <link rel="stylesheet" href="css/planet.css?v=33.2" />
-  <link rel="stylesheet" href="css/research.css?v=33.2" />
-  <link rel="stylesheet" href="css/shipyard.css?v=33.2" />
-  <link rel="stylesheet" href="css/galaxy.css?v=33.2" />
+  <link rel="stylesheet" href="css/base.css?v=41.6" />
+  <link rel="stylesheet" href="css/start.css?v=41.6" />
+  <link rel="stylesheet" href="css/planet.css?v=41.6" />
+  <link rel="stylesheet" href="css/research.css?v=41.6" />
+  <link rel="stylesheet" href="css/shipyard.css?v=41.6" />
+  <link rel="stylesheet" href="css/galaxy.css?v=41.6" />
+  <!-- v0.3.4：1936 剧本「风暴前夜」面板样式（此前 hoi-* 类名完全没有对应 CSS） -->
+  <link rel="stylesheet" href="css/hoi.css?v=41.6" />
 </head>
 <body>
   <!-- 全部界面渲染容器 -->
@@ -93,6 +96,6 @@
   })();
   </script>
 
-  <script type="module" src="js/main.js?v=33.2"></script>
+  <script type="module" src="js/main.js?v=41.6"></script>
 </body>
 </html>
