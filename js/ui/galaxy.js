@@ -26,7 +26,7 @@ import { renderColony } from './colony.js?v=32.1';
 import { PLANETS } from '../data/planets.js?v=32.1';
 import { HOI_NATIONS, HOI_BY_ID, HOI_SCENARIO_ID } from '../data/hoi1936.js?v=32.1';   // v0.2.6 官方 mod
 import { declareWar, activeWarsOf, warWith, addWarScore, canForceSurrender, draftTreaty, endWar, surrenderWar } from '../core/war.js?v=32.1';
-import { postwarOptionsFor, applyPostwarChoice, canJustify, startJustify, justifyStatusOf } from '../core/hoi1936.js?v=32.1';
+import { postwarOptionsFor, applyPostwarChoice, canJustify, startJustify, justifyStatusOf, histWarGateFor } from '../core/hoi1936.js?v=32.1';
 import { fmtNum } from '../core/format.js?v=32.1';
 
 function el(tag, cls, text) {
@@ -113,7 +113,90 @@ export function renderGalaxy(root, ctx) {
       return;
     }
     renderShell(body, ctx, () => renderGalaxy(root, ctx));
+    startGalaxyHeartbeat(root, ctx, body);
   });
+}
+
+// ============================================================================
+// v0.3.3：星际页局部实时刷新
+// ============================================================================
+// 为什么不做整页重绘：本页绝大部分内容来自**云端**（星球列表、玩家快照、收件箱），
+//   整页重绘会每秒触发一轮网络请求，既慢又可能造成接口抖动。
+//   但「进行中的战争」区块是纯本地数据（war.js 挂在 acc 上，战争分数与推进条由
+//   state.js#tick → tickWarsHoi4 每秒推进），必须实时刷新 —— 否则玩家看不到战况变化。
+// 因此这里只重绘战争区块，其余内容保持不动。
+function startGalaxyHeartbeat(root, ctx, body) {
+  if (root._gxTimer) { clearInterval(root._gxTimer); root._gxTimer = null; }
+  root._gxTimer = setInterval(() => {
+    // 页面标记守卫：planet.js 切 tab 复用同一个 contentInner，不能用 isConnected
+    const title = root.querySelector && root.querySelector('.page-title');
+    if (!title || title.textContent !== '星际') {
+      clearInterval(root._gxTimer); root._gxTimer = null; return;
+    }
+    // 玩家正在输入（搜索框）时跳过，避免打断
+    const active = typeof document !== 'undefined' ? document.activeElement : null;
+    if (active && root.contains && root.contains(active) && active.tagName === 'INPUT') return;
+
+    const acc = ctx.account || currentAccount();
+    if (!acc) return;
+    const wars = activeWarsOf(acc);
+    const old = body.querySelector && body.querySelector('.gx-wars-live');
+    // 无战争时不新建空区块，直接把旧的撤掉
+    if (!wars.length) {
+      if (old && old.parentNode) old.parentNode.removeChild(old);
+      return;
+    }
+    const fresh = buildWarsSection(acc);
+    fresh.classList.add('gx-wars-live');
+    if (old && old.parentNode) old.parentNode.replaceChild(fresh, old);
+    else body.appendChild(fresh);
+  }, 1000);
+}
+
+/** 敌国显示名：v0.3.3
+ *  war.targetName 语义不一致 —— 玩家宣战时存的是**首都**（星球卡的 nameCn: n.capital），
+ *  AI 宣战时存的才是国名。直接显示 targetName 会把「德意志国」显示成「柏林」。
+ *  这里统一按 targetId 反查 HOI_BY_ID 取国名，查不到再回退 targetName。 */
+function foeDisplayName(w) {
+  const id = String((w && w.targetId) || '').replace(/^hoi_/, '');
+  const n = HOI_BY_ID[id];
+  if (n) return n.nameCn;
+  return (w && w.targetName) || id || '未知';
+}
+
+/** 「进行中的战争」区块（首次渲染与心跳重绘共用同一份实现，避免逻辑分叉） */
+function buildWarsSection(acc) {
+  const wars = activeWarsOf(acc);
+  const wSec = el('div', 'gx-section');
+  wSec.appendChild(el('div', 'section-title', '进行中的战争'));
+  wSec.appendChild(el('div', 'muted',
+    '战争是**持续过程** —— 不会随时间自动结束，只有一方投降并签订条约才会终止。'
+    + '进攻获胜积累我方战争分数，达到 60 即可迫降电脑国家（在对方星球卡上操作）。'));
+  for (const w of wars) {
+    const card = el('div', 'gx-card');
+    const info = el('div', 'gx-card-info');
+    const days = Math.max(0.1, Math.round((Date.now() - w.startedAt) / 8640000) / 10);
+    // v0.3.3：补上战场推进条（由 tickWarsHoi4 每秒推进，此前本页完全没有展示）
+    const prog = Math.max(0, Math.min(100, Number(w.progress) || 0));
+    info.innerHTML = '<div>对手：<b>' + esc(foeDisplayName(w)) + '</b>（'
+      + (w.kind === 'npc' ? '模拟国家' : '真人玩家') + '）</div>'
+      + '<div>战争分数：我方 <b style="color:' + (w.myScore >= w.theirScore ? '#9FE1CB' : '#f09595') + '">'
+      + w.myScore + '</b> : 对方 <b>' + w.theirScore + '</b> · 已交战 ' + w.battles + ' 次</div>'
+      + '<div class="muted" style="font-size:12px">持续 ' + days + ' 天 · 战场推进 ' + Math.round(prog) + '%'
+      + ' · ' + (w.kind === 'npc' ? '分数 ≥ 60 可迫降签约' : '需对方接受投降条约') + '</div>';
+    card.appendChild(info);
+    const recent = (w.log || []).slice(0, 3);
+    if (recent.length) {
+      const lg = el('div', 'muted');
+      lg.style.fontSize = '12px';
+      lg.style.marginTop = '4px';
+      lg.textContent = recent.map((l) => '· ' + l.text).join('\n');
+      lg.style.whiteSpace = 'pre-line';
+      card.appendChild(lg);
+    }
+    wSec.appendChild(card);
+  }
+  return wSec;
 }
 
 // ============================================================================
@@ -209,35 +292,12 @@ function renderShell(body, ctx, rerender) {
   renderNpcGrid(npcGrid, ctx, rerender, acc, '');
 
   // ---- 3.6 进行中的战争（v0.2.6）：持续过程，只有投降签约才结束 ----
+  // v0.3.3：改用共享的 buildWarsSection，并打上 .gx-wars-live 标记供心跳定位重绘。
+  //   敌国名改走 foeDisplayName（原代码直接用 targetName，会把国名显示成首都）。
   const wars = activeWarsOf(acc);
   if (wars.length) {
-    const wSec = el('div', 'gx-section');
-    wSec.appendChild(el('div', 'section-title', '进行中的战争'));
-    wSec.appendChild(el('div', 'muted',
-      '战争是**持续过程** —— 不会随时间自动结束，只有一方投降并签订条约才会终止。'
-      + '进攻获胜积累我方战争分数，达到 60 即可迫降电脑国家（在对方星球卡上操作）。'));
-    for (const w of wars) {
-      const card = el('div', 'gx-card');
-      const info = el('div', 'gx-card-info');
-      const days = Math.max(0.1, Math.round((Date.now() - w.startedAt) / 8640000) / 10);
-      info.innerHTML = '<div>对手：<b>' + esc(w.targetName) + '</b>（'
-        + (w.kind === 'npc' ? '模拟国家' : '真人玩家') + '）</div>'
-        + '<div>战争分数：我方 <b style="color:' + (w.myScore >= w.theirScore ? '#9FE1CB' : '#f09595') + '">'
-        + w.myScore + '</b> : 对方 <b>' + w.theirScore + '</b> · 已交战 ' + w.battles + ' 次</div>'
-        + '<div class="muted" style="font-size:12px">持续 ' + days + ' 天 · '
-        + (w.kind === 'npc' ? '分数 ≥ 60 可迫降签约' : '需对方接受投降条约') + '</div>';
-      card.appendChild(info);
-      const recent = (w.log || []).slice(0, 3);
-      if (recent.length) {
-        const lg = el('div', 'muted');
-        lg.style.fontSize = '12px';
-        lg.style.marginTop = '4px';
-        lg.textContent = recent.map((l) => '· ' + l.text).join('\n');
-        lg.style.whiteSpace = 'pre-line';
-        card.appendChild(lg);
-      }
-      wSec.appendChild(card);
-    }
+    const wSec = buildWarsSection(acc);
+    wSec.classList.add('gx-wars-live');
     body.appendChild(wSec);
   }
 
@@ -1041,21 +1101,30 @@ function buildNpcCard(f, ctx, rerender, acc) {
     } else if (j && j.ready) {
       const warBtn = el('button', 'btn btn-sm btn-danger', '正式宣战');
       warBtn.addEventListener('click', () => {
-        const r = declareWar(acc, { id: f.id, nameCn: f.nameCn, kind: 'npc' });
+        // v0.3.3：宣战需过「历史门控」—— 历史上此时尚未交战的国家不得开战
+        const gate = f.hoi ? histWarGateFor(acc, f.hoi.id) : { ok: true };
+        if (!gate.ok) { alert(gate.reason); return; }
+        const r = declareWar(acc, { id: f.id, nameCn: f.nameCn, kind: 'npc' },
+          { histGate: gate });
         if (!r.ok) { alert(r.reason); return; }
         acc.hoiJustify = null;
-        alert('正当化完成 —— 已向「' + f.nameCn + '」宣战！战争持续进行，达到迫降线可签约结束。');
+        alert((gate.eventName ? '【' + gate.eventName + '】' : '')
+          + '已向「' + f.nameCn + '」宣战！战争持续进行，达到迫降线可签约结束。');
         refresh();
       });
       act.appendChild(warBtn);
     } else {
       const warBtn = el('button', 'btn btn-sm btn-danger', '正当化战争');
       warBtn.addEventListener('click', () => {
+        // v0.3.3：先过历史门控 —— 否则玩家会对「此时不该开战」的国家白等 60 天正当化
+        const gate = f.hoi ? histWarGateFor(acc, f.hoi.id) : { ok: true };
+        if (!gate.ok) { alert(gate.reason); return; }
         const chk = f.hoi ? canJustify(acc, f.hoi.id) : { ok: true };
         if (!chk.ok) { alert(chk.reason); return; }
         const r = startJustify(acc, f.hoi.id);
         if (!r.ok) { alert(r.reason || '无法正当化'); return; }
-        alert('已开始对「' + f.nameCn + '」的战争正当化：需 ' + r.daysNeed + ' 天（剧本 1 秒 = 1 天）。'
+        alert((gate.eventName ? '【' + gate.eventName + '】' : '')
+          + '已开始对「' + f.nameCn + '」的战争正当化：需 ' + r.daysNeed + ' 天（剧本 1 秒 = 1 天）。'
           + '完成后即可正式宣战。');
         refresh();
       });

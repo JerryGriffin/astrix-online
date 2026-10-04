@@ -59,8 +59,9 @@ const CMD_TIP = {
 };
 
 // ============================================================================
-// 心跳（v0.1.1 需求 D）：2000ms 局部刷新，只碰「任务倒计时行」与「交易池挂单区」，
-// 不整页重绘、不打断输入焦点；页面隐藏或面板未挂载时跳过 / 停表。
+// 心跳（v0.1.1 需求 D）：**1000ms** 局部刷新。
+//   刷新项：任务倒计时行、交易池挂单区，以及 v0.3.3 新增的主体整页重绘。
+//   不打断输入焦点；页面隐藏或面板未挂载时跳过 / 停表。
 // ============================================================================
 function startFleetHeartbeat(container, updaters) {
   if (container._hbTimer) { clearInterval(container._hbTimer); container._hbTimer = null; }
@@ -73,9 +74,11 @@ function startFleetHeartbeat(container, updaters) {
       return;
     }
     for (const fn of updaters) {
-      try { fn(); } catch (e) { /* 单个刷新失败不拖垮心跳 */ }
+      // v0.3.3：留痕而非静默吞掉 —— 静默 catch 会让刷新缺陷表现为「界面不动且无报错」
+      try { fn(); }
+      catch (e) { if (typeof console !== 'undefined') console.error('[fleet heartbeat]', e); }
     }
-  }, 2000);
+  }, 1000);
 }
 
 export function renderShop(container, ctx) {
@@ -599,6 +602,25 @@ export function renderFleet(container, ctx) {
   const updaters = [];
   const hb = { updaters };
   const redraw = () => { if (rerender) rerender(); else renderFleet(container, ctx); };
+
+  // ===== v0.3.3：主体实时刷新 =====
+  // 此前本页心跳只更新「任务倒计时行」与交易池挂单区，**船只列表 / 编队战力 /
+  // 殖民管理 / 殖民地状态全部是打开时算一次的静态值** —— 玩家看到的是不动���数字。
+  // 这里补一个整页重绘的 updater，并做三重保护：
+  //   * 玩家正在输入框/下拉框内操作时跳过（不打断输入）；
+  //   * 页面隐藏时跳过；
+  //   * 距离上次重绘不足 1 秒时跳过（redraw 内部会重建 DOM，过于频繁会闪烁）。
+  let _lastFull = 0;
+  updaters.push(() => {
+    if (typeof document !== 'undefined' && document.hidden) return;
+    const act = document.activeElement;
+    if (act && container.contains && container.contains(act)
+      && (act.tagName === 'INPUT' || act.tagName === 'SELECT' || act.tagName === 'TEXTAREA')) return;
+    const now = Date.now();
+    if (now - _lastFull < 1000) return;
+    _lastFull = now;
+    redraw();
+  });
 
   // ===================== 船坞门禁（v0.1.1 需求 C）=====================
   // 设计者：编队 / 五指令与贸易殖民一样需要船坞 —— 没船坞整页只给门槛提示。

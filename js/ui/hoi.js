@@ -9,8 +9,11 @@ import { listFleets, fleetPowerOf } from '../core/fleet.js?v=32.1';
 import {
   scenarioDateOf, gameDaysOf, ensureFocus, focusOptionsOf, startFocus,
   ensureSeas, contestSea, blocNameOf, nationOf, deepOf, enemySeaPressure, backgroundOf, HOI_SCENARIO_ID,
+  listHistTargets, histWarGateFor,
 } from '../core/hoi1936.js?v=32.1';
-import { HOI_SEAS } from '../data/hoi1936.js?v=32.1';
+// v0.3.3：战争数据（实时交战双方状态）
+import { activeWarsOf } from '../core/war.js?v=32.1';
+import { HOI_SEAS, HOI_BY_ID, HIST_TIMELINE } from '../data/hoi1936.js?v=32.1';
 
 function el(tag, attrs = {}, children = []) {
   const e = document.createElement(tag);
@@ -61,12 +64,27 @@ const CSS = `
   .hoi-sea .ctl { width: 120px; }
   .hoi-sea button { min-height: 40px; border-radius: 8px; border: none; background: #2d3e50; color: #fff; cursor: pointer; padding: 0 10px; }
   .hoi-note { font-size: 12px; opacity: .65; padding: 0 2px 8px; line-height: 1.7; }
+  /* —— v0.3.3 战争区块 —— */
+  .hoi-war-sel { min-height:40px; border-radius:8px; background:#2d3e50; color:#fff; border:none; padding:0 8px; max-width:100%; }
+  .hoi-war-side { flex: 1 1 220px; min-width:0; border-radius:8px; padding:8px 10px; background:#101820; border:1px solid #223040; }
+  .hoi-war-side .who { font-size:14px; font-weight:700; display:flex; align-items:center; gap:6px; }
+  .hoi-war-side .who .fl { font-size:16px; }
+  .hoi-war-side .kv { display:flex; justify-content:space-between; font-size:12px; padding:2px 0; opacity:.92; }
+  .hoi-war-side .kv .k { opacity:.6; }
+  .hoi-war-side .kv .v { font-weight:600; }
+  .hoi-war-vs { text-align:center; font-size:11px; opacity:.6; padding:2px 0; }
+  .hoi-war-row { display:flex; gap:8px; flex-wrap:wrap; padding:8px 12px; border-top:1px solid #223040; }
+  .hoi-war-ongoing { display:flex; flex-wrap:wrap; gap:6px; padding:8px 12px 0; }
+  .hoi-war-chip { font-size:11px; border:1px solid #34465a; border-radius:10px; padding:2px 8px; }
+  .hoi-war-chip.hot { color:#f09595; border-color:rgba(240,149,149,.5); }
 `;
 
 export function renderHoi(root, ctx) {
   const acc = currentAccount();
   root.innerHTML = '';
   if (!acc || acc.scenario !== HOI_SCENARIO_ID) {
+    // 非 1936 存档：本页无内容可刷，但仍需清掉上一轮可能残留的定时器
+    if (root._hoiTimer) { clearInterval(root._hoiTimer); root._hoiTimer = null; }
     root.appendChild(el('div', { class: 'hoi-panel' },
       el('p', { class: 'hoi-note', text: '仅 1936 剧本存档可用（新建存档 → 开局模式选「1936 剧本」）。' })));
     return;
@@ -167,6 +185,162 @@ export function renderHoi(root, ctx) {
   }
   panel.appendChild(focusSec);
 
+  // ==========================================================================
+  // v0.3.3：战争 —— 下拉栏选战争 + 交战双方实时状态
+  // ==========================================================================
+  // 需求：「1936 剧本下新增下拉栏新增战争，可以看到实时交战双方实时状态」。
+  // 实现要点：
+  //   · 下拉栏列出全部进行中的战争（option 文本 = 「我方 vs 敌方 · 历史事件名」）
+  //   · 选中后下方并排显示双方：国旗/国名/首都、兵力、工业、战争分数、推进条
+  //   · **敌方国名必须走 HOI_BY_ID 反查**：w.targetName 语义不一致 ——
+  //     玩家宣战时存的是**首都**（galaxy.js: nameCn: n.capital），
+  //     AI 宣战时存的才是国名。直接用 targetName 会显示成「柏林」而非「德意志国」。
+  const warSec = el('div', 'hoi-sec');
+  const wars = activeWarsOf(acc);
+  const warTotal = Array.isArray(acc && acc.wars) ? acc.wars.length : 0;
+  warSec.appendChild(el('div', 'hoi-sec-h', [
+    el('span', null, '战争'),
+    el('span', { class: 'hoi-sub', text: '进行中 ' + wars.length + ' 场 / 共 ' + warTotal + ' 场' }),
+  ]));
+
+  // 敌国对象：优先按 targetId 反查（可靠），回退按名称找
+  function foeOf(w) {
+    const id = String(w && w.targetId || '').replace(/^hoi_/, '');
+    return HOI_BY_ID[id] || null;
+  }
+  // 我方「实时」战力：用玩家真实的军队与舰队，而非 1936 静态值
+  function myLive() {
+    const inst = getPlanetInstance(acc.homePlanetCode);
+    let armyStr = 0, armyCount = 0;
+    for (const a of listArmies(acc)) {
+      if (!a) continue;
+      armyCount++;
+      try { armyStr += (a.power || 0); } catch (e) { /* 忽略单条异常 */ }
+    }
+    let fleetStr = 0, fleetCount = 0;
+    for (const fl of listFleets(acc)) {
+      if (!fl) continue;
+      fleetCount += (fl.shipIds || []).length;
+      try { fleetStr += fleetPowerOf(acc, fl.id) || 0; } catch (e) { /* 忽略 */ }
+    }
+    const ic = inst && inst.hoiIndustry ? (Number(inst.hoiIndustry.ic) || 0) : (n.ic || 0);
+    const pop = inst && inst.pop ? (Number(inst.pop.total) || 0) : 0;
+    return { armyStr, armyCount, fleetStr, fleetCount, ic, pop, inst };
+  }
+
+  if (!wars.length) {
+    // 无战争：给出下一个历史节点提示，让玩家知道「什么时候能开战」
+    const today = Math.floor(gameDaysOf(acc));
+    const upcoming = HIST_TIMELINE
+      .filter((e) => e.kind === 'war' && e.actors.indexOf(acc.nation) >= 0 && e.day > today)
+      .sort((a, b) => a.day - b.day)[0];
+    warSec.appendChild(el('div', 'hoi-note',
+      '当前无战争。按历史时间表，下一个与本国有交战的节点为：'
+      + (upcoming
+        ? '【' + upcoming.nameCn + '】' + upcoming.dateCn + '（还有 ' + Math.ceil(upcoming.day - today) + ' 游戏天）'
+        : '剧本时间表内已无本国的战争节点')
+      + '。未到历史节点时无法宣战 —— 战争按史实推进。'));
+    // 历史节点一览（近 8 个）
+    const near = HIST_TIMELINE
+      .filter((e) => e.kind === 'war')
+      .slice(0, 8);
+    if (near.length) {
+      const chips = el('div', 'hoi-war-ongoing');
+      for (const e of near) {
+        const done = today >= e.day;
+        const c = el('span', { class: 'hoi-war-chip' + (done ? ' hot' : ''), text: e.dateCn + ' ' + e.nameCn });
+        chips.appendChild(c);
+      }
+      warSec.appendChild(chips);
+    }
+  } else {
+    // ---- 下拉栏 ----
+    const selRow = el('div', 'hoi-branch');
+    const warSel = document.createElement('select');
+    warSel.className = 'hoi-war-sel';
+    for (const w of wars) {
+      const foe = foeOf(w);
+      const foeName = foe ? foe.nameCn : (w.targetName || '未知');
+      const evName = w.histKey ? ('（' + (HIST_TIMELINE.find((e) => String(e.day) === String(w.histKey).split(':')[0]) || {}).nameCn + '）') : '';
+      const o = document.createElement('option');
+      o.value = w.id;
+      o.textContent = n.nameCn + ' vs ' + foeName + evName;
+      warSel.appendChild(o);
+    }
+    selRow.appendChild(el('span', 'hoi-note', '选择战争：'));
+    selRow.appendChild(warSel);
+    warSec.appendChild(selRow);
+
+    // ---- 双方实时状态（随下拉栏切换局部重绘）----
+    const body = el('div', 'hoi-war-row');
+    warSec.appendChild(body);
+
+    function paintWar() {
+      body.innerHTML = '';
+      const w = wars.find((x) => x.id === warSel.value) || wars[0];
+      if (!w) return;
+      const foe = foeOf(w);
+      const foeName = foe ? foe.nameCn : (w.targetName || '未知');
+      const my = myLive();
+      const days = Math.max(0, Math.round((Date.now() - (w.startedAt || Date.now())) / 86400000 * 10) / 10);
+
+      function side(who, flag, capital, vals) {
+        const box = el('div', 'hoi-war-side');
+        const head = el('div', 'who');
+        if (flag) head.appendChild(el('span', { class: 'fl', text: flag }));
+        head.appendChild(el('span', null, who));
+        if (capital) head.appendChild(el('span', { class: 'hoi-note', text: '· ' + capital }));
+        box.appendChild(head);
+        for (const [k, v] of vals) {
+          const r = el('div', 'kv');
+          r.appendChild(el('span', { class: 'k', text: k }));
+          r.appendChild(el('span', { class: 'v', text: v }));
+          box.appendChild(r);
+        }
+        return box;
+      }
+
+      const scoreTotal = (Number(w.myScore) || 0) + (Number(w.theirScore) || 0) || 1;
+      const myPct = Math.round((Number(w.myScore) || 0) / scoreTotal * 100);
+
+      body.appendChild(side(n.nameCn, n.flag, n.capital, [
+        ['陆军', my.armyCount + ' 支 · 战力 ' + fmtNum(Math.round(my.armyStr))],
+        ['舰队', my.fleetCount + ' 艘 · 战力 ' + fmtNum(Math.round(my.fleetStr))],
+        ['工业 / 人口', fmtNum(my.ic) + ' / ' + fmtNum(my.pop)],
+        ['战争分数', String(Number(w.myScore) || 0) + '（' + myPct + '%）'],
+      ]));
+      body.appendChild(el('div', 'hoi-war-vs', '交战\n' + Math.round(days) + ' 天'));
+      body.appendChild(side(foeName, foe ? foe.flag : '🏳', foe ? foe.capital : '', [
+        // v0.3.3：敌方为 1936 基准静态值（列强数据表），非其实时发展值
+        ['陆军（1936 基准）', (foe ? foe.divisions : '?') + ' 个师'],
+        ['工业 / 海军 / 空军（1936 基准）',
+          (foe ? foe.ic : '?') + ' / ' + (foe ? foe.navy : '?') + ' / ' + (foe ? foe.airforce : '?')],
+        ['人口（1936 基准）', (foe ? foe.popM : '?') + ' 百万'],
+        ['战争分数', String(Number(w.theirScore) || 0) + '（' + (100 - myPct) + '%）'],
+      ]));
+
+      // 推进条 + 战报
+      const prog = Math.max(0, Math.min(100, Number(w.progress) || 0));
+      const bar = el('div', { style: 'flex:1 1 100%;' });
+      bar.appendChild(el('div', { class: 'hoi-note', text: '战场推进 ' + Math.round(prog) + '%（推进≥70% 可发动迫降）' }));
+      const pb = el('div', 'hoi-bar');
+      pb.appendChild(el('i', { style: 'width:' + prog + '%;background:' + (prog >= 70 ? '#9FE1CB' : '#f09595') }));
+      bar.appendChild(pb);
+      body.appendChild(bar);
+
+      const logs = Array.isArray(w.log) ? w.log.slice(0, 3) : [];
+      if (logs.length) {
+        const lg = el('div', { style: 'flex:1 1 100%;' });
+        lg.appendChild(el('div', { class: 'hoi-note', text: '最近战报：' }));
+        for (const L of logs) lg.appendChild(el('div', { class: 'hoi-note', text: '· ' + (L.text || '') }));
+        body.appendChild(lg);
+      }
+    }
+    warSel.addEventListener('change', paintWar);
+    paintWar();
+  }
+  panel.appendChild(warSec);
+
   // ---- 海域 ----
   const seaSec = el('div', 'hoi-sec');
   const pressure = enemySeaPressure(acc);
@@ -238,7 +412,32 @@ export function renderHoi(root, ctx) {
     '说明：本页为官方 mod「1936 剧本」专属。交战采用钢铁雄心式多回合结算（编队宽度 3、组织度耗尽撤退）；'
     + '海战按舰队实力与真实海军规模换算（含海军传统加成）；国策按游戏天数推进，'
     + '同支国策需按序解锁，外交线两策互斥。'
-    + '另外：AI 国家会主动宣战或结盟（每 30 游戏天判定）；「星球管理 → 战时总动员」在全存档可用（产出 +30%、幸福度下滑）。'));
+    + '战争严格按历史时间表推进：只有踩到对应史实节点才可宣战，AI 也只在节点日开战；'
+    + '「战争」栏可下拉选择进行中的战争并查看双方实时状态（我方为真实 army/fleet/工业，'
+    + '敌方为 1936 年基准静态值）。'
+    + '另外：「星球管理 → 战时总动员」在全存档可用（产出 +30%、幸福度下滑）。'));
 
   root.appendChild(panel);
+
+  // ===== v0.3.3：每秒实时刷新 =====
+  // 此前本页**完全没有 setInterval**：剧本日期、战争分数、战场推进、制海权都在后台
+  // 每秒推进（core/hoi1936.js 由 state.js#tick 驱动），但页面只在「打开 / 点按钮」
+  // 时算一次 —— 玩家看到的是静止的数字。
+  // 守卫沿用 ui/army.js / ui/shipyard.js 的既有约定：
+  //   * 不能用 root.isConnected —— planet.js 切 tab 复用同一个 contentInner，
+  //     isConnected 恒 true，旧定时器会把本页重绘回去盖掉新 tab；
+  //     故用本页标记 .hoi-panel 判断。
+  //   * 先清旧定时器再建新，避免每次重绘叠加。
+  //   * 用户正在操作 select（下拉栏）时跳过，避免打断选择。
+  if (root._hoiTimer) { clearInterval(root._hoiTimer); root._hoiTimer = null; }
+  root._hoiTimer = setInterval(() => {
+    if (!root.querySelector || !root.querySelector('.hoi-panel')) {
+      clearInterval(root._hoiTimer); root._hoiTimer = null; return;
+    }
+    const active = typeof document !== 'undefined' ? document.activeElement : null;
+    if (active && root.contains && root.contains(active) && active.tagName === 'SELECT') return;
+    const accNow = currentAccount();
+    if (!accNow) return;
+    renderHoi(root, Object.assign({}, ctx, { account: accNow }));
+  }, 1000);
 }

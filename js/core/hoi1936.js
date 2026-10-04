@@ -961,6 +961,71 @@ export function canJustify(acc, nationId) {
   return { ok: true };
 }
 
+// ============================================================================
+// v0.3.3：宣战历史门控（「战争按历史来，不要随便乱宣战」的玩家侧）
+// ============================================================================
+// 与 tickDiploAI 用同一张 HIST_TIMELINE：玩家只能对「今日附近确有史实交战节点」
+// 的国家宣战。返回值可直接喂给 war.js#declareWar 的 opts.histGate ——
+// 由调用方注入，避免 core/war.js 反向依赖 data/hoi1936.js（它服务所有剧本）。
+//
+// 注意与 canJustify 的分工：canJustify 管「有没有理由打」（阵营/国力差），
+// histGate 管「历史上该不该在这时候打」。两者是**与**关系，需同时满足。
+
+/** 该国当前是否可作为宣战目标（仅历史门控，不含阵营/国力判定） */
+export function histWarGateFor(acc, nationId) {
+  if (!acc || acc.scenario !== HOI_SCENARIO_ID) return { ok: true };   // 非 1936 不门控
+  const today = Math.floor(gameDaysOf(acc));
+  const mine = acc.nation;
+  if (!mine) return { ok: false, reason: '国家数据缺失' };
+  if (mine === nationId) return { ok: false, reason: '不能对自己宣战' };
+
+  // 已在此节点交战过则不再重复放行
+  const wars = Array.isArray(acc.wars) ? acc.wars : [];
+  const already = wars.find((w) => w && String(w.targetId || '').replace(/^hoi_/, '') === nationId);
+  if (already) return { ok: false, reason: '与「' + (HOI_BY_ID[nationId] || {}).nameCn + '」的战争已在持续中' };
+
+  const targets = histWarTargetsFor(mine, today);
+  const hit = targets.find((t) => t.foe === nationId);
+  if (hit) {
+    return {
+      ok: true,
+      histKey: String(hit.event.day) + ':' + nationId,
+      eventName: hit.event.nameCn,
+      desc: hit.event.desc,
+    };
+  }
+  // 下一个历史节点（用于 UI 提示「何时可宣战」）
+  const upcoming = HIST_TIMELINE
+    .filter((e) => e.kind === 'war'
+      && (e.actors.indexOf(mine) >= 0)
+      && e.day > today)
+    .sort((a, b) => a.day - b.day)[0];
+  const upFoe = upcoming ? (upcoming.actors.find((x) => x !== mine) || '') : '';
+  return {
+    ok: false,
+    reason: '历史上此时尚未与「' + ((HOI_BY_ID[nationId] || {}).nameCn || nationId) + '」交战'
+      + (upcoming && upFoe === nationId
+        ? '（预计 ' + Math.ceil(upcoming.day - today) + ' 游戏天后：' + upcoming.nameCn + '）'
+        : '（本国近期无对它的历史战争节点）'),
+    nextEventDay: upcoming ? upcoming.day : null,
+  };
+}
+
+/** 玩家今日可宣战的历史目标列表（供 UI 下拉栏渲染「可宣战对象」） */
+export function listHistTargets(acc) {
+  if (!acc || acc.scenario !== HOI_SCENARIO_ID) return [];
+  const today = Math.floor(gameDaysOf(acc));
+  return histWarTargetsFor(acc.nation, today)
+    .map((t) => ({
+      nationId: t.foe,
+      nameCn: (HOI_BY_ID[t.foe] || {}).nameCn || t.foe,
+      flag: (HOI_BY_ID[t.foe] || {}).flag || '',
+      eventName: t.event.nameCn,
+      desc: t.event.desc,
+      day: t.event.day,
+    }));
+}
+
 export function startJustify(acc, nationId) {
   const chk = canJustify(acc, nationId);
   if (!chk.ok) return chk;

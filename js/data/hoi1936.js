@@ -634,8 +634,17 @@ export const JUSTIFY_DAYS = 60;
 // 宣战。结果是 1936 年 1 月就可能和美苏开战，与史实完全脱节。
 //
 // 现在改为**查表驱动**：战争只在对应历史日期附近才可能发生，且必须是史实中的
-// 交战双方。日期口径与 scenarioDateOf() 一致 —— day = 距 1936-01-01 的天数，
-// 即 1936-01-01 为 day 0。
+// 交战双方。
+//
+// ⚠️ **day 口径**（踩过坑，务必核对）：与 scenarioDateOf() 完全一致 ——
+//   day = 距 `Date.UTC(1936, 0, 1)` 的天数，故
+//     day 0    = 1936-01-01
+//     day 553  = 1937-07-07   （七七事变）
+//     day 1339 = 1939-09-01   （德国入侵波兰）
+//     day 1999 = 1941-06-22   （巴巴罗萨）
+//     day 2167 = 1941-12-07   （珍珠港）
+//   换算方法：`(Date.UTC(Y, M-1, D) - Date.UTC(1936,0,1)) / 86400000`
+//   下面每个节点都标注了真实日期，便于核对。**不要凭感觉填 day。**
 //
 // kind：
 //   'war'       轴心国与某国进入战争状态（AI 之间；玩家在该国时改为玩家参战）
@@ -649,60 +658,59 @@ export const JUSTIFY_DAYS = 60;
 //   actors      交战国 id 列表（至少 2 个）；第一个视为发起方
 //   nameCn/desc 战报文案
 export const HIST_TIMELINE = [
-  // —— 1936：德意接近，轴心雏形 ——
-  { day: 0, window: 40, kind: 'ally', actors: ['ger', 'ita'], nameCn: '柏林—罗马轴心',
-    desc: '德意两国签署同盟条约，柏林—罗马轴心正式形成。' },
+  // —— 1936-10：德意接近，轴心雏形 ——
+  { day: 274, window: 40, kind: 'ally', actors: ['ger', 'ita'], nameCn: '柏林—罗马轴心',
+    dateCn: '1936年10月', desc: '德意两国签署同盟条约，柏林—罗马轴心正式形成。' },
 
-  // —— 1937：意大利入侵埃塞俄比亚 ——
-  { day: 396, window: 45, kind: 'war', actors: ['ita', 'eth'], nameCn: '第二次意大利—埃塞俄比亚战争',
-    desc: '意大利入侵埃塞俄比亚，争夺东非殖民利益。' },
+  // —— 1937-07-07：全面抗战（七七事变）——
+  { day: 553, window: 45, kind: 'war', actors: ['jap', 'chn'], nameCn: '全面抗战爆发',
+    dateCn: '1937年7月7日', desc: '卢沟桥事变后全面战争爆发，中日进入长期消耗战。' },
 
-  // —— 1937：全面抗战 ——
-  { day: 462, window: 45, kind: 'war', actors: ['jap', 'chn'], nameCn: '全面抗战爆发',
-    desc: '七七事变后全面战争爆发，中日进入长期消耗战。' },
+  // —— 1937-07-17：意大利入侵埃塞俄比亚 ——
+  { day: 563, window: 45, kind: 'war', actors: ['ita', 'eth'], nameCn: '第二次意大利—埃塞俄比亚战争',
+    dateCn: '1937年7月17日', desc: '意大利入侵埃塞俄比亚，争夺东非殖民利益。' },
 
-  // —— 1938：德奥合并 ——
-  { day: 764, window: 40, kind: 'annex', actors: ['ger', 'aut'], nameCn: '德奥合并',
-    desc: '德国吞并奥地利，兵不血刃取得奥地利的工业与人口。' },
+  // —— 1938-03：德奥合并 ——
+  { day: 801, window: 40, kind: 'annex', actors: ['ger', 'aut'], nameCn: '德奥合并',
+    dateCn: '1938年3月12日', desc: '德国吞并奥地利，兵不血刃取得奥地利的工业与人口。' },
 
-  // —— 1938：慕尼黑协定 ——
-  { day: 849, window: 30, kind: 'annex', actors: ['ger', 'cze'], nameCn: '慕尼黑协定',
-    desc: '英法绥靖，德国取得苏台德地区，捷克斯洛伐克被肢解。' },
+  // —— 1938-09：慕尼黑协定 ——
+  { day: 1003, window: 30, kind: 'annex', actors: ['ger', 'cze'], nameCn: '慕尼黑协定',
+    dateCn: '1938年9月30日', desc: '英法绥靖，德国取得苏台德地区，捷克斯洛伐克被肢解。' },
 
-  // —— 1939：德国入侵波兰，二战全面爆发 ——
-  { day: 973, window: 45, kind: 'war', actors: ['ger', 'pol'], nameCn: '德国入侵波兰',
-    desc: '德国闪击波兰，英法对德宣战，第二次世界大战全面爆发。' },
-  // 同日：英法被动应战（若玩家为英/法，则是被卷入的一方）
-  { day: 973, window: 45, kind: 'war', actors: ['ger', 'fra'], nameCn: '西线对德宣战',
-    desc: '法国对德国宣战，西线战事爆发。' },
-  { day: 973, window: 45, kind: 'war', actors: ['ger', 'eng'], nameCn: '英国对德宣战',
-    desc: '英国对德国宣战，丘吉尔继任首相，英国全面参战。' },
+  // —— 1939-09-01：德国入侵波兰，二战全面爆发 ——
+  { day: 1339, window: 45, kind: 'war', actors: ['ger', 'pol'], nameCn: '德国入侵波兰',
+    dateCn: '1939年9月1日', desc: '德国闪击波兰，第二次世界大战全面爆发。' },
+  { day: 1341, window: 45, kind: 'war', actors: ['ger', 'fra'], nameCn: '西线对德宣战',
+    dateCn: '1939年9月3日', desc: '法国对德国宣战，西线战事爆发。' },
+  { day: 1341, window: 45, kind: 'war', actors: ['ger', 'eng'], nameCn: '英国对德宣战',
+    dateCn: '1939年9月3日', desc: '英国对德国宣战，丘吉尔继任首相，英国全面参战。' },
 
-  // —— 1939~1940：苏德瓜分波兰 ——
-  { day: 990, window: 40, kind: 'war', actors: ['sov', 'pol'], nameCn: '苏联入侵波兰东部',
-    desc: '苏军进入波兰东部，与德军夹击瓜分波兰。' },
+  // —— 1939-09-17：苏德瓜分波兰 ——
+  { day: 1355, window: 40, kind: 'war', actors: ['sov', 'pol'], nameCn: '苏联入侵波兰东部',
+    dateCn: '1939年9月17日', desc: '苏军进入波兰东部，与德军夹击瓜分波兰。' },
 
-  // —— 1940：德国进攻法国 ——
-  { day: 1213, window: 45, kind: 'war', actors: ['ger', 'fra'], nameCn: '黄色方案',
-    desc: '德军经阿登突破，绕过马奇诺防线，法国战役爆发。' },
+  // —— 1940-05：德国进攻法国（黄色方案）——
+  { day: 1591, window: 45, kind: 'war', actors: ['ger', 'fra'], nameCn: '黄色方案',
+    dateCn: '1940年5月10日', desc: '德军经阿登突破，绕过马奇诺防线，法国战役爆发。' },
 
-  // —— 1940：意大利参战 / 北非 ——
-  { day: 1213, window: 45, kind: 'war', actors: ['ita', 'eng'], nameCn: '意大利参战',
-    desc: '意大利对英国宣战，北非与地中海战事展开。' },
+  // —— 1940-06：意大利参战 ——
+  { day: 1622, window: 45, kind: 'war', actors: ['ita', 'eng'], nameCn: '意大利参战',
+    dateCn: '1940年6月10日', desc: '意大利对英国宣战，北非与地中海战事展开。' },
 
-  // —— 1941：巴巴罗萨 ——
-  { day: 1435, window: 45, kind: 'war', actors: ['ger', 'sov'], nameCn: '巴巴罗萨行动',
-    desc: '德军三路突进苏联边境，东线全面爆发（苏德战争）。' },
+  // —— 1941-06-22：巴巴罗萨 ——
+  { day: 1999, window: 45, kind: 'war', actors: ['ger', 'sov'], nameCn: '巴巴罗萨行动',
+    dateCn: '1941年6月22日', desc: '德军三路突进苏联边境，东线全面爆发（苏德战争）。' },
 
-  // —— 1941：美国参战 ——
-  { day: 1651, window: 40, kind: 'war', actors: ['usa', 'ger'], nameCn: '美国参战',
-    desc: '珍珠港事件后，美国对日宣战并加入同盟国阵营。' },
-  { day: 1651, window: 40, kind: 'war', actors: ['usa', 'jap'], nameCn: '太平洋战争爆发',
-    desc: '日军偷袭珍珠港，美国对日宣战，太平洋战争全面爆发。' },
+  // —— 1941-12-07：珍珠港，美国参战 ——
+  { day: 2167, window: 40, kind: 'war', actors: ['usa', 'jap'], nameCn: '太平洋战争爆发',
+    dateCn: '1941年12月7日', desc: '日军偷袭珍珠港，美国对日宣战，太平洋战争全面爆发。' },
+  { day: 2171, window: 40, kind: 'war', actors: ['usa', 'ger'], nameCn: '美国对德宣战',
+    dateCn: '1941年12月11日', desc: '美国正式对德国宣战，加入同盟国阵营。' },
 
-  // —— 1942：德国入侵英联邦 / 中日进入相持 ——
-  { day: 1894, window: 45, kind: 'war', actors: ['ger', 'bra'], nameCn: '德国宣战巴西',
-    desc: '巴西加入同盟国，德国与南美开战。' },
+  // —— 1942-08：德国宣战巴西 ——
+  { day: 2425, window: 45, kind: 'war', actors: ['ger', 'bra'], nameCn: '德国宣战巴西',
+    dateCn: '1942年8月22日', desc: '巴西加入同盟国，德国与南美开战。' },
 ];
 
 /** 查询某游戏日附近正在生效的历史节点（含 window 容错）。day 口径同 scenarioDateOf */

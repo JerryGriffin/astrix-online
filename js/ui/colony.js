@@ -13,12 +13,15 @@
 //  - 样式内联注入，不碰 css/ 目录。
 
 import { HOI_NATIONS } from '../data/hoi1936.js?v=32.1';
-import { fociOf, startJustify, justifyStatusOf, canJustify } from '../core/hoi1936.js?v=32.1';
+import { fociOf, startJustify, justifyStatusOf, canJustify, histWarGateFor } from '../core/hoi1936.js?v=32.1';
 import { PLANETS } from '../data/planets.js?v=32.1';
 import {
   STATE, getPlanetInstance, shelterRatio, ownedOf,
 } from '../core/state.js?v=32.1';
 import { fmtNum } from '../core/format.js?v=32.1';
+// v0.3.3：宣战统一走 core/war.js#declareWar（此前 colony.js 是手写 acc.wars.push，
+//   绕过了战争槽位上限与历史门控，与 galaxy.js 行为不一致）
+import { declareWar } from '../core/war.js?v=32.1';
 // v0.1.2（R8）：调派人力从母星扣「可用人力」，走 population.js 既有接口，不硬改字段
 import { getAvailable } from '../core/population.js?v=32.1';
 // v0.1.5（需求 2）：运输物资到殖民地 —— 复用 fleet.js 的运输任务（startMission + listFleets）
@@ -827,15 +830,15 @@ function renderGreatPowers(root, ctx, acc) {
         const wb = el('button', { class: 'btn btn-sm btn-danger', text: '正式宣战' });
         wb.style.minHeight = '40px';
         wb.addEventListener('click', () => {
-          acc.wars = acc.wars || [];
-          acc.wars.push({
-            id: 'war_' + Date.now().toString(36), kind: 'npc', targetId: 'hoi_' + n.id,
-            targetName: n.nameCn, startedAt: Date.now(), myScore: 0, theirScore: 0,
-            battles: 0, status: 'active', endedAt: 0, treaty: null, progress: 0,
-            log: [{ at: Date.now(), text: '我国向 ' + n.nameCn + ' 正式宣战（前期已完成正当化）' }],
-          });
+          // v0.3.3：过历史门控 + 走 declareWar（不再手写 push）
+          const gate = histWarGateFor(acc, n.id);
+          if (!gate.ok) { alert(gate.reason); return; }
+          const r = declareWar(acc, { id: 'hoi_' + n.id, nameCn: n.nameCn, kind: 'npc' },
+            { histGate: gate });
+          if (!r.ok) { alert(r.reason); return; }
           acc.hoiJustify = null;
-          alert('已向「' + n.nameCn + '」宣战！');
+          alert((gate.eventName ? '【' + gate.eventName + '】' : '')
+            + '已向「' + n.nameCn + '」宣战！');
           renderColony(root, ctx);
         });
         acts.appendChild(wb);

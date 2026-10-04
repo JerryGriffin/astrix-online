@@ -154,7 +154,7 @@ function accAtDay(countryId, day) {
 }
 // ② 到了「德国入侵波兰」节点（day 973）应触发对德宣战
 {
-  const a = accAtDay('pol', 973);
+  const a = accAtDay('pol', 1339);
   for (let i = 0; i < 5 && !a.wars.length; i++) { a.hoiDiploDays = 0; tickDiploAI(a, 31); }
   ok(a.wars.length > 0, '历史节点日（1939-09-01）触发宣战（战争 ' + a.wars.length + ' 场）');
   ok(a.wars.length === 1, '同一节点只触发一次（战争 ' + a.wars.length + ' 场）');
@@ -163,7 +163,7 @@ function accAtDay(countryId, day) {
 }
 // ③ 玩家为德国时，同一节点应触发对波兰的战争
 {
-  const a = accAtDay('ger', 973);
+  const a = accAtDay('ger', 1339);
   for (let i = 0; i < 5 && !a.wars.length; i++) { a.hoiDiploDays = 0; tickDiploAI(a, 31); }
   ok(a.wars.length > 0, '德国在 1939-09-01 对波兰开战（战争 ' + a.wars.length + ' 场）');
   const tgt = a.wars[0] ? String(a.wars[0].targetId).replace(/^hoi_/, '') : '';
@@ -171,7 +171,7 @@ function accAtDay(countryId, day) {
 }
 // ④ 玩家为日本时，1937 年节点应对中国开战，而非 1936 年就打美国
 {
-  const a = accAtDay('jap', 462);
+  const a = accAtDay('jap', 553);
   for (let i = 0; i < 5 && !a.wars.length; i++) { a.hoiDiploDays = 0; tickDiploAI(a, 31); }
   const tgt = a.wars[0] ? String(a.wars[0].targetId).replace(/^hoi_/, '') : '';
   ok(tgt === 'chn', '日本在 1937-06-07 对中国开战（对象 ' + tgt + '）');
