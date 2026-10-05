@@ -10,18 +10,18 @@
 // 全部公式集中在这里，方便策划调参
 // ============================================================================
 
-import { MATERIALS } from '../data/materials.js?v=46.11';
+import { MATERIALS } from '../data/materials.js?v=47.1';
 import {
   PART_BY_ID, HULLS, ENGINES, WEAPONS, FACILITIES, MARKS,
   MATERIAL_SLOTS, DEFAULT_MATERIAL, PART_CATEGORIES,
   craftableParts, isPartUnlocked,
-} from '../data/ship_parts.js?v=46.11';
+} from '../data/ship_parts.js?v=47.1';
 // 军用部件（ap_*）与舰船部件共用 inst.equipment 库存（key=partId@材料），
 // 装备清单/拍卖行列装备时必须两类都能解析出中文名（v0.2.8 修复：军用装备露出英文 id）
-import { ARMY_PART_BY_ID } from '../data/army_parts.js?v=46.11';
-import { POWER_FACILITY_BY_ID } from '../data/facilities.js?v=46.11';
-import { FUEL_BY_NAME } from '../data/fuels.js?v=46.11';
-import { PLANETS } from '../data/planets.js?v=46.11';
+import { ARMY_PART_BY_ID } from '../data/army_parts.js?v=47.1';
+import { POWER_FACILITY_BY_ID } from '../data/facilities.js?v=47.1';
+import { FUEL_BY_NAME } from '../data/fuels.js?v=47.1';
+import { PLANETS } from '../data/planets.js?v=47.1';
 
 // 自建材料中文名索引（materials.js 只导出 MATERIALS 数组）
 const MAT_BY_NAME = Object.fromEntries(MATERIALS.map((m) => [m.nameCn, m]));
@@ -164,14 +164,51 @@ const RECOMMENDED_BY_SLOT = {
  * 会在模块求值顺序不对时抛「Cannot access '_getInst' before initialization」。
  * 本函数是纯函数（只读 inst.customMaterials），不依赖 state.js。
  *
- * 同时把结果登记到 ACTIVE_LOOKUP，让深层路径（战区结算 / 军队战力）也能用到自定义合金。
+ * v0.4.7：**纯函数化**。
+ *   此前它在内部顺带调用 `setActiveMaterialLookup(out)` —— 一个名为「取表」的
+ *   函数却改写模块级全局，两个后果：
+ *     ① 深层路径（战区结算 / 军队战力）拿不到星球实例，只能读这个全局，
+ *        于是「谁最后调了 materialLookupFor」决定了它们用**哪张星球**的合金表；
+ *        切换星球时若某条路径没调，就会沿用上一颗星的合金 —— 正是 v0.4.6
+ *        声称修掉的「自定义合金静默 ×1.00」的新变种；
+ *     ② 每次调用都 `{ ...MAT_BY_NAME }` 全量浅拷贝，而 ui/alloy.js 在
+ *        draft.parts.forEach 里逐个原料调用（上限 24 种）→ 每帧拷 24 次整表。
+ *   现在：纯取值 + 按星球缓存（自定义合金增删时由调用方 invalidate），
+ *   登记全局改由显式的 setActiveMaterialLookup 负责。
  */
-export function materialLookupFor(inst) {
-  const out = { ...MAT_BY_NAME };
+const _lookupCache = new Map();   // instCode → 合并表
+const _lookupStamp = new Map();   // instCode → 自定义材料条数（用来发现增删）
+
+function customSignature(list) {
+  // 条数 + 名称签名：足以在合金增删/改名时失效缓存
+  let sig = list.length;
+  for (const c of list) sig += '|' + (c && c.name ? c.name : '');
+  return sig;
+}
+
+export function materialLookupFor(inst, opts) {
   const list = listCustomEntries(inst);
+  const sig = customSignature(list);
+  const code = (inst && (inst.code || inst.id)) || '_default';
+  if (!opts || opts.noCache) {
+    const out = { ...MAT_BY_NAME };
+    for (const c of list) if (c.name) out[c.name] = c.mat;
+    return out;
+  }
+  const hit = _lookupCache.get(code);
+  if (hit && _lookupStamp.get(code) === sig) return hit;
+  const out = { ...MAT_BY_NAME };
   for (const c of list) if (c.name) out[c.name] = c.mat;
-  if (list.length) setActiveMaterialLookup(out);
+  _lookupCache.set(code, out);
+  _lookupStamp.set(code, sig);
   return out;
+}
+
+/** 自定义合金增删/改名后调用，让 materialLookupFor 的缓存失效 */
+export function invalidateMaterialLookup(inst) {
+  const code = (inst && (inst.code || inst.id)) || '_default';
+  _lookupCache.delete(code);
+  _lookupStamp.delete(code);
 }
 
 /**
@@ -679,6 +716,23 @@ function newId() {
   return 'ship_' + Date.now().toString(36) + '_' + _seq.toString(36);
 }
 
+/**
+ * 取一艘船的蓝图。
+ *
+ * ship.blueprint 仍保留一份副本（见 createShip 处的实测与取舍说明），
+ * 但**优先按 blueprintId 回查 acc.blueprints** —— 因为玩家在设计页改过蓝图后，
+ * 船上的副本是旧的，回查才能拿到最新设计；老存档没有 acc 上下文时再退回副本。
+ */
+export function blueprintOfShip(acc, ship) {
+  if (!ship) return null;
+  const id = ship.blueprintId;
+  if (id && acc && Array.isArray(acc.blueprints)) {
+    const bp = acc.blueprints.find((b) => b && b.id === id);
+    if (bp) return bp;
+  }
+  return ship.blueprint || null;
+}
+
 export function createShip(bp, ctx = {}) {
   const ev = evaluateBlueprint(bp, ctx);
   if (!ev.ok) return { ok: false, errors: ev.errors, evaluation: ev };
@@ -704,6 +758,16 @@ export function createShip(bp, ctx = {}) {
       // v0.3.3：fleet.js#isFreighter / #fleetCargoCells 按 ship.blueprintId 反查 acc.blueprints
       //   判定运输船身份与货舱容量；缺失会让运输任务恒判「编队里没有运输船」。
       blueprintId: bp.id,
+      // 关于 ship.blueprint 深拷贝（v0.4.7 实测后**决定不改**）：
+      //   审计把这里列为「存档体积大 N 倍」，实测单张蓝图仅 380 字节，
+      //   60 艘舰的存档也只省 11% —— 收益不足以换取风险。
+      //   风险在于：去掉副本后，所有读点都必须拿到 acc 才能按 blueprintId 回查，
+      //   而 tickShip / 货舱 / 航速 / UI 工作量等路径存在**无 acc 的上下文**
+      //   （详情页推演、测试脚手架），一旦回查失败整条物理链会静默停摆
+      //   （表现为「温度永远不变」，极难察觉）。
+      //   结论：保留副本。若日后存档体积真的成为瓶颈，正确做法是
+      //   **把 acc.blueprints 抽成独立的全局蓝图库**（按 id 存一份），
+      //   而不是在每艘船上挂副本。
       blueprint: JSON.parse(JSON.stringify(bp)),
       stats: {
         capacity: ev.capacity, footprint: ev.footprint, slots: ev.slots, slotsUsed: ev.slotsUsed,
@@ -737,10 +801,18 @@ export function createShip(bp, ctx = {}) {
 }
 
 // 推进一艘飞船 dt 秒：温度、能量、船员、燃料
-// ctx = { planetCode }（可覆盖当前星球，比如刚降落）
+// ctx = { planetCode, acc }（acc 用于回查蓝图；可覆盖当前星球，比如刚降落）
 export function tickShip(ship, dt, ctx = {}) {
   if (!ship || !ship.state || dt <= 0) return ship;
-  const bp = ship.blueprint;
+  // v0.4.7：蓝图不再随船存储，改按 blueprintId 回查（老存档自动回退到 ship.blueprint）
+  const bp = blueprintOfShip(ctx.acc, ship);
+  if (!bp) {
+    // v0.4.7：蓝图彻底缺失时**不静默跳过** —— 温度/能量/船员全部停止推进，
+    //   玩家会看到「温度永远不变」且毫无线索。记一条可检索的警告。
+    console.warn('[shipyard] 船 ' + (ship.id || '?') + ' 找不到蓝图（blueprintId='
+      + (ship.blueprintId || '空') + '），本帧物理推进已跳过');
+    return ship;
+  }
   const st = ship.state;
   const planetCode = ctx.planetCode || st.planetCode;
   const area = ship.stats.surfaceArea;

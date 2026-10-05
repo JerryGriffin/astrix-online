@@ -8,13 +8,16 @@ import {
   computePower, energyOf,
   installedFacilities, installFacility, uninstallFacility, facilityStockOf,
   panelEffOf, facilityFuelOf, buildingCountBonus,
-} from '../core/power.js?v=46.11';
-import { POWER_FACILITIES, POWER_FACILITY_BY_ID } from '../data/facilities.js?v=46.11';
-import { BUILDING_BY_ID } from '../data/buildings.js?v=46.11';
-import { RECIPES } from '../data/recipes.js?v=46.11';
-import { linesOf } from '../core/production.js?v=46.11';
-import { jobsOfBuilding, jobOutput, assignedToBuilding, buildingSlots } from '../core/population.js?v=46.11';
-import { fmtNum, fmtRate, fmtRateBody } from '../core/format.js?v=46.11';
+} from '../core/power.js?v=47.1';
+import { POWER_FACILITIES, POWER_FACILITY_BY_ID } from '../data/facilities.js?v=47.1';
+import { BUILDING_BY_ID } from '../data/buildings.js?v=47.1';
+import { RECIPES } from '../data/recipes.js?v=47.1';
+import { linesOf } from '../core/production.js?v=47.1';
+import { jobsOfBuilding, jobOutput, assignedToBuilding, buildingSlots } from '../core/population.js?v=47.1';
+import { fmtNum, fmtRate, fmtRateBody } from '../core/format.js?v=47.1';
+// v0.4.7：el() 收敛到 ui/common.js（此前本文件自带一份；全项目共 14 份、两种不兼容签名，
+//   v0.3.2「列强区块不显示」即源于把 A 型调用写进了 B 型文件）
+import { el } from './common.js?v=47.1';
 
 const CSS = `
   .pwr-panel { font-family: system-ui, sans-serif; color: #e8eef2; padding: 12px; box-sizing: border-box; }
@@ -46,18 +49,6 @@ const CSS = `
   .pwr-card button[disabled] { background: #28323d; color: #7d8a97; cursor: not-allowed; }
   .pwr-hint2 { font-size: 12px; opacity: .6; padding: 4px 2px 12px; line-height: 1.6; }
 `;
-
-function el(tag, attrs = {}, children = []) {
-  const e = document.createElement(tag);
-  for (const k in attrs) {
-    if (k === 'style') e.setAttribute('style', attrs[k]);
-    else if (k === 'text') e.textContent = attrs[k];
-    else if (k === 'html') e.innerHTML = attrs[k];
-    else e.setAttribute(k, attrs[k]);
-  }
-  for (const c of [].concat(children)) if (c) e.appendChild(c);
-  return e;
-}
 
 function num(v, d = 0) {
   const n = Number(v);

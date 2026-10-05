@@ -25,10 +25,10 @@
 // 不 import state.js（账号对象由调用方传入），与 war.js 同构。
 // ============================================================================
 
-import { HOI_BY_ID } from '../data/hoi1936.js?v=46.11';
+import { HOI_BY_ID } from '../data/hoi1936.js?v=47.1';
 import {
   regionsOf, applyTreatyToTheater, treatyOutputMulOf,
-} from './theater.js?v=46.11';
+} from './theater.js?v=47.1';
 
 // --- 和约选项 -------------------------------------------------------------
 export const TREATY_OPTIONS = [
@@ -87,8 +87,25 @@ export const SATELLITE_TRIBUTE_RATE = 0.18;      // 附庸上贡：其产出的�
 export const COLLABORATION_RATE = 0.12;          // 合作政府：长期资源分成
 export const COLLABORATION_RESEARCH = 0.03;      // 合作政府：研究点分成
 export const COLLABORATION_DECAY_PER_DAY = 0.004; // 合作度自然衰减
-export const COLONIZATION_OUTPUT_MUL = 1.6;      // 殖民地产出加成
 export const REPARATION_RATE = 0.45;             // 赔款 = 对方财富的百分比
+
+// v0.4.7：殖民化产出加成的**唯一来源**。
+//   此前这里写 COLONIZATION_OUTPUT_MUL = 1.6、theater.js 写 TREATY_COLONY_OUTPUT_MUL = 1.6，
+//   ui/treaty.js 的文案里还有两处字面量 1.6 —— 同一个数字四个地方。
+//   现统一由 theater.js 导出（真正参与地图结算的那个），本文件 import 后再转出，
+//   保证老调用方仍能拿到常量，但**只有一个值**。
+import {
+  TREATY_COLONY_OUTPUT_MUL as COLONIZATION_OUTPUT_MUL,
+  TREATY_COLONY_GARRISON_MUL as COLONIZATION_GARRISON_MUL,
+} from './theater.js?v=47.1';
+export { COLONIZATION_OUTPUT_MUL, COLONIZATION_GARRISON_MUL };
+
+// v0.4.7：上贡/科研积分 → Ascoin / 研究点 的换算汇率。
+//   tickVassals 返回的 tribute/research 是「战区产出 × 分成率 × 忠诚度 × dt」的**积分**，
+//   量级很小（远小于 1），直接入账几乎看不出变化。state.js 此前写死 `* 1000`
+//   却没有任何注释说明依据，属于典型魔法数 —— 此处显式命名，含义写进注释。
+export const VASSAL_ASCOIN_RATE = 1000;          // 1 积分上贡 → 1000 Ascoin
+export const VASSAL_RESEARCH_RATE = 1000;        // 1 积分科研 → 1000 研究点
 
 /** 某选项在当前战局下是否可用（并给出不可用原因） */
 export function treatyAvailability(acc, war, optionId) {

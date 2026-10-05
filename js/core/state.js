@@ -15,56 +15,61 @@
 //    开局自带 1 座建筑工厂（设计者：「开局有一个建筑工厂」）。
 // 5. 施工队列由 tick 推进：速度 = 建筑工有效人力（受建筑工厂工位限制），无人则为 0。
 
-import { PLANETS } from '../data/planets.js?v=46.11';
-import { HOI_NATIONS, HOI_BY_ID, HOI_SCENARIO_ID } from '../data/hoi1936.js?v=46.11';   // v0.2.6 官方 mod 1936 剧本
+import { PLANETS } from '../data/planets.js?v=47.1';
+import { HOI_NATIONS, HOI_BY_ID, HOI_SCENARIO_ID } from '../data/hoi1936.js?v=47.1';   // v0.2.6 官方 mod 1936 剧本
 import {
   setHoiDeps, popOf, setupArmies, setupNavy, setupLines, setupBloc, setupFactories, setupColony, ensureShipNames, backgroundOf, repairScenarioEstates, setupGermanPuppets, tickWarsHoi4, tickJustify, tickDiploAI, staffBuildings, applyInfiniteReserve,
   ensureFocus, tickFocus, ensureSeas, scenarioDateOf, gameDaysOf,
-} from './hoi1936.js?v=46.11';
-import { BUILDING_BY_ID, buildingCost } from '../data/buildings.js?v=46.11';
-import { TECH_BY_ID, canResearch, missingPrereqs, missingBuilding } from '../data/techs.js?v=46.11';
-import { UPGRADES, upgradeCost } from '../data/upgrades.js?v=46.11';
+} from './hoi1936.js?v=47.1';
+import { BUILDING_BY_ID, buildingCost } from '../data/buildings.js?v=47.1';
+import { TECH_BY_ID, canResearch, missingPrereqs, missingBuilding } from '../data/techs.js?v=47.1';
+import { UPGRADES, upgradeCost } from '../data/upgrades.js?v=47.1';
 import {
   createPopulation, tickPopulation, getAvailable, gatherLaborByLayer, jobsOfBuilding, getIntensity,
   consumptionPerSec, jobOutput,
   JOBS, freeSlots,
-} from './population.js?v=46.11';
-import { buildRateOf, buildBlockReason } from './construction.js?v=46.11';
-import { tickShip, defaultBlueprints, createShip, shipBuildTick } from './shipyard.js?v=46.11';
+} from './population.js?v=47.1';
+import { buildRateOf, buildBlockReason } from './construction.js?v=47.1';
+import { tickShip, defaultBlueprints, createShip, shipBuildTick } from './shipyard.js?v=47.1';
 // v0.0.6：电力系统与配方生产。
 // 注意这两个模块**不反向 import 本文件**（否则形成循环依赖），
 // 它们只从传入的 inst 上读 buildings / pop / inventory / recipes。
-import { energyOf, computePower, tickPower } from './power.js?v=46.11';
+import { energyOf, computePower, tickPower } from './power.js?v=47.1';
 // v0.0.91：efficiencyBonus 由 production.js 导出（建筑总座数效率乘数），
 //   这里沿用既有的 state→production 单向边引入，不反向让 production import state，避免循环依赖。
-import { tickProduction, productionRates, ensureLines, lineWorkersTotal, efficiencyBonus, ensureEntry, addLine as addProductionLine, lineSlotInfo } from './production.js?v=46.11';
+import { tickProduction, productionRates, ensureLines, lineWorkersTotal, efficiencyBonus, ensureEntry, addLine as addProductionLine, lineSlotInfo } from './production.js?v=47.1';
 // v0.0.92：星际航行与殖民（管理模式 / 独立倾向 / 随机星球）
-import { tickIndependence, outputMulOf, happinessDeltaOf, ensureDiscoveredDefaults, discoverPlanet, capturePlanet, purgeShopColonies, tickManagedColonies, SHOP_PLANET_CODE } from './planetgen.js?v=46.11';
+import { tickIndependence, outputMulOf, happinessDeltaOf, ensureDiscoveredDefaults, discoverPlanet, capturePlanet, purgeShopColonies, tickManagedColonies, SHOP_PLANET_CODE } from './planetgen.js?v=47.1';
 // v0.1.2（需求 18/19）：永久升级的「效果」改乘方，唯一实现在 data/upgrades.js#upgradeMul
 // （UI 的 research.js 也用它，别在别处再写一套公式）。
 // 此前 upg_collect/refine/power/labor/research/build 六项付了钱却没有任何效果。
-import { upgradeMul } from '../data/upgrades.js?v=46.11';
-import { tickFleetMissions, ensureFleets } from './fleet.js?v=46.11';
-import { ensureArmies, armyBuildTick, advanceTraining, ARMY_LABOR_PER_BARRACKS } from './army.js?v=46.11';   // v0.2.0 军队
+import { upgradeMul } from '../data/upgrades.js?v=47.1';
+// v0.4.7：softFail —— 心跳里被吞掉的异常改为「可观测」（同 tag+message 只报一次，
+//   避免每 tick 抛错把控制台刷爆）。此前 40 处空 catch 无一日志，
+//   是「界面不显示 / 功能没反应」类问题反复无法定位的共同根因。
+import { softFail } from './util.js?v=47.1';
+import { tickFleetMissions, ensureFleets } from './fleet.js?v=47.1';
+import { ensureArmies, armyBuildTick, advanceTraining, ARMY_LABOR_PER_BARRACKS } from './army.js?v=47.1';   // v0.2.0 军队
 // v0.3.4：战役系统（HOI4 式持续交战）。必须在 ensureArmies **之后**接线 ——
 //   战役结算要从真实 acc.armies 取师（兵员/攻防），否则打的是空数组。
-import { tickBattles, ensureBattles, orbitalControlOf, startBattle } from './battle.js?v=46.11';
+import { tickBattles, ensureBattles, orbitalControlOf, startBattle, BATTLE_MAX_PER_WAR, unshiftWarLog } from './battle.js?v=47.1';
 // v0.4.1：行星战区地图（战区归属 / 补给网络 / 战略打击 / 敌方 AI 战略层）
 import {
   ensureTheater, refreshSupply, decayStrikePressure, tickTheaterAI,
   tickRegions, regionYieldOf, colonySupportOf,
   regionsOf, treatyOutputMulOf, STRUCTURE_OUTPUT_MUL,
-} from './theater.js?v=46.11';
-import { tickVassals } from './treaty.js?v=46.11';
+} from './theater.js?v=47.1';
+// v0.4.7：附庸上贡的换算汇率也来自 treaty.js（此前这里是写死的 *1000）
+import { tickVassals, VASSAL_ASCOIN_RATE, VASSAL_RESEARCH_RATE } from './treaty.js?v=47.1';
 // 注：ensureEntry 已在上面从 ./production.js 一并导入，勿重复 import。
 // v0.1.0：电脑账号（离线存档里的 NPC 势力）与其交易池联动。
 //   注意 npc.js 是叶子模块（只 import 数据表），shop.js 与 state.js 互为函数级引用、无顶层副作用。
-import { ensureNpcs, tickNpcs } from './npc.js?v=46.11';
+import { ensureNpcs, tickNpcs } from './npc.js?v=47.1';
 import {
   priceOf as shopPriceOf, suggestPriceOf as shopSuggestPriceOf,
   tickShop as shopTick,
-} from './shop.js?v=46.11';
-import { tickAuctions, tickNpcAuctionSpawner } from './auction.js?v=46.11';   // v0.2.6 拍卖行；v0.2.10 NPC 挂单
+} from './shop.js?v=47.1';
+import { tickAuctions, tickNpcAuctionSpawner } from './auction.js?v=47.1';   // v0.2.6 拍卖行；v0.2.10 NPC 挂单
 
 const SAVE_PREFIX = 'astrix.save.';
 const INDEX_KEY = SAVE_PREFIX + 'index';
@@ -88,8 +93,8 @@ export const AUTOSAVE_INTERVAL = 10;            // 自动存档间隔（秒）
 // 适配器抽象：当前实现为 localStorage，后续可整体替换为云端实现
 let adapter = {
   get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
-  set(k, v) { try { localStorage.setItem(k, v); } catch (e) { /* 配额或隐私模式忽略 */ } },
-  del(k) { try { localStorage.removeItem(k); } catch (e) { /* 忽略 */ } },
+  set(k, v) { try { localStorage.setItem(k, v); } catch (e) { softFail('配额或隐私模式忽略', e); } },
+  del(k) { try { localStorage.removeItem(k); } catch (e) { softFail('存档删除', e); } },
 };
 
 // 注入新的适配器（如云端适配器），game 启动时调用
@@ -174,7 +179,7 @@ function loadPlanets(accountId, planetsKey) {
 export function switchPool(mode) {
   mode = mode === 'online' ? 'online' : 'offline';
   if (STATE.currentAccountId) {
-    try { saveState(); } catch (e) { /* 落盘失败不阻断切池 */ }
+    try { saveState(); } catch (e) { softFail('落盘失败不阻断切池', e); }
   }
   return loadState(mode);
 }
@@ -216,7 +221,7 @@ export function createAccount(name, mode, opts) {
   //   「1936 剧本」与「漫溯深空」在线需开发者模式（离线不受限）
   try {
     if (STATE.mode === 'online' && mode !== 'fresh' && !devModeEnabled()) mode = 'fresh';
-  } catch (e) { /* 忽略 */ }
+  } catch (e) { softFail('通用存档读取', e); }
   const acc = defaultAccount(name);
   STATE.accounts.push(acc);
   STATE.currentAccountId = acc.id;
@@ -230,14 +235,14 @@ export function createAccount(name, mode, opts) {
     try {
       const inst = getPlanetInstance(acc.homePlanetCode);
       applyDeepStart(acc, inst);
-    } catch (e) { /* 失败也要保证基础存档可用 */ }
+    } catch (e) { softFail('失败也要保证基础存档可用', e); }
   }
   // v0.2.6：官方 mod「1936 剧本」开局 —— 选国家，铺本土 + 属地两颗星球
   if (mode === 'hoi1936') {
     try {
       const inst = getPlanetInstance(acc.homePlanetCode);
       apply1936Start(acc, inst, (opts && opts.countryId) || HOI_NATIONS[0].id);
-    } catch (e) { /* 失败也要保证基础存档可用 */ }
+    } catch (e) { softFail('失败也要保证基础存档可用', e); }
   }
   return acc;
 }
@@ -1187,7 +1192,7 @@ export function tick(dt = 1) {
     // ⑤c v0.2.0：军队组装线推进（tickProduction 显式跳过 armyBlueprintId 线，由 armyBuildTick 结算）
     advanceArmyLines(inst, dt, acc);
     // ⑤d v0.2.6：军队计时训练推进（点训练后开进度条，满进度结算攻防/经验加成）
-    try { advanceTraining(inst, dt, acc); } catch (e) { /* 忽略单星球异常 */ }
+    try { advanceTraining(inst, dt, acc); } catch (e) { softFail('单星球训练', e); }
     advancePopulation(inst, dt, { scenario: acc && acc.scenario });               // ⑥
     advanceConstruction(inst, dt);             // ⑦（不吃电力降速，防开局死锁）
     advanceResearch(inst, dt, pw.ratio);       // ⑧
@@ -1211,14 +1216,14 @@ export function tick(dt = 1) {
         listOnMarket: () => null,
         takeFromMarket: () => null,
       });
-    } catch (e) { /* 单个 NPC 的异常不拖垮心跳 */ }
+    } catch (e) { softFail('单个 NPC 的异常不拖垮心跳', e); }
     // v0.2.12：在线共享市场（fleet.js 共享同步已接管价格）时跳过本地噪声，保证全服同价
-    try { shopTick(acc, dt, { skipNoise: !!acc._sharedMarket }); } catch (e) { /* 忽略 */ }
+    try { shopTick(acc, dt, { skipNoise: !!acc._sharedMarket }); } catch (e) { softFail('商店行情', e); }
     // v0.2.10：交易池（挂单）已移除 —— shopTickListings 不再跑，交易全部走拍卖行
     // v0.2.6 拍卖行：每秒推进 15s 竞价窗口、NPC 兜底出价、到期结算
-    try { tickAuctions(acc, dt, { getInst: () => getPlanetInstance(acc.homePlanetCode) }); } catch (e) { /* 忽略 */ }
+    try { tickAuctions(acc, dt, { getInst: () => getPlanetInstance(acc.homePlanetCode) }); } catch (e) { softFail('拍卖推进', e); }
     // v0.2.10 NPC 拍卖挂单：拍卖行实时出现电脑势力的挂单
-    try { tickNpcAuctionSpawner(acc); } catch (e) { /* 忽略 */ }
+    try { tickNpcAuctionSpawner(acc); } catch (e) { softFail('NPC拍卖生成', e); }
     // v0.2.6：1936 剧本 —— 国策按游戏天数推进 + 产线加成同步到星球
     try {
       if (acc.scenario === 'hoi1936') {
@@ -1229,33 +1234,41 @@ export function tick(dt = 1) {
         // v0.2.6 rev7：旧存档自愈（住房按庇护需求补齐）—— 进入存档后仅执行一次
         if (!acc._estatesRepaired) {
           acc._estatesRepaired = true;
-          try { repairScenarioEstates(acc); } catch (e) { /* 忽略 */ }
+          try { repairScenarioEstates(acc); } catch (e) { softFail('剧本资产自愈', e); }
         }
         const lm = (acc.hoiFocus && acc.hoiFocus.buffs && acc.hoiFocus.buffs.lineMul) || 1;
         for (const pl of STATE.planets) if (pl) pl.hoiLineMul = lm;
       }
-    } catch (e) { /* 忽略 */ }
+    } catch (e) { softFail('舰队任务', e); }
     // v0.1.1 舰队持续任务（需求 3/19）：explore/transport/patrol 计时到期结算，defense 驻留。
     // discoverPlanet 必须注入：探索发现要走 acc.discovered 新契约（fleet 内置降级是旧版直接占领）。
     ensureFleets(acc);
-    try { tickFleetMissions(acc, dt, { discoverPlanet }); } catch (e) { /* 忽略 */ }
+    try { tickFleetMissions(acc, dt, { discoverPlanet }); } catch (e) { softFail('舰队任务', e); }
     // v0.2.0 军队：老存档迁移（幂等）
-    try { ensureArmies(acc); } catch (e) { /* 忽略 */ }
+    try { ensureArmies(acc); } catch (e) { softFail('军队自愈', e); }
     // v0.3.4 战役：持续交战（师级接敌 / 组织度 / 补给 / 工事），战果回写 acc.armies
-    try { ensureBattles(acc); tickBattles(acc, dt); } catch (e) { /* 单场战役异常不拖垮心跳 */ }
+    try { ensureBattles(acc); tickBattles(acc, dt); } catch (e) { softFail('单场战役异常不拖垮心跳', e); }
     // v0.4.1/4.2 行星战区地图：战区易手、补给网络、驻防/围城推进、敌方 AI 战略层
     try {
       ensureTheater(acc);
       refreshSupply(acc);
-      decayStrikePressure(acc, dt);
+      // v0.4.7：把真实轨道控制度传进去（此前 theater.js 读一个不存在的 t._ctrl，
+      //   导致「有轨道控制时打击恢复更快」永不生效）
+      decayStrikePressure(acc, dt, orbitalControlOf(acc, 'x'));
       tickRegions(acc, dt);
       tickTheaterAI(acc, dt, {
         myOrbital: orbitalControlOf(acc, 'x'),
         // v0.4.3：注入 startBattle，让敌方 AI 也能多路夹击
         //   （theater.js 不反向 import battle.js，避免循环依赖）
         startBattle,
+        // v0.4.7：连带注入战报写入与战场数上限。
+        //   此前 theater.js 内部误用未声明的 activeCount / BATTLE_MAX_PER_WAR /
+        //   unshiftWarLog，ReferenceError 冒泡到下面这个 catch —— 敌方夹击、
+        //   补给刷新、AI 扩张三块功能全部静默失效。现在改为显式注入。
+        logWar: unshiftWarLog,
+        maxBattlesPerWar: BATTLE_MAX_PER_WAR,
       });
-    } catch (e) { /* 地图层异常不拖垮心跳 */ }
+    } catch (e) { softFail('地图层', e); }
     // v0.4.2 殖民地/战区产出**接入真实经济**：把地图收益变成物品栏里的真物资。
     //   产量受该战区的补给网络与驻防影响 —— 断供或失守 → 产量大跌，
     //   于是「打穿补给走廊」不再只是战斗指标，而是实打实的经济收益。
@@ -1272,7 +1285,7 @@ export function tick(dt = 1) {
           }
         }
       }
-    } catch (e) { /* 产出异常不拖垮心跳 */ }
+    } catch (e) { softFail('产出异常不拖垮心跳', e); }
     // v0.4.3 殖民地人口**反哺本土**：远方殖民地的人口转化为研究点
     //   （只在仍由我方控制、且补给通畅的殖民地才生效 —— 断供的殖民地养不起科研）。
     try {
@@ -1282,7 +1295,7 @@ export function tick(dt = 1) {
         inst.pop = inst.pop || {};
         inst.pop.colonyGrowthBonus = sup.popGrowthBonus;
       }
-    } catch (e) { /* 反哺异常不拖垮心跳 */ }
+    } catch (e) { softFail('反哺异常不拖垮心跳', e); }
     // v0.4.5（需求 4）：附庸 / 合作政府**持续上贡**。
     //   签下卫星国或合作政府后不是一次性收益：对方按其产出的一定比例
     //   持续上缴资源（卫星国）与研究点（合作政府），忠诚度随时间衰减 ——
@@ -1305,13 +1318,13 @@ export function tick(dt = 1) {
         const homeInst = getPlanetInstance(acc.homePlanetCode);
         if (homeInst && vas.tribute > 0) {
           // 上贡折算为 Ascoin（最通用、不污染物品栏）
-          acc.ascoin = (Number(acc.ascoin) || 0) + vas.tribute * 1000;
+          acc.ascoin = (Number(acc.ascoin) || 0) + vas.tribute * VASSAL_ASCOIN_RATE;
         }
         if (vas.research > 0) {
-          acc.researchPoints = (Number(acc.researchPoints) || 0) + vas.research * 1000;
+          acc.researchPoints = (Number(acc.researchPoints) || 0) + vas.research * VASSAL_RESEARCH_RATE;
         }
       }
-    } catch (e) { /* 上贡异常不拖垮心跳 */ }
+    } catch (e) { softFail('上贡异常不拖垮心跳', e); }
     // v0.1.1 需求 20：电脑托管殖民地——AI 岗位重排（30s 节拍）+ 贡品上缴母星（60s 节拍）。
     // 生产由本 tick 管线对全部星球实例统一结算，这里绝不能再跑一次产出（会翻倍）。
     try {
@@ -1319,13 +1332,13 @@ export function tick(dt = 1) {
         getInstanceOf: (code) => getPlanetInstance(code),
         deliverToHome: deliverTributeToHome,
       });
-    } catch (e) { /* 忽略 */ }
+    } catch (e) { softFail('电脑托管殖民地', e); }
     // v0.1.1 一次性初始化（每账号每会话一次，均幂等）：
     //   ① 清理老存档误占的商店星（需求 1）；② 母星落 discovered 表（需求 2）。
     if (!_v011Inited.has(acc.id)) {
       _v011Inited.add(acc.id);
-      try { purgeShopColonies(acc); } catch (e) { /* 忽略 */ }
-      try { ensureDiscoveredDefaults(acc, acc.homePlanetCode); } catch (e) { /* 忽略 */ }
+      try { purgeShopColonies(acc); } catch (e) { softFail('商店星球清理', e); }
+      try { ensureDiscoveredDefaults(acc, acc.homePlanetCode); } catch (e) { softFail('默认星球补建', e); }
       // 商店星残留实例移出本会话星球列表（planetgen 不 import state.js，由调用方负责）
       STATE.planets = STATE.planets.filter((p) => p && !p.isShop && p.code !== SHOP_PLANET_CODE);
     }
@@ -1334,7 +1347,7 @@ export function tick(dt = 1) {
   // 舰船：温度、能量与船员随时间变化（温度失控会死人）
   if (acc && Array.isArray(acc.ships)) {
     for (const ship of acc.ships) {
-      try { tickShip(ship, dt); } catch (e) { /* 单艘船的异常不拖垮心跳 */ }
+      try { tickShip(ship, dt, { acc }); } catch (e) { softFail('单艘船的异常不拖垮心跳', e); }
     }
   }
   // 内置自动存档，累计到间隔就落盘一次
@@ -1439,7 +1452,7 @@ export function settleOffline() {
     //   表现为「离线回来采集涨了、施工动了，产线却纹丝不动」。
     //   这里逐个过一遍 getPlanetInstance 把运行时字段补齐（它命中已有实例只补字段）。
     for (const p of STATE.planets) {
-      if (p && p.code) { try { getPlanetInstance(p.code); } catch (e) { /* 单个实例补建失败不拖垮结算 */ } }
+      if (p && p.code) { try { getPlanetInstance(p.code); } catch (e) { softFail('单个实例补建失败不拖垮结算', e); } }
     }
     let remaining = applied;
     while (remaining > 1e-9) {
@@ -1450,7 +1463,7 @@ export function settleOffline() {
     }
     // 该账号的星球实例写回它自己的存储槽（v0.2.5：按池取键）
     if (acc.id) {
-      try { adapter.set(poolKeys(STATE.mode).planets + acc.id, JSON.stringify(STATE.planets)); } catch (e) { /* 单账号写盘失败不拖垮其它账号 */ }
+      try { adapter.set(poolKeys(STATE.mode).planets + acc.id, JSON.stringify(STATE.planets)); } catch (e) { softFail('单账号写盘失败不拖垮其它账号', e); }
     }
     // v0.1.3：当前账号的实例就是推进过的这份 —— 结束时用它恢复上下文，别再用旧数组。
     if (acc.id === prevCurrentId) settledPlanetsOfCurrent = STATE.planets;
@@ -1517,7 +1530,7 @@ function apply1936Start(acc, inst, countryId) {
 
   // 3) 工业建筑群（v0.2.6 rev3：按工业规模铺开大量建筑，为生产线上万名工人提供工位）
   const ic = n.ic;
-  try { setupFactories(inst, n); } catch (e) { /* 忽略 */ }
+  try { setupFactories(inst, n); } catch (e) { softFail('本土工厂铺设', e); }
 
   // 4) 物资：按工业与人口换算
   // v0.2.8：起始库存按各国**历史资源禀赋**推算（钢/铁/铝/粮各国有别）
@@ -1557,7 +1570,7 @@ function apply1936Start(acc, inst, countryId) {
   inst.facilityStock = Object.assign({}, inst.facilityStock, { battery_m: 4, solar_m: 3, wind_m: 3, thermal_m: 2 });
 
   // 4b) v0.2.7：1936 剧本 —— 星球储存资源设为无限（玩家持有 / 储量上限 / 气体剩余都置满）
-  try { applyInfiniteReserve(inst); } catch (e) { /* 忽略 */ }
+  try { applyInfiniteReserve(inst); } catch (e) { softFail('本土无限储量', e); }
 
   // 5) 人口：德国 80000，其他国家按真实人口比例放缩（v0.2.6 深化）
   if (inst.pop) {
@@ -1577,7 +1590,7 @@ function apply1936Start(acc, inst, countryId) {
       + ' · 属地：' + n.colony.name });
     acc.warLog.unshift({ at: Date.now(), text: '【提示】在「国策」页选择国策推进历史进程；'
       + '对外可在星际页与其他国家贸易、结盟或宣战（战争只有投降签约才能结束）。' });
-  } catch (e) { /* 忽略 */ }
+  } catch (e) { softFail('开局历史背景', e); }
   acc.ascoin = Math.round(ic * 4000 + n.divisions * 600);
   inst.equipment = inst.equipment || {};
   // v0.2.6 rev8：装备配发与工业挂钩（高工业国家每个师的装备更充足）
@@ -1615,15 +1628,15 @@ function apply1936Start(acc, inst, countryId) {
     const wf = setupLines(inst, n);
     acc.hoiWorkforce = (wf && wf.workers) || 0;
     acc.hoiLines = (wf && wf.lines) || [];
-  } catch (e) { /* 忽略 */ }
+  } catch (e) { softFail('侧重生产线铺设', e); }
   // 6d) 阵营（德意同盟等）+ 德国专属附庸（斯洛伐克领地）
-  try { setupBloc(acc, n); } catch (e) { /* 忽略 */ }
-  try { setupGermanPuppets(acc); } catch (e) { /* 忽略 */ }
+  try { setupBloc(acc, n); } catch (e) { softFail('阵营初始化', e); }
+  try { setupGermanPuppets(acc); } catch (e) { softFail('德国附庸', e); }
   // 6e) 岗位分配：让每座建筑都有人工作（扣掉生产线工人后按优先级填岗）
   try {
     const st = staffBuildings(inst.pop, inst);
     acc.hoiStaffJobs = (st && st.jobs) || 0;
-  } catch (e) { /* 忽略 */ }
+  } catch (e) { softFail('属地岗位分配', e); }
 
   // 7) 属地星球：第二颗星球（历史属地命名，资源按属地类型倾斜）
   try {
@@ -1640,8 +1653,8 @@ function apply1936Start(acc, inst, countryId) {
           // v0.2.6 rev6：属地人口取本土的 12%，并按人口配足住房与民生（修复幸福度崩盘）
           const colPop = Math.max(400, Math.round((inst.pop ? inst.pop.total : 400) * 0.12));
           if (inst2.pop) { inst2.pop.total = colPop; inst2.pop.happiness = 0.9; }
-          try { setupColony(inst2, n, colPop); } catch (e) { /* 忽略 */ }
-          try { staffBuildings(inst2.pop, inst2); } catch (e) { /* 忽略 */ }
+          try { setupColony(inst2, n, colPop); } catch (e) { softFail('属地铺设', e); }
+          try { staffBuildings(inst2.pop, inst2); } catch (e) { softFail('本土工厂铺设', e); }
           const colBundle = {
             有机质: Math.round(n.popM * 800), 水: Math.round(n.popM * 800),
             铁: Math.round(ic * 500), 石英: Math.round(ic * 250), 橡胶: Math.round(ic * 120),
@@ -1656,12 +1669,12 @@ function apply1936Start(acc, inst, countryId) {
               ne.owned = colBundle[name];
             }
           }
-          try { applyInfiniteReserve(inst2); } catch (e) { /* 忽略 */ }   // v0.2.7：属地资源同样无限（须在入库之后）
+          try { applyInfiniteReserve(inst2); } catch (e) { softFail('本土无限储量', e); }   // v0.2.7：属地资源同样无限（须在入库之后）
           acc.colonyCode = d.planet.code;
         }
       }
     }
-  } catch (e) { /* 属地初始化失败不影响本土可用 */ }
+  } catch (e) { softFail('属地初始化失败不影响本土可用', e); }
 }
 
 // 「漫溯深空」开局：把科技、建筑、物资、飞船一次性铺到位
@@ -1773,7 +1786,7 @@ function applyDeepStart(acc, inst) {
         if (!(w > 0)) continue;                                          // 没空闲工位 → 跳过
         const r = addProductionLine(inst, L.buildingId, L.recipeId, { workers: w });
         if (!r || !r.ok) continue;
-      } catch (e) { /* 单条线失败不影响开局 */ }
+      } catch (e) { softFail('单条线失败不影响开局', e); }
     }
   }
 
@@ -1816,7 +1829,7 @@ function applyDeepStart(acc, inst) {
     });
   }
   // v0.1.1（需求 2/5）：漫溯深空开局母星也要落 discovered 表（幂等）
-  try { ensureDiscoveredDefaults(acc, acc.homePlanetCode); } catch (e) { /* 忽略 */ }
+  try { ensureDiscoveredDefaults(acc, acc.homePlanetCode); } catch (e) { softFail('默认星球补建', e); }
   saveState();
 }
 
@@ -1825,7 +1838,7 @@ export function newGame(name, mode) {
   const inst = getPlanetInstance(acc.homePlanetCode); // 建立母星实例并写入初始物资
   if (mode === 'deep') {
     try { applyDeepStart(acc, inst); }
-    catch (e) { /* 中期开局失败也要保证基础存档可用 */ }
+    catch (e) { softFail('中期开局失败也要保证基础存档可用', e); }
   }
   return acc;
 }

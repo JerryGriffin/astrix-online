@@ -8,9 +8,9 @@
 //   5. HOI_MAIN_NATIONS 口径：12 主国 + 3 历史对象国
 import {
   histWarGateFor, listHistTargets, tickDiploAI, gameDaysOf, scenarioDateOf,
-} from '../js/core/hoi1936.js?v=46.11';
-import { HIST_TIMELINE, HOI_NATIONS, HOI_MAIN_NATIONS, HOI_BY_ID, histEventsAt, histWarBetween } from '../js/data/hoi1936.js?v=46.11';
-import { declareWar, activeWarsOf } from '../js/core/war.js?v=46.11';
+} from '../js/core/hoi1936.js?v=47.1';
+import { HIST_TIMELINE, HOI_NATIONS, HOI_MAIN_NATIONS, HOI_BY_ID, histEventsAt, histWarBetween } from '../js/data/hoi1936.js?v=47.1';
+import { declareWar, activeWarsOf } from '../js/core/war.js?v=47.1';
 
 let pass = 0, fail = 0;
 const check = (n, c, d) => { if (c) { pass++; console.log('  ✓ ' + n + (d ? '  ' + d : '')); } else { fail++; console.log('  ✗ ' + n + (d ? '  ' + d : '')); } };

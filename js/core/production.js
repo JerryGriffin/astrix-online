@@ -13,18 +13,20 @@
 //   * 不修改 state.js / ui/* / data/buildings.js / data/materials.js / data/facilities.js /
 //     data/techs.js / version.js / index.html。
 
-import { RECIPES, RECIPE_BY_ID, recipesOfBuilding, getRecipe } from '../data/recipes.js?v=46.11';
-import { jobsOfBuilding, getIntensity, getAvailable, buildingSlots, jobOutput, manageOutputMulOf } from './population.js?v=46.11';
-import { MATERIALS } from '../data/materials.js?v=46.11';
-import { PART_BY_ID, craftableParts, craftWorkOf } from '../data/ship_parts.js?v=46.11';
-import { materialOptionsFor } from './shipyard.js?v=46.11';
-import { ARMY_PART_BY_ID, ARMY_BP_BY_ID, ARMY_SLOT_BY_CAT, craftableArmyParts } from '../data/army_parts.js?v=46.11';   // v0.2.0 军事部件
-import { POWER_FACILITY_BY_ID } from '../data/facilities.js?v=46.11';
+import { RECIPES, RECIPE_BY_ID, recipesOfBuilding, getRecipe } from '../data/recipes.js?v=47.1';
+import { jobsOfBuilding, getIntensity, getAvailable, buildingSlots, jobOutput, manageOutputMulOf } from './population.js?v=47.1';
+import { MATERIALS } from '../data/materials.js?v=47.1';
+import { PART_BY_ID, craftableParts, craftWorkOf } from '../data/ship_parts.js?v=47.1';
+import { materialOptionsFor } from './shipyard.js?v=47.1';
+import { ARMY_PART_BY_ID, ARMY_BP_BY_ID, ARMY_SLOT_BY_CAT, craftableArmyParts } from '../data/army_parts.js?v=47.1';   // v0.2.0 军事部件
+import { POWER_FACILITY_BY_ID } from '../data/facilities.js?v=47.1';
 // v0.0.92：殖民管理模式对产出的倍率（自由 1.25 / 剥削 1.60 / 领土 0.85 …）
-import { outputMulOf } from './planetgen.js?v=46.11';
-import { addEquipment, setActiveMaterialLookup, materialLookupFor } from './shipyard.js?v=46.11';
+import { outputMulOf } from './planetgen.js?v=47.1';
+import { addEquipment, setActiveMaterialLookup, materialLookupFor, invalidateMaterialLookup } from './shipyard.js?v=47.1';
+// v0.4.7：合金表同步失败不再静默（否则表现为「合金造了却不生效」，极难定位）
+import { softFail } from './util.js?v=47.1';
 // v0.1.2（需求 18/19）：永久升级「冶炼 / 人力」的乘方效果，唯一实现在 data/upgrades.js#upgradeMul
-import { upgradeMul } from '../data/upgrades.js?v=46.11';
+import { upgradeMul } from '../data/upgrades.js?v=47.1';
 
 // nameCn → 材料对象（供 derivedStatsOf 查属性，纯查表不读 inst）
 const MATERIAL_BY_NAME = Object.fromEntries(MATERIALS.map((m) => [m.nameCn, m]));
@@ -460,6 +462,14 @@ export function makeCustomMaterial(inst, name, parts) {
     totalAmt: total,
   };
   table[key] = { material, recipe };
+  // v0.4.7：新建合金后必须立刻重算合并表 + 失效缓存。
+  //   此前只有 removeCustomMaterial 做了同步（v0.4.6 修「幽灵材料」），
+  //   新建路径漏了 → 玩家刚造出的强力合金，在战区结算 / 军队战力等
+  //   **拿不到星球实例的深层路径**上完全不被识别（materialMul 查不到 → ×1.00 基准）。
+  try {
+    invalidateMaterialLookup(inst);
+    setActiveMaterialLookup(materialLookupFor(inst));
+  } catch (e) { softFail('自定义合金同步', e); }
   return { ok: true, key, material, recipe, warnings };
 }
 
@@ -471,7 +481,11 @@ export function removeCustomMaterial(inst, key) {
   if (inst.recipes && inst.recipes.custom_chem === 'r_custom_' + key) delete inst.recipes.custom_chem;
   // v0.4.6：删除后必须立刻重算合并表，否则被删的合金仍留在
   //   shipyard.js 的 ACTIVE_LOOKUP 里继续参与 materialMul（幽灵材料）。
-  try { setActiveMaterialLookup(materialLookup(inst)); } catch (e) { /* 忽略 */ }
+  // v0.4.7：同时失效按星球缓存（materialLookupFor 已改为纯函数 + 缓存）。
+  try {
+    invalidateMaterialLookup(inst);
+    setActiveMaterialLookup(materialLookupFor(inst));
+  } catch (e) { softFail('自定义合金删除同步', e); }
   return true;
 }
 

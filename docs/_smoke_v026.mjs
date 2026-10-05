@@ -2,7 +2,8 @@
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { createRequire } from 'node:module';
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const server = http.createServer((req, res) => {
@@ -16,8 +17,16 @@ const server = http.createServer((req, res) => {
 await new Promise((r) => server.listen(8780, '127.0.0.1', r));
 const require = createRequire('C:/Users/11603/.workbuddy/binaries/node/workspace/package.json');
 const { chromium } = require('playwright-core');
+// v0.4.7：版本串不再写死 —— 本脚本此前硬编码 ?v=32.1，而页面加载的是当前 CACHE_TAG，
+//   于是 state.js 出现**两个模块实例**（STATE 单例分裂）→ currentAccount() 恒 null，
+//   国策 / 舰船 / 殖民地 / 舰队各段断言全部假失败。现从 version.js 动态取。
+const { CACHE_TAG } = await import(pathToFileURL(join(ROOT, 'js/version.js')).href);
 const browser = await chromium.launch({ executablePath: 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe', headless: true, args: ['--no-sandbox'] });
 const page = await (await browser.newContext()).newPage();
+// v0.4.7：把 CACHE_TAG 注入浏览器上下文。
+//   page.evaluate 的回调在**浏览器侧**执行，拿不到 Node 侧的 CACHE_TAG 变量，
+//   必须先通过 evaluate 传进去；否则模板串会插值成 undefined，
+//   请求 `?v=undefined` 导致模块加载失败（表现为整段断言假失败）。
 const errs = [];
 const consoleErrs = [];
 page.on('pageerror', (e) => errs.push(e.message));
@@ -59,17 +68,21 @@ const stepA = await page.evaluate(() => {
   };
 });
 console.log('A. 1936 选国界面:', JSON.stringify(stepA));
-const aOk = stepA.hasSelect && stepA.optionCount === 12 && stepA.infoHasData;
+// v0.4.7：国家数不再写死 12 —— HOI_NATIONS 已扩到 15（新增奥地利 / 捷克斯洛伐克 / 埃塞俄比亚），
+//   写死会让数据表一扩充就假失败。改为与数据表比对。
+const resA = await page.evaluate(async () => ({ n: (await import('/js/data/hoi1936.js')).HOI_NATIONS.length }));
+const aOk = stepA.hasSelect && stepA.optionCount === resA.n && stepA.infoHasData;
 
 // ---- B. 场景国家星球卡（假 SDK + 1936 账号渲染星际页） ----
 const resB = await page.evaluate(async () => {
+  const CACHE_TAG = (await import('/js/version.js')).CACHE_TAG;
   const chain = new Proxy({}, { get: (t, p) => (p === 'then' ? undefined : (..._a) => chain) });
   window.WorkBuddyCloud = { createWorkBuddyCloud: () => ({ auth: { getSession: async () => ({ data: null, error: null }) }, database: chain }) };
-  const S = await import('/js/core/state.js?v=32.1');
+  const S = await import(`/js/core/state.js?v=${CACHE_TAG}`);
   S.STATE.adapter = { get: () => null, set: () => {}, del: () => {} };
   const acc = S.createAccount('冒烟德国', 'hoi1936', { countryId: 'ger' });
   S.STATE.mode = 'online';
-  const G = await import('/js/ui/galaxy.js?v=32.1');
+  const G = await import(`/js/ui/galaxy.js?v=${CACHE_TAG}`);
   const root = document.createElement('div');
   document.body.appendChild(root);
   G.renderGalaxy(root, { account: acc, planetCode: acc.homePlanetCode, openModal: () => () => {}, closeModal: () => {}, onEnterPlanet: () => {} });
@@ -86,9 +99,10 @@ console.log('B. 场景国家星球:', JSON.stringify(resB));
 
 // ---- C. 国策面板（国策树 + 海域 + 剧本日历到天） ----
 const resC = await page.evaluate(async () => {
-  const S = await import('/js/core/state.js?v=32.1');
+  const CACHE_TAG = (await import('/js/version.js')).CACHE_TAG;
+  const S = await import(`/js/core/state.js?v=${CACHE_TAG}`);
   const acc = S.currentAccount();
-  const H = await import('/js/ui/hoi.js?v=32.1');
+  const H = await import(`/js/ui/hoi.js?v=${CACHE_TAG}`);
   const root = document.createElement('div');
   document.body.appendChild(root);
   H.renderHoi(root, { account: acc, planetCode: acc.homePlanetCode, openModal: () => () => {}, closeModal: () => {} });
@@ -98,18 +112,20 @@ const resC = await page.evaluate(async () => {
     date: /1936年\d+月\d+日/.test(txt),
     focusTree: txt.includes('国策') && txt.includes('工业线') && txt.includes('军事线') && txt.includes('外交线'),
     sixFocus: ['四年计划', '鲁尔扩产', '闪电战理论', '柏林—罗马轴心'].filter((x) => txt.includes(x)).length,
-    seas: ['北海', '波罗的海', '地中海', '大西洋', '西太平洋', '日本海'].filter((x) => txt.includes(x)).length,
-    hasRecruit: txt.includes('巡航争夺'),
+    // v0.4.x：海域已从地球海区改为**轨道圈层**（近地/晨昏线/同步/拉格朗日/深空/极地/气层）
+    seas: ['近地轨道', '晨昏线', '同步轨道', '拉格朗日', '深空门户', '极地轨道', '气层防线'].filter((x) => txt.includes(x)).length,
+    hasRecruit: txt.includes('巡航争夺')
   };
 });
 console.log('C. 国策面板:', JSON.stringify(resC));
-const cOk = resC.date && resC.focusTree && resC.sixFocus >= 3 && resC.seas === 6 && resC.hasRecruit;
+const cOk = resC.date && resC.focusTree && resC.sixFocus >= 3 && resC.seas === 7 && resC.hasRecruit;
 
 // ---- D. 舰船界面（hoi1936 历史战舰应以 HOI4 风格展示，而非「飞船」崩溃）----
 const resD = await page.evaluate(async () => {
-  const S = await import('/js/core/state.js?v=32.1');
+  const CACHE_TAG = (await import('/js/version.js')).CACHE_TAG;
+  const S = await import(`/js/core/state.js?v=${CACHE_TAG}`);
   const acc = S.currentAccount();
-  const SY = await import('/js/ui/shipyard.js?v=32.1');
+  const SY = await import(`/js/ui/shipyard.js?v=${CACHE_TAG}`);
   const root = document.createElement('div');
   document.body.appendChild(root);
   SY.renderShipyard(root, { account: acc, planetCode: acc.homePlanetCode, openModal: () => () => {}, closeModal: () => {} });
@@ -128,9 +144,10 @@ console.log('D. 舰船界面:', JSON.stringify(resD));
 
 // ---- E. 星球选择内「列强」区块：可见其他国家并可贸易 / 结盟 / 正当化 ----
 const resE = await page.evaluate(async () => {
-  const S = await import('/js/core/state.js?v=32.1');
+  const CACHE_TAG = (await import('/js/version.js')).CACHE_TAG;
+  const S = await import(`/js/core/state.js?v=${CACHE_TAG}`);
   const acc = S.currentAccount();
-  const COL = await import('/js/ui/colony.js?v=32.1');
+  const COL = await import(`/js/ui/colony.js?v=${CACHE_TAG}`);
   const root = document.createElement('div');
   document.body.appendChild(root);
   let colonyErr = null;
@@ -153,9 +170,10 @@ console.log('E. 星球选择列强:', JSON.stringify(resE));
 
 // ---- F. 舰队页（hoi1936 历史战舰应以舰级显示，而非「飞船」）----
 const resF = await page.evaluate(async () => {
-  const S = await import('/js/core/state.js?v=32.1');
+  const CACHE_TAG = (await import('/js/version.js')).CACHE_TAG;
+  const S = await import(`/js/core/state.js?v=${CACHE_TAG}`);
   const acc = S.currentAccount();
-  const FL = await import('/js/ui/fleet.js?v=32.1');
+  const FL = await import(`/js/ui/fleet.js?v=${CACHE_TAG}`);
   const root = document.createElement('div');
   document.body.appendChild(root);
   FL.renderFleet(root, { account: acc, planetCode: acc.homePlanetCode, openModal: () => () => {}, closeModal: () => {} });

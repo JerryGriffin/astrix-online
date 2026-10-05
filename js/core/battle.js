@@ -28,17 +28,17 @@
 // 约定：不 import state.js（账号对象由调用方传入），与 army.js 同构。
 // ============================================================================
 
-import { armyById, armyEffStats, armyPowerOf } from './army.js?v=46.11';
-import { fleetPowerOf } from './fleet.js?v=46.11';   // v0.4.0：空间舰队实力 → 轨道控制
-import { HOI_BY_ID } from '../data/hoi1936.js?v=46.11';
+import { armyById, armyEffStats, armyPowerOf } from './army.js?v=47.1';
+import { fleetPowerOf } from './fleet.js?v=47.1';   // v0.4.0：空间舰队实力 → 轨道控制
+import { HOI_BY_ID } from '../data/hoi1936.js?v=47.1';
 // v0.4.1：行星战区地图 —— 战斗「在哪打」、打赢后归谁、补给通不通
 import {
   ensureTheater, regionById, regionSupplyOf, refreshSupply, captureRegion,
   applyColonyProgress, decayStrikePressure, GARRISON_MAX,
   frontInfoOf, canOpenFront, REGION_MAX_FRONTS, SIEGE_REQUIRED,
-} from './theater.js?v=46.11';
+} from './theater.js?v=47.1';
 // 迫降线（与 core/war.js 同源常量；此处只读，避免反向依赖 war.js）
-import { WAR_FORCE_SURRENDER_SCORE } from './war.js?v=46.11';
+import { WAR_FORCE_SURRENDER_SCORE } from './war.js?v=47.1';
 // 注意：**不 import core/hoi1936.js** —— 它要 import 本模块来驱动敌方进攻，
 //   这里再反向 import 就成了循环依赖。战役时钟用本文件自己的 BATTLE_HOURS_PER_SEC。
 
@@ -162,7 +162,15 @@ export function kindOfDivision(armyLike) {
   const id = String((armyLike && armyLike.blueprintId) || '');
   if (armyLike && armyLike.elite) return 'armor';
   if (id.indexOf('ab_thunder') >= 0) return 'armor';
+  // ab_bulwark 是老存档里的旧 id（v0.2.10 之前的重型步兵），保留判定以兼容历史存档
   if (id.indexOf('ab_bulwark') >= 0) return 'mech';
+  // v0.4.7：**刻意不动** ab_ranger 的兵种。
+  //   DIV_TEMPLATES.drone（无人机群）目前是「已定义但未接线」状态 ——
+  //   曾尝试把 ab_ranger（游骑兵·轻型突击队）映射到 drone 以启用该编制，
+  //   但会改变基础步兵的攻防定位（soft 1.15 / armor 0.05）并与既有自检
+  //   「默认师 = infantry」以及三条蓝图的平衡契约冲突。
+  //   drone 模板保留在表中作为**数据层的预留编制**，等有独立的无人机蓝图
+  //   （或设计者明确要调整基础步兵定位）时再接线 —— 那属于平衡决策，不应由修 bug 顺带改。
   return 'infantry';
 }
 
@@ -216,39 +224,22 @@ export function orbitalControlOf(acc, targetId) {
 }
 
 // ---------------------------------------------------------------------------
-// 二、确定性随机（与 army.js 同款 mulberry32，保证存档重放结果一致）
-// ---------------------------------------------------------------------------
-function mulberry32(seed) {
-  let a = seed >>> 0;
-  return function () {
-    a = (a + 0x6D2B79F5) >>> 0;
-    let t = a;
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
+// v0.4.7：确定性随机与 clamp 已收敛到 core/util.js（唯一实现）。
+// 本文件继续 re-export，外部调用方（自检脚本等）无需改动。
+// 实测 hash32 / mulberry32 与原实现逐位一致，收敛零回归。
+import { mulberry32, hash32, clamp } from './util.js?v=47.1';
 let _seq = 0;
 function newId() {
   _seq = (_seq + 1) % 1000000;
   return 'bt_' + Date.now().toString(36) + '_' + _seq.toString(36);
 }
-/** 字符串 → 32 位无符号整数（FNV-1a）。用于把「战争 id / 战场序号」变成确定性随机种子。
+/** 字符串 → 32 位无符号整数（FNV-1a）：把「战争 id / 战场序号」变成确定性随机种子。
  *  v0.3.5：此前 seedAt 与战场 seed 都用 Math.random()，导致
  *   ① 敌方编制**每次开战都重新掷骰**（同一个对手这回全是步兵、下回全是装甲）——
  *      编制成了运气而不是可研究、可针对性的战略事实；
  *   ② 自检脚本约 1/3 的运行会随机失败（期望「敌方含装甲师」但掷出了全步兵）；
- *   ③ 与本模块开头声明的「确定性战斗结算」自相矛盾。 */
-function hash32(str) {
-  let h = 0x811c9dc5;
-  const s = String(str);
-  for (let i = 0; i < s.length; i++) {
-    h ^= s.charCodeAt(i);
-    h = Math.imul(h, 0x01000193) >>> 0;
-  }
-  return h >>> 0;
-}
-const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+ *   ③ 与本模块开头声明的「确定性战斗结算」自相矛盾。
+ *  v0.4.7：实现已收敛到 core/util.js#hash32，此处仅保留文档。 */
 
 // ---------------------------------------------------------------------------
 // 三、战场对象的创建与查询
@@ -681,7 +672,11 @@ function stepHour(acc, b) {
       orgDmg: {}, orgBuff: {}, strDmg: {}, xpAdd: {},
       supplyAdd: { mine: 0, foe: 0 }, entrenchBonus: {},
       routed: {}, toReserve: {}, hitName: {},
-      foeAtkMul: null, mineAtkMul: null,
+      // v0.4.7 修复：初值曾是 null，而 scout 事件执行 Math.min(ctx.foeAtkMul, 0.82)
+      //   → Math.min(null, 0.82) 在 JS 中 null 被强转为 0，结果是 0 而非 0.82，
+      //   敌方攻击力被永久锁在 ×0.5（Math.max(0.5, 0)）且此后无任何地方复位。
+      //   改为 1 后 Math.min(1, 0.82) = 0.82，符合事件描述的「−18%」。
+      foeAtkMul: 1, mineAtkMul: 1,
       terrainIsMine: !!(terrain.atk >= 1),
       divsOf: (side) => b[side].filter((d) => d && d.state !== 'done'),
       pickSide: () => (evRng() < 0.55 ? weakFirst : (weakFirst === 'mine' ? 'foe' : 'mine')),
@@ -1000,8 +995,26 @@ function applyBattleEvent(acc, b, ev, ctx) {
   if (ctx.entrenchBonus.foe) b.entrench.foe = Math.min(ENTRENCH_MAX, (Number(b.entrench.foe) || 0) + ctx.entrenchBonus.foe);
   if (ctx.entrenchBonus.mine) b.entrench.mine = Math.min(ENTRENCH_MAX, (Number(b.entrench.mine) || 0) + ctx.entrenchBonus.mine);
   // 攻击力修正（作用于下一个小时的结算）
-  b.foeAtkMul = ctx.foeAtkMul != null ? ctx.foeAtkMul : (b.foeAtkMul || 1);
-  b.mineAtkMul = ctx.mineAtkMul != null ? ctx.mineAtkMul : (b.mineAtkMul || 1);
+  // v0.4.7：改为带到期小时的「临时修正」，与事件文案「暂时下降」一致。
+  //   此前只写不清零 → 一次 scout 事件把敌方攻击力永久压到 ×0.5。
+  //   expiresAtHours 到期后自动回落到 1（见 stepHour 开头的复位）。
+  const EV_MUL_TTL = 6;   // 事件类攻击力修正的有效期（战斗小时）
+  const _exp = (Number(b.hours) || 0) + EV_MUL_TTL;
+  if (ctx.foeAtkMul != null && ctx.foeAtkMul < 1) {
+    // 与「仍在生效的旧修正」取更严格者，并刷新到期时间
+    b.foeAtkMul = Math.min(b.foeAtkMul == null ? 1 : b.foeAtkMul, ctx.foeAtkMul);
+    b.foeAtkMulUntil = _exp;
+  } else if (b.foeAtkMul == null || b.foeAtkMulUntil == null || b.hours >= b.foeAtkMulUntil) {
+    b.foeAtkMul = 1;
+    b.foeAtkMulUntil = null;
+  }
+  if (ctx.mineAtkMul != null && ctx.mineAtkMul < 1) {
+    b.mineAtkMul = Math.min(b.mineAtkMul == null ? 1 : b.mineAtkMul, ctx.mineAtkMul);
+    b.mineAtkMulUntil = _exp;
+  } else if (b.mineAtkMul == null || b.mineAtkMulUntil == null || b.hours >= b.mineAtkMulUntil) {
+    b.mineAtkMul = 1;
+    b.mineAtkMulUntil = null;
+  }
   // 事件历史（供 UI 展示「战争过程」）
   b.events = Array.isArray(b.events) ? b.events : [];
   b.events.push({ at: Date.now(), hours: b.hours, eventId: ev.id, nameCn: ev.nameCn, text });
@@ -1375,7 +1388,11 @@ function resolveBattleEnd(acc, b, mySideWon, opts) {
     try {
       captured = captureRegion(acc, war, regionById(ensureTheater(acc), b.regionId), mySideWon);
       if (captured && captured.colony) applyColonyProgress(war, 1);
-    } catch (e) { /* 占领失败不影响战斗结算 */ }
+    } catch (e) {
+      // v0.4.7：不再静默 —— 占领失败会让「战报胜利但战区没易主」，
+      //   此前空 catch 把真实异常（如战区 id 失效）完全掩盖。
+      console.error('[battle] 占领结算失败 region=' + b.regionId, e);
+    }
   }
   b.result = {
     attackerWin: !!mySideWon,
@@ -1386,13 +1403,29 @@ function resolveBattleEnd(acc, b, mySideWon, opts) {
     foeKilled,
     terrain: (BATTLE_TERRAIN[b.terrain] || BATTLE_TERRAIN.plain).nameCn,
     regionId: b.regionId || null,
-    captured: captured ? { owner: captured.owner, colony: captured.colony || null, lost: !!captured.lost } : null,
+    captured: captured
+      ? {
+        owner: captured.owner,
+        colony: captured.colony || null,
+        lost: !!captured.lost,
+        // v0.4.7：透传围城未满的信息 —— 此前 sieged/siegeNeed 被整个丢弃，
+        //   UI 无从得知「这场打赢了但没占下穹顶」。
+        sieged: !!captured.sieged,
+        siege: captured.siege == null ? null : captured.siege,
+        siegeNeed: captured.siegeNeed == null ? null : captured.siegeNeed,
+      }
+      : null,
   };
   pushLog(b, (o.stalemate ? '战役僵持（未分胜负）' : (mySideWon ? '战役胜利' : '战役失利'))
     + '：交战 ' + b.hours + ' 小时，'
     + '我方损失 ' + lostMen + ' 人' + (routedCount ? '、' + routedCount + ' 个师被打散' : '')
     + '，敌方 ' + foeKilled + ' 个师被击溃'
     + (captured && captured.colony ? '　**占领殖民地**（' + captured.colony.popM + ' 百万人口）' : '')
+    // v0.4.7：区分「胜利并占领」与「胜利但围城未满、未能占领」
+    + (captured && captured.sieged
+      ? '　**守军已溃但围城未满，暂未占领**（围城 ' + Math.round(captured.siege || 0) + '/'
+        + Math.round(captured.siegeNeed || 0) + '，需继续围城或先瘫痪防御）'
+      : (captured && captured.owner && mySideWon ? '　已占领该战区' : ''))
     + (captured && captured.lost ? '　我方失去该战区！' : ''));
   if (o.stalemate) return b.result;   // 僵持不动分数
 
@@ -1433,7 +1466,9 @@ function resolveBattleEnd(acc, b, mySideWon, opts) {
   return b.result;
 }
 
-function unshiftWarLog(acc, war, text) {
+// v0.4.7：导出供 state.js 注入给 theater.js（敌方夹击的战报）——
+// theater.js 不反向 import battle.js，走 ctx.logWar 传入，此处是唯一实现。
+export function unshiftWarLog(acc, war, text) {
   const at = Date.now();
   war.log = Array.isArray(war.log) ? war.log : [];
   war.log.unshift({ at, text });
@@ -1522,7 +1557,9 @@ function divView(d, isMine) {
     armyId: d.armyId || null,
     isMine,
     kind: d.kind || 'infantry',
-    kindCn: d.kindCn || '步兵',
+    // v0.4.7：兜底名改 '登陆兵' —— v0.4.0 已把「步兵师」太空化为「登陆兵」，
+    //   沿用二战术语会与展示层不一致。
+    kindCn: d.kindCn || '登陆兵',
     org: Math.round(d.org),
     orgMax: d.orgMax || ORG_MAX,
     str: Math.round(d.str),

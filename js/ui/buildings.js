@@ -16,14 +16,17 @@
 // 与人力系统的关系：
 //   建筑提供工位 → 人力面板按建筑分组分配人 → 分配了「建筑工」才有人施工（硬门槛）。
 
-import { BUILDINGS, BUILDING_BY_ID, CATEGORIES, buildingCost } from '../data/buildings.js?v=46.11';
-import { fmtNum, fmtTime, fmtRateBody } from '../core/format.js?v=46.11';
+import { BUILDINGS, BUILDING_BY_ID, CATEGORIES, buildingCost } from '../data/buildings.js?v=47.1';
+import { fmtNum, fmtTime, fmtRateBody } from '../core/format.js?v=47.1';
 import {
   getBuildingCounts, buildingCount, costOfNext, isBuildingUnlocked,
   startBuild, cancelBuild, buildQueueOf, BUILD_QUEUE_MAX, currentAccount,
-} from '../core/state.js?v=46.11';
-import { buildingSlots, assignedToBuilding, freeSlots } from '../core/population.js?v=46.11';
-import { buildRateOf, buildBlockReason } from '../core/construction.js?v=46.11';
+} from '../core/state.js?v=47.1';
+import { buildingSlots, assignedToBuilding, freeSlots } from '../core/population.js?v=47.1';
+import { buildRateOf, buildBlockReason } from '../core/construction.js?v=47.1';
+// v0.4.7：el() 收敛到 ui/common.js（此前本文件自带一份；全项目共 14 份、两种不兼容签名，
+//   v0.3.2「列强区块不显示」即源于把 A 型调用写进了 B 型文件）
+import { el } from './common.js?v=47.1';
 
 const CSS = `
   .bld-panel { font-family: system-ui, sans-serif; color: #e8eef2; padding: 12px; box-sizing: border-box; }
@@ -59,18 +62,6 @@ const CSS = `
   .bld-row button.build[disabled] { background: #28323d; color: #7d8a97; cursor: not-allowed; }
   .bld-hint { font-size: 12px; opacity: .6; padding: 2px 2px 12px; line-height: 1.6; }
 `;
-
-function el(tag, attrs = {}, children = []) {
-  const e = document.createElement(tag);
-  for (const k in attrs) {
-    if (k === 'style') e.setAttribute('style', attrs[k]);
-    else if (k === 'text') e.textContent = attrs[k];
-    else if (k === 'html') e.innerHTML = attrs[k];
-    else e.setAttribute(k, attrs[k]);
-  }
-  for (const c of [].concat(children)) if (c) e.appendChild(c);
-  return e;
-}
 
 // 造价对象 → 「石头 800 · 泥土 500」
 function costText(cost) {

@@ -12,16 +12,16 @@
 //
 // 约定：不修改 state.js（账号对象由调用方传入）；互 import 仅限函数体内使用（无 TDZ 风险）。
 
-import { PLANETS } from '../data/planets.js?v=46.11';
+import { PLANETS } from '../data/planets.js?v=47.1';
 import {
   generateRandomPlanet, capturePlanet, captureDefaultPlanet, uncapturedDefaults,
-} from './planetgen.js?v=46.11';
-import { ownedOf, spendOwned, getPlanetInstance } from './state.js?v=46.11';
-import { shipArmyOf } from './army.js?v=46.11';   // v0.2.10 军队/舰队飞船互斥（army 不 import 本文件，无环）
-import { CELL_VOLUME, cellsForEquipmentKey } from './footprint.js?v=46.11';   // 纯聚合工具，state.js 不 import 本文件，无环
-import { resolveBlueprint, totalMass } from './shipyard.js?v=46.11';          // 只读导出：蓝图部件 / 蓝图质量
-import { ensureEntry } from './production.js?v=46.11';                        // 装卸货 / 奖励入包（生产模块不 import 本文件，无环）
-import { fmtNum } from './format.js?v=46.11';
+} from './planetgen.js?v=47.1';
+import { ownedOf, spendOwned, getPlanetInstance } from './state.js?v=47.1';
+import { shipArmyOf } from './army.js?v=47.1';   // v0.2.10 军队/舰队飞船互斥（army 不 import 本文件，无环）
+import { CELL_VOLUME, cellsForEquipmentKey } from './footprint.js?v=47.1';   // 纯聚合工具，state.js 不 import 本文件，无环
+import { resolveBlueprint, totalMass, blueprintOfShip } from './shipyard.js?v=47.1';          // 只读导出：蓝图部件 / 蓝图质量
+import { ensureEntry } from './production.js?v=47.1';                        // 装卸货 / 奖励入包（生产模块不 import 本文件，无环）
+import { fmtNum } from './format.js?v=47.1';
 
 // ============================================================================
 // 编队
@@ -146,11 +146,15 @@ export function shipCargoCellsOf(ship) {
   return cells;
 }
 
-/** 货舱总格数：船上全部货舱部件 cargoVol 总和 / 20 向下取整；无货舱 = 0 */
-export function shipCargoCellsMax(ship) {
+/**
+ * 货舱总格数：船上全部货舱部件 cargoVol 总和 / 20 向下取整；无货舱 = 0
+ * v0.4.7：acc 可选 —— 蓝图不再随船存储，有 acc 时按 blueprintId 回查以取到精确值；
+ *   没有 acc（或老存档）时退回 ship.stats.cargoVol 快照。
+ */
+export function shipCargoCellsMax(ship, acc) {
   if (!ship) return 0;
   let vol = Number(ship.stats && ship.stats.cargoVol) || 0;   // 兜底：建船时 aggregate 快照
-  const bp = ship.blueprint;
+  const bp = blueprintOfShip(acc, ship);
   if (bp) {
     try {
       const { parts } = resolveBlueprint(bp);
@@ -167,7 +171,7 @@ export function loadShipCargo(acc, shipId, mat, qty) {
   if (!mat) return { ok: false, reason: '请选择要装载的材料' };
   const n = Math.floor(Number(qty) || 0);
   if (!(n > 0)) return { ok: false, reason: '数量必须为正整数' };
-  const max = shipCargoCellsMax(ship);
+  const max = shipCargoCellsMax(ship, acc);
   if (max <= 0) return { ok: false, reason: '这艘船没有货舱（仓库部件），装不上货' };
 
   const inst = getPlanetInstance((ship.state && ship.state.planetCode) || (acc && acc.homePlanetCode) || 'syl');
@@ -214,11 +218,15 @@ export function unloadShipCargo(acc, shipId, mat, qty) {
 // ============================================================================
 // 编队速度（载货折减）与战力
 // ============================================================================
-/** 单船有效航速：满载变慢。effectiveSpeed = speed × clamp(baseMass/(baseMass+cargoMass), 0.4, 1) */
-export function effectiveSpeedOf(ship) {
+/**
+ * 单船有效航速：满载变慢。effectiveSpeed = speed × clamp(baseMass/(baseMass+cargoMass), 0.4, 1)
+ * v0.4.7：acc 可选（蓝图不再随船存储，见 blueprintOfShip）。
+ */
+export function effectiveSpeedOf(ship, acc) {
   const base = Number(ship && ship.stats && ship.stats.speed) || 0;
+  const bp = ship ? blueprintOfShip(acc, ship) : null;
   const baseMass = Number(ship && ship.stats && ship.stats.massT)
-    || (ship && ship.blueprint ? totalMass(ship.blueprint) : 0) || 0;
+    || (bp ? totalMass(bp) : 0) || 0;
   const cargoMass = shipCargoMassOf(ship);
   if (!(baseMass > 0)) return base;
   const ratio = Math.min(1, Math.max(SPEED_MIN_RATIO, baseMass / (baseMass + cargoMass)));
@@ -232,7 +240,7 @@ export function fleetSpeedOf(acc, fleetId) {
   let slow = Infinity;
   for (const id of fleet.shipIds) {
     const s = shipById(acc, id);
-    slow = Math.min(slow, effectiveSpeedOf(s));
+    slow = Math.min(slow, effectiveSpeedOf(s, acc));
   }
   return Number.isFinite(slow) ? slow : 0;
 }

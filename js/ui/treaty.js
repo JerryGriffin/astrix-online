@@ -15,18 +15,15 @@
 // ============================================================================
 
 import { treatyOptions, treatyAvailability, treatyOutcome, allyCountOf, partitionShares, signTreaty }
-  from '../core/treaty.js?v=46.11';
-import { regionsOf, applyTreatyToTheater } from '../core/theater.js?v=46.11';
-import { endWar } from '../core/war.js?v=46.11';
-import { fmtNum } from '../core/format.js?v=46.11';
-
-// 与 galaxy.js 同款 el()（本项目没有 ui/common.js，每个 UI 文件各自带一份）
-function el(tag, cls, text) {
-  const n = document.createElement(tag);
-  if (cls) n.className = cls;
-  if (text != null) n.textContent = String(text);
-  return n;
-}
+  from '../core/treaty.js?v=47.1';
+// v0.4.7：殖民化加成与迫降线改引核心常量（此前 UI 里写死 1.6 / 35% / 60，
+//   与 theater.js、war.js 各存一份，改平衡要同时改三处）
+import { regionsOf, applyTreatyToTheater, TREATY_COLONY_OUTPUT_MUL, TREATY_COLONY_GARRISON_MUL } from '../core/theater.js?v=47.1';
+import { endWar, WAR_FORCE_SURRENDER_SCORE } from '../core/war.js?v=47.1';
+import { fmtNum } from '../core/format.js?v=47.1';
+// v0.4.7：el() 收敛到 ui/common.js（此前本文件自带一份；全项目共 14 份、两种不兼容签名，
+//   v0.3.2「列强区块不显示」即源于把 A 型调用写进了 B 型文件）
+import { el } from './common.js?v=47.1';
 
 // ---------------------------------------------------------------------------
 // 和平会议主入口
@@ -42,7 +39,7 @@ export function openPeaceConference(acc, war, foeView, st, ctx, refresh) {
   wrap.appendChild(el('p', 'modal-tip',
     '「' + (foeView.nameCn || war.targetName || '敌方') + '」承认战败。'
     + '我方战争分数 ' + (war.myScore | 0) + ' / 对方 ' + (war.theirScore | 0) + '，'
-    + '战争分数达到 ' + (war.myScore >= 60 ? ' ✅' : ' ❌') + ' 迫降线，可召开和平会议。'));
+    + '战争分数达到 ' + (war.myScore >= WAR_FORCE_SURRENDER_SCORE ? ' ✅' : ' ❌') + ' 迫降线，可召开和平会议。'));
 
   const foeRegions = regionsOf(acc, war.targetId);
   const allies = allyCountOf(acc, war);
@@ -81,7 +78,7 @@ export function openPeaceConference(acc, war, foeView, st, ctx, refresh) {
       gains.appendChild(el('li', 'hoi-treaty-gain' + (cls ? ' ' + cls : ''), label + '：' + value));
     };
     if (out.regionsTaken > 0) add('取得战区', out.regionsTaken + ' 处', 'is-good');
-    if (opt.id === 'colonization') add('其中划为殖民地', '产出 ×1.6、驻军需求降至 35%', 'is-good');
+    if (opt.id === 'colonization') add('其中划为殖民地', '产出 ×' + TREATY_COLONY_OUTPUT_MUL + '、驻军需求降至 ' + Math.round(TREATY_COLONY_GARRISON_MUL * 100) + '%', 'is-good');
     if (out.regionsToAllies > 0) add('分予盟友', out.regionsToAllies + ' 处', 'is-bad');
     if (out.reparations > 0) add('获得赔款', fmtNum(out.reparations) + ' Ascoin', 'is-good');
     if (out.tribute > 0) add('长期上贡', ('产出的一部分（约 ' + Math.round(out.tribute * 100) + '%）'), 'is-good');
@@ -162,7 +159,8 @@ function commitTreaty(acc, war, opt, st, ctx, refresh) {
   const map = r.map;
   if (map) {
     if (map.colonies && map.colonies.length) {
-      extra += '\n· ' + map.colonies.length + ' 处战区划为殖民地（产出 ×1.6，但驻军需求降至 35%）';
+      extra += '\n· ' + map.colonies.length + ' 处战区划为殖民地（产出 ×' + TREATY_COLONY_OUTPUT_MUL
+        + '，但驻军需求降至 ' + Math.round(TREATY_COLONY_GARRISON_MUL * 100) + '%）';
     }
     if (map.taken && map.taken.length) extra += '\n· 取得 ' + map.taken.length + ' 处战区';
     if (map.toAllies && map.toAllies.length) extra += '\n· ' + map.toAllies.length + ' 处战区分予盟友';

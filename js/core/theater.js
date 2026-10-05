@@ -29,7 +29,7 @@
 //   · 不 import state.js（账号对象由调用方传入），与 battle.js 同构。
 // ============================================================================
 
-import { HOI_BY_ID, HOI_MAIN_NATIONS } from '../data/hoi1936.js?v=46.11';
+import { HOI_BY_ID, HOI_MAIN_NATIONS } from '../data/hoi1936.js?v=47.1';
 
 export const THEATER_COLS = 6;
 export const THEATER_ROWS = 6;
@@ -95,16 +95,9 @@ const TERRAIN_WORDS = {
 // ---------------------------------------------------------------------------
 // 一、确定性工具（地图必须可复现，否则存档重开后版图会变）
 // ---------------------------------------------------------------------------
-function hash32(str) {
-  let h = 0x811c9dc5;
-  const s = String(str);
-  for (let i = 0; i < s.length; i++) {
-    h ^= s.charCodeAt(i);
-    h = Math.imul(h, 0x01000193) >>> 0;
-  }
-  return h >>> 0;
-}
-const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+// v0.4.7：hash32 / clamp 已收敛到 core/util.js（与 battle.js 共用唯一实现）。
+// 实测与原实现逐位一致，收敛零回归。
+import { hash32, clamp } from './util.js?v=47.1';
 function smooth(t) { return t * t * (3 - 2 * t); }
 /** 二维值噪声（格点 hash + 双线性平滑） */
 function noise2(seed, x, y) {
@@ -501,17 +494,20 @@ export function regionYieldOf(acc) {
   const me = t.myNation;
   const out = {};
   const perColony = 0.60;    // 每处殖民地每秒每种资源的基础产出
-  const perMine = 0.35;      // 矿场
+  // v0.4.7：此前 perMine（0.35）声明后**从未被引用** —— 下面用的是 perColony，
+  //   矿场与殖民地同基数，注释里「矿场」的差异化设计被架空。
+  //   现按本意生效：矿场产出约为殖民地的 58%。
+  const perMine = perColony * 0.58;
+  const baseOf = (structure) => (structure === 'mine' ? perMine : perColony);
   for (const r of t.regions) {
     if (r.owner !== me) continue;
     // 断供 → 产量腰斩；驻防不足 → 产量下降（没人守矿也挖不动）
     const supplyMul = r.connected ? 1 : 0.35;
     const garMul = 0.6 + 0.4 * clamp((Number(r.garrison) || 0) / 0.2, 0, 1);
     const stMul = STRUCTURE_OUTPUT_MUL[r.structure] != null ? STRUCTURE_OUTPUT_MUL[r.structure] : 0.5;
-    let base = stMul;
-    if (r.structure === 'colony') base = stMul;
-    else if (r.structure === 'mine') base = stMul;
-    else base = 0.45;                    // 空战区只有基础采集
+    // v0.4.7：原本三个分支（colony / mine / 其他）赋值完全相同，属冗余；
+    //   建筑加成仍由 stMul 体现，基础基数改由 baseOf 区分殖民地与矿场。
+    const base = stMul;
     const table = REGION_OUTPUT[r.terrain] || {};
     // v0.4.5（需求 4）：条约殖民化战区产出 ×1.6 —— 这是「殖民化」相对「吞并」的核心收益，
     //   换来的是更低的驻军需求与更脆的防守。
@@ -520,7 +516,7 @@ export function regionYieldOf(acc) {
     for (const mat in table) {
       // 防御：气体一律不入物品栏（走星球大气储量），见 REGION_OUTPUT 上方说明
       if (GAS_MATERIALS.has(mat)) continue;
-      const amt = table[mat] * perColony * mul * (r.structure === 'colony' || r.structure === 'mine' ? 1 : 0.4);
+      const amt = table[mat] * baseOf(r.structure) * mul * (r.structure === 'colony' || r.structure === 'mine' ? 1 : 0.4);
       if (amt > 0) out[mat] = (out[mat] || 0) + amt;
     }
   }
@@ -799,7 +795,7 @@ export function strikeRegion(acc, region, orbitalControl) {
 }
 
 /** 占领 / 推进会自然恢复 strikePressure */
-export function decayStrikePressure(acc, dtSec) {
+export function decayStrikePressure(acc, dtSec, orbitalCtrl) {
   const t = ensureTheater(acc);
   if (!t) return;
   for (const r of t.regions) {
@@ -808,7 +804,10 @@ export function decayStrikePressure(acc, dtSec) {
     }
   }
   // 轨道打击次数随时间补充（有轨道控制时恢复更快）
-  const ctrl = Number(t._ctrl) || 0;
+  // v0.4.7 修复：此前读 `t._ctrl`，而该字段**全仓库只有这一处出现、零处写入** ——
+  //   ctrl 恒为 0，「有轨道控制时恢复更快」实际永不生效（控制度 100% 与 0% 速度相同）。
+  //   改为由调用方（state.js）传入真实轨道控制度；省略该参时按 0 处理（保持旧行为）。
+  const ctrl = clamp(Number(orbitalCtrl) || 0, 0, 1);
   if (t.strikes < STRIKE_MAX) {
     t.strikeAcc = (Number(t.strikeAcc) || 0) + (Number(dtSec) || 0) * (0.006 + 0.01 * ctrl);
     while (t.strikeAcc >= 1 && t.strikes < STRIKE_MAX) { t.strikes += 1; t.strikeAcc -= 1; }
@@ -900,19 +899,27 @@ export function tickTheaterAI(acc, dtSec, ctx) {
         pick.strikePressure = clamp((Number(pick.strikePressure) || 0) + 0.3, 0, 1);
       }
       // ---- 3b v0.4.3：敌方多路夹击（不同相邻方向同时打同一战区）----
-      //   ctx.startBattle 由调用方（hoi1936.js）注入，避免 theater.js 反向依赖 battle.js
+      //   ctx.startBattle / ctx.logWar / ctx.maxBattlesPerWar 均由调用方（state.js）注入，
+      //   避免 theater.js 反向 import battle.js 造成循环依赖。
+      //   v0.4.7 修复：此前误用未声明的 activeCount / BATTLE_MAX_PER_WAR / unshiftWarLog，
+      //   ReferenceError 冒泡到 state.js 的地图层 catch，导致敌方夹击、补给刷新、AI 扩张全部失效。
       if (t.aiMood === 'press' && typeof (ctx && ctx.startBattle) === 'function') {
         const plans = aiFlankPlans(acc, war, pick);
+        const maxBattles = Math.max(1, Number(ctx && ctx.maxBattlesPerWar) || AI_FLANK_MAX);
+        // 本模块不 import battle.js（避免循环依赖），已有战场数就地统计
+        const myBattles = (Array.isArray(acc.battles) ? acc.battles : [])
+          .filter((b) => b && b.status === 'active' && b.warId === war.id).length;
+        let activeCount = myBattles;   // 已有战场数也计入上限，别把上限当成"还能开几个"
         let opened = 0;
         for (const p of plans) {
-          if (activeCount >= BATTLE_MAX_PER_WAR) break;
+          if (activeCount >= maxBattles) break;
           try {
             const r = ctx.startBattle(acc, war, { side: 'foe', regionId: p.regionId, originId: p.originId });
             if (r && r.ok) { opened++; activeCount++; }
-          } catch (e) { /* 单次进攻异常忽略 */ }
+          } catch (e) { console.error('[theater] 敌方夹击开战失败', e); }
         }
-        if (opened > 1) {
-          unshiftWarLog(acc, war, '敌方从 ' + opened + ' 个方向同时发起进攻 —— 我方该战区被夹击');
+        if (opened > 1 && typeof (ctx && ctx.logWar) === 'function') {
+          ctx.logWar(acc, war, '敌方从 ' + opened + ' 个方向同时发起进攻 —— 我方该战区被夹击');
         }
       }
     }

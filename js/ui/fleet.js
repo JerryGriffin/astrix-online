@@ -3,43 +3,40 @@
 // 更新：v0.1.1 五指令改为持续任务（startMission，任务行显示倒计时），
 //       新增船载仓库面板；编队 / 五指令区块挂船坞门禁；交易池区 2s 心跳局部刷新。
 
-import { fmtNum, fmtRate, fmtTime } from '../core/format.js?v=46.11';
+import { fmtNum, fmtRate, fmtTime } from '../core/format.js?v=47.1';
 import {
   listFleets, createFleet, disbandFleet, addShipToFleet, removeShipFromFleet,
   fleetSpeedOf, fleetPowerOf, executeCommand,
   startMission, cancelMission, fleetMissionLabel, defenseBonusOf,
   shipCargoOf, loadShipCargo, unloadShipCargo,
   shipCargoMassOf, shipCargoCellsOf, shipCargoCellsMax, effectiveSpeedOf,
-} from '../core/fleet.js?v=46.11';
-import { equipmentList } from '../core/shipyard.js?v=46.11';
+} from '../core/fleet.js?v=47.1';
+import { equipmentList } from '../core/shipyard.js?v=47.1';
 import {
   MANAGEMENT_MODES, MANAGEMENT_BY_ID, modeOf, setManagement,
   TERRITORY_ASSIMILATE_SEC, TERRITORY_HAPPY_THRESHOLD,
-} from '../core/planetgen.js?v=46.11';
+} from '../core/planetgen.js?v=47.1';
 import {
   SHOP_PLANET, shopPrices, sell, pendingOrders, deliverOrder, ascoinBalance,
   shopStateOf, applySharedPrice,
   marketBuy, marketSell, warehouseOf, ensureShopWarehouse,
-} from '../core/shop.js?v=46.11';
+} from '../core/shop.js?v=47.1';
 import {
   createAuction, placeBid, activeAuctions, auctionLog,
   myAuctionableResources, myAuctionableEquipment, myAuctionableShips, ensureAuctions,
-} from '../core/auction.js?v=46.11';
-import { getPlanetInstance, currentAccount, ownedOf, STATE } from '../core/state.js?v=46.11';
-import { cloudUser, fetchSharedWarehouse, upsertSharedWarehouseRow, upsertSharedPriceRow } from '../core/cloud.js?v=46.11';
-import { MATERIALS } from '../data/materials.js?v=46.11';
+} from '../core/auction.js?v=47.1';
+import { getPlanetInstance, currentAccount, ownedOf, STATE } from '../core/state.js?v=47.1';
+import { cloudUser, fetchSharedWarehouse, upsertSharedWarehouseRow, upsertSharedPriceRow } from '../core/cloud.js?v=47.1';
+import { MATERIALS } from '../data/materials.js?v=47.1';
+// v0.4.7：el() 收敛到 ui/common.js（此前本文件自带一份；全项目共 14 份、两种不兼容签名，
+//   v0.3.2「列强区块不显示」即源于把 A 型调用写进了 B 型文件）
+import { el } from './common.js?v=47.1';
 
 // HTML 转义（防 XSS，与其它面板一致）
 function esc(s) {
   return String(s == null ? '' : s).replace(/[&<>"']/g, (c) => (
     { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
   ));
-}
-function el(tag, cls, text) {
-  const e = document.createElement(tag);
-  if (cls) e.className = cls;
-  if (text != null) e.textContent = text;
-  return e;
 }
 function btn(text, cls) {
   const b = el('button', 'btn ' + (cls || ''), text);
@@ -528,10 +525,10 @@ function buildCargoPanel(account, inst) {
     const s = curShip();
     if (!s) { infoLine.textContent = ''; return; }
     const cells = shipCargoCellsOf(s);
-    const max = shipCargoCellsMax(s);
+    const max = shipCargoCellsMax(s, account);
     const mass = shipCargoMassOf(s);
     const v0 = Number(s.stats && s.stats.speed) || 0;
-    const v1 = effectiveSpeedOf(s);
+    const v1 = effectiveSpeedOf(s, account);
     const pct = v0 > 0 ? Math.round((v1 / v0) * 100) : 100;
     const cargo = shipCargoOf(s);
     const items = Object.keys(cargo)

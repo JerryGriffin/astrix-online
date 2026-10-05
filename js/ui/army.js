@@ -10,24 +10,27 @@
 //   * 每支军队人数在 100 人上下（由框架数决定），列内展示。
 // 本页由 planet.js 的 showPanel 动态接入，异常只影响本 tab。
 
-import { reinforceArmy } from '../core/hoi1936.js?v=46.11';
+import { reinforceArmy } from '../core/hoi1936.js?v=47.1';
 import {
   ARMY_BLUEPRINTS, ARMY_PART_BY_ID, ARMY_SLOT_BY_CAT, ARMY_PART_COST,
   armyCapOf, armyBpPartNeeds, armyBpMaterialNeeds,
-} from '../data/army_parts.js?v=46.11';
+} from '../data/army_parts.js?v=47.1';
 import {
   armyStatsOfBp, armyPowerOf, armyPowerOfInstance, armyBuildCheck, listArmies, disbandArmy,
   getArmyBp, armyEffStats, armyPartMaterialOptions, trainArmy, cancelTraining, ARMY_LABOR_PER_BARRACKS,
   attachShipToArmy, detachShipFromArmy, shipEligibleForArmy, shipArmyOf, ARMY_SHIP_TECH,
-} from '../core/army.js?v=46.11';
-import { addLine, removeLine } from '../core/production.js?v=46.11';
-import { fmtNum, fmtTime } from '../core/format.js?v=46.11';
+} from '../core/army.js?v=47.1';
+import { addLine, removeLine } from '../core/production.js?v=47.1';
+import { fmtNum, fmtTime } from '../core/format.js?v=47.1';
 // v0.4.6：从 core/shipyard.js 取材料合并表（**不从 production.js 取**——
 //   后者与 state.js 循环引用，直接 import 会在模块求值顺序不对时抛
 //   「Cannot access '_getInst' before initialization」）。
-import { materialMul, materialLookupFor } from '../core/shipyard.js?v=46.11';
-import { currentAccount, getBuildingCounts } from '../core/state.js?v=46.11';
-import { TECH_BY_ID } from '../data/techs.js?v=46.11';
+import { materialMul, materialLookupFor } from '../core/shipyard.js?v=47.1';
+import { currentAccount, getBuildingCounts } from '../core/state.js?v=47.1';
+import { TECH_BY_ID } from '../data/techs.js?v=47.1';
+// v0.4.7：el() 收敛到 ui/common.js（此前本文件自带一份；全项目共 14 份、两种不兼容签名，
+//   v0.3.2「列强区块不显示」即源于把 A 型调用写进了 B 型文件）
+import { el } from './common.js?v=47.1';
 
 const ARMY_TECH = 't_m1';
 const ARMY_CATS = ['frame', 'mobility', 'weapon', 'armor', 'support'];
@@ -36,13 +39,6 @@ const ARMY_CAT_NAMES = { frame: '框架', mobility: '机动', weapon: '武器', 
 function techNameCn(id) {
   const t = TECH_BY_ID[id];
   return (t && t.nameCn) || id;
-}
-
-function el(tag, cls, text) {
-  const e = document.createElement(tag);
-  if (cls) e.className = cls;
-  if (text != null) e.textContent = String(text);
-  return e;
 }
 
 function countPartsOwned(inst, partId) {

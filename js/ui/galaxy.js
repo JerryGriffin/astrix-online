@@ -16,27 +16,28 @@ import {
   ensureReady, cloudStatus, cloudUser,
   loginWithName, registerWithName, signOutCloud,
   listPublicPlanets, publishMyPlanet, postIncident, fetchInbox, markIncidentResolved,
-} from '../core/cloud.js?v=46.11';
-import { currentAccount, getPlanetInstance, ownedOf, spendOwned } from '../core/state.js?v=46.11';
-import { ensureEntry } from '../core/production.js?v=46.11';
-import { listFleets, fleetPowerOf, defenseBonusOf } from '../core/fleet.js?v=46.11';
-import { totalArmyPowerOf, listArmies, disbandArmy, resolveBattle, armyToUnit, armyPowerOfInstance } from '../core/army.js?v=46.11';
+} from '../core/cloud.js?v=47.1';
+import { currentAccount, getPlanetInstance, ownedOf, spendOwned } from '../core/state.js?v=47.1';
+import { ensureEntry } from '../core/production.js?v=47.1';
+import { listFleets, fleetPowerOf, defenseBonusOf } from '../core/fleet.js?v=47.1';
+import { totalArmyPowerOf, listArmies, disbandArmy, resolveBattle, armyToUnit, armyPowerOfInstance } from '../core/army.js?v=47.1';
 // v0.2.1：内嵌殖民地管理（含内联报告），取代在线模式独立的「星球选择」tab
-import { renderColony } from './colony.js?v=46.11';
-import { PLANETS } from '../data/planets.js?v=46.11';
-import { HOI_NATIONS, HOI_BY_ID, HOI_SCENARIO_ID } from '../data/hoi1936.js?v=46.11';   // v0.2.6 官方 mod
-import { declareWar, activeWarsOf, warWith, addWarScore, canForceSurrender, draftTreaty, endWar, surrenderWar } from '../core/war.js?v=46.11';
-import { postwarOptionsFor, applyPostwarChoice, canJustify, startJustify, justifyStatusOf, histWarGateFor } from '../core/hoi1936.js?v=46.11';
+import { renderColony } from './colony.js?v=47.1';
+import { PLANETS } from '../data/planets.js?v=47.1';
+import { HOI_NATIONS, HOI_BY_ID, HOI_SCENARIO_ID } from '../data/hoi1936.js?v=47.1';   // v0.2.6 官方 mod
+// v0.4.7：移除死 import draftTreaty（和约已由 v0.4.5 和平会议 treaty.js#signTreaty 签订）
+import { declareWar, activeWarsOf, warWith, addWarScore, canForceSurrender, endWar, surrenderWar } from '../core/war.js?v=47.1';
+// v0.4.7：移除三个**未被使用的死 import**（v0.4.5 和平会议上线后旧路径已不可达，
+//   但 import 还留着 —— 既误导读者以为旧路径仍生效，也让 hoi1936.js 无法删旧实现）：
+//     · postwarOptionsFor / applyPostwarChoice —— 战后处置已由 treaty.js#signTreaty 独占
+//     · draftTreaty —— 和约已由和平会议签订
+import { canJustify, startJustify, justifyStatusOf, histWarGateFor } from '../core/hoi1936.js?v=47.1';
 // v0.4.5（需求 4）：和平会议取代「写死和约 + 事后二选一弹窗」
-import { openPeaceConference } from './treaty.js?v=46.11';
-import { fmtNum } from '../core/format.js?v=46.11';
-
-function el(tag, cls, text) {
-  const e = document.createElement(tag);
-  if (cls) e.className = cls;
-  if (text != null) e.textContent = String(text);
-  return e;
-}
+import { openPeaceConference } from './treaty.js?v=47.1';
+import { fmtNum } from '../core/format.js?v=47.1';
+// v0.4.7：el() 收敛到 ui/common.js（此前本文件自带一份；全项目共 14 份、两种不兼容签名，
+//   v0.3.2「列强区块不显示」即源于把 A 型调用写进了 B 型文件）
+import { el } from './common.js?v=47.1';
 
 function ascoinOf(acc) { return Math.floor(Number(acc && acc.ascoin) || 0); }
 

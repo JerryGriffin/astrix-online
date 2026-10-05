@@ -5,17 +5,21 @@
 //   · 顶部：剧本日历（到天）、国家、阵营、人口、军队 / 舰队概览
 //   · 国策树：工业 / 军事 / 外交三支，各两支；按游戏天数推进，完成即生效
 //   · 轨道圈层：母星行星的 7 个轨道圈层，争夺轨道控制权
-import { fmtNum } from '../core/format.js?v=46.11';
-import { currentAccount, getPlanetInstance } from '../core/state.js?v=46.11';
-import { listArmies, totalArmyPowerOf } from '../core/army.js?v=46.11';
-import { listFleets, fleetPowerOf } from '../core/fleet.js?v=46.11';
+import { fmtNum } from '../core/format.js?v=47.1';
+import { currentAccount, getPlanetInstance } from '../core/state.js?v=47.1';
+import { listArmies, totalArmyPowerOf } from '../core/army.js?v=47.1';
+import { listFleets, fleetPowerOf } from '../core/fleet.js?v=47.1';
 import {
   scenarioDateOf, gameDaysOf, ensureFocus, focusOptionsOf, startFocus,
   ensureSeas, contestSea, blocNameOf, nationOf, deepOf, enemySeaPressure, backgroundOf, HOI_SCENARIO_ID,
   listHistTargets, histWarGateFor,
-} from '../core/hoi1936.js?v=46.11';
+  // v0.4.7：兵员数不再在 UI 里写死 500，改引核心常量（单一来源）
+  //   ARMY_MEN 本身在 data/hoi1936.js 且 core 层未 re-export，
+  //   这里用 core/hoi1936.js 已经导出的 ARMY_MEN_MAX（= ARMY_MEN 的再导出）。
+  ARMY_MEN_MAX,
+} from '../core/hoi1936.js?v=47.1';
 // v0.3.3：战争数据（实时交战双方状态）
-import { activeWarsOf } from '../core/war.js?v=46.11';
+import { activeWarsOf } from '../core/war.js?v=47.1';
 // v0.3.4：战役系统（师级交战 / 组织度 / 补给 / 工事 / 增援）—— 替代「只有进度条」
 import {
   listBattles, battleView, startBattle, committableArmies, foeRemaining,
@@ -23,7 +27,7 @@ import {
   ORBITAL_BOMB_CHARGES, orbitalControlOf,
   // v0.4.5（需求 2）：指挥官 + 战役事件
   commandersOf, assignCommander, battleById,
-} from '../core/battle.js?v=46.11';
+} from '../core/battle.js?v=47.1';
 // v0.4.1：行星战区地图（战区归属 / 补给网络 / 战略轨道打击 / 殖民地争夺）
 import {
   ensureTheater, theaterView, attackTargetsOf, canStrikeRegion, strikeRegion,
@@ -31,8 +35,11 @@ import {
   frontInfoOf as THfrontInfo, canOpenFront as THcanFront,
   REGION_MAX_FRONTS as TH_MAX_FRONTS, SIEGE_REQUIRED as TH_SIEGE,
   regionYieldOf, colonySupportOf,
-} from '../core/theater.js?v=46.11';
-import { HOI_SEAS, HOI_BY_ID, HIST_TIMELINE } from '../data/hoi1936.js?v=46.11';
+} from '../core/theater.js?v=47.1';
+import { HOI_SEAS, HOI_BY_ID, HIST_TIMELINE } from '../data/hoi1936.js?v=47.1';
+// v0.4.7：el() 收敛到 ui/common.js（此前本文件自带一份；全项目共 14 份、两种不兼容签名，
+//   v0.3.2「列强区块不显示」即源于把 A 型调用写进了 B 型文件）
+import { el } from './common.js?v=47.1';
 
 // v0.4.1：地图交互状态（同样放模块级，避免每秒重绘冲掉选中项）
 // v0.4.3：plan = 多路战线规划（同时开辟多条战线），mode='plan' 时点目标只入队不立即开战
@@ -40,29 +47,10 @@ const _mapSel = { regionId: null, plan: [], mode: 'single' };
 
 // v0.3.4：开辟战线的选择状态放**模块级** —— 本页每秒整块重绘（见文件末尾 _hoiTimer），
 //   若把勾选存在 DOM 里会被每次重绘冲掉，用户根本没法挑兵。
-const _lineSel = { warId: null, ids: [], terrain: 'plain', msg: '' };
-
-function el(tag, attrs = {}, children = []) {
-  const e = document.createElement(tag);
-  // 兼容两种写法：el(tag, 'class-a class-b', children) 与 el(tag, { class, text }, children)
-  const map = (typeof attrs === 'string') ? { class: attrs } : attrs;
-  for (const k in map) {
-    if (k === 'style') e.setAttribute('style', map[k]);
-    else if (k === 'text') e.textContent = map[k];
-    else e.setAttribute(k, map[k]);
-  }
-  // 第三参兼容：字符串/数字 → 文本；元素或数组 → 追加子节点
-  if (typeof children === 'string' || typeof children === 'number') {
-    e.textContent = String(children);
-    return e;
-  }
-  for (const c of [].concat(children)) {
-    if (c == null) continue;
-    if (typeof c === 'string' || typeof c === 'number') e.appendChild(document.createTextNode(String(c)));
-    else e.appendChild(c);
-  }
-  return e;
-}
+// v0.4.7：默认值由 'plain' 改为 'regolith' —— 'plain' 是 v0.4.0 之前的地球地形，
+//   UI 下拉框只列太空地貌（SPACE_TERRAIN_IDS），玩家不选地形直接开战时
+//   会被 startBattle 兜底成 'regolith'，导致这个默认值形同虚设。
+const _lineSel = { warId: null, ids: [], terrain: 'regolith', msg: '' };
 
 const CSS = `
   .hoi-panel { font-family: system-ui, sans-serif; color: #e8eef2; padding: 12px; box-sizing: border-box; }
@@ -782,7 +770,7 @@ export function renderHoi(root, ctx) {
     + '　|　剧本已进行 ' + Math.floor(gameDaysOf(acc)) + ' 天'));
   if (n) {
     head.appendChild(el('div', 'hoi-sub',
-      '本体编制：' + (deep.armyName || '登陆兵师') + '（每支 ' + 500 + ' 人）'
+      '本体编制：' + (deep.armyName || '登陆兵师') + '（每支 ' + ARMY_MEN_MAX + ' 人）'
       + '　|　史实海军 ' + n.navy + ' 舰 → 游戏内 ' + acc.ships.length + ' 艘 / ' + navies.length + ' 支舰队'));
   }
   const stats = el('div', 'hoi-stats');
