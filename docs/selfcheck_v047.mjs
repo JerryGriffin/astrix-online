@@ -38,6 +38,10 @@ function mkAcc(ic = 60, pop = 40000) {
     id: 'acc_v047_' + Math.random().toString(36).slice(2, 8),
     name: 'v047',
     createdAt: Date.now(),
+    // v0.4.9：固定战区种子。generateTheater 在 theaterSeed 为空时用 Date.now()%100000，
+    //   导致每次运行地图布局都不同 —— 有时 AI 选中的目标没有 ≥2 个敌方来源邻居，
+    //   夹击断言就会偶发失败（实测 6 次里 2 次失败）。固定种子让守卫可复现。
+    theaterSeed: 424242,
     nation: 'ger',                 // tickTheaterAI 用 acc.nation 判定「我方」
     tech: ['t_m1', 't_m2', 't_m3', 't_m4'],
     researchPoints: 5000,
@@ -89,10 +93,14 @@ function setupFlankBoard(acc, foeNation = 'fra') {
   }
   if (!target) return { t, target: null };
 
+  // v0.4.9：**我方只保留 target 一个战区**。
+  //   此前还把 mineA 也划给我方，导致 tickTheaterAI 按「价值最高」挑目标时
+  //   可能选中 mineA（它没有 ≥2 个敌方来源邻居 → 夹击开不出来）。
+  //   实测固定种子后 AI 稳定选中 r0_1 而非摆好的 target，opened=0。
+  //   只留一个我方区就没有挑的余地，夹击条件必然成立。
   target.owner = my; target.garrison = 0.3;
   foeA.owner = foeNation; foeA.garrison = 0.2;
   foeB.owner = foeNation; foeB.garrison = 0.2;
-  mineA.owner = my; mineA.garrison = 0.3;
 
   acc.wars.push({
     id: 'war_v047', status: 'active', targetId: foeNation,
@@ -181,9 +189,16 @@ section('P0-2 事件类攻击力修正是临时的，不会永久锁死');
 // ============================================================================
 {
   const acc = mkAcc();
+  // v0.4.9：本段是「**我方进攻**」，需要「我方区 → 相邻敌方区」；
+  //   而 P0-1 的摆盘是「敌方区夹击我方区」且我方只留一个区（见 setupFlankBoard 注释），
+  //   方向相反、也不能共用同一块盘 —— 这里独立摆：target=敌方区、origin=我方区。
   const { t, target, origin } = setupFlankBoard(acc, 'fra');
+  // 交换归属：target 归敌方（被打的目标），origin 归我方（进攻出发地）
+  if (origin) origin.owner = t.myNation;
+  if (target) target.owner = 'fra';
+  TH.refreshSupply(acc);
 
-  // 我方进攻：originId 必须是我方相邻战区（setupFlankBoard 已返回一个我方邻区）
+  // 我方进攻：originId 必须是我方相邻战区
   const b = B.startBattle(acc, acc.wars[0], {
     side: 'mine', regionId: target.id, originId: origin.id, armyIds: ['army_0', 'army_1'],
   });

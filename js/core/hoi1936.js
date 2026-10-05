@@ -10,17 +10,17 @@
 //   * HOI4 风格国策（三支六策，按天推进）               → focus 系列
 //   * 海域（制海权争夺 + 海战）                          → sea 系列
 import { HOI_NATIONS, HOI_BY_ID, HOI_MAIN_NATIONS, HOI_MAIN_BY_ID, HOI_DEEP, HOI_SEAS, ARMY_MEN, popOf, BLOC_NAME, HOI_SCENARIO_ID,
-  workforceOf, ARMY_POWER_PER_DIV, NAVY_MUL, GEAR_PARTS, SHIP_NAMES, ARMY_BP_NAME, HOI_BG, SHIP_CLASSES, POST_WAR_OPTIONS, GER_PUPPETS, ARMY_BP_LINE, warshipTonnageOf, WAR_LINE, EXTRA_FOCUS_TEMPLATE, JUSTIFY_DAYS, NATION_SEA_REGION, SEA_INITIAL_CONTROL, NAVAL_INVASION_CONTROL,
+  workforceOf, ARMY_POWER_PER_DIV, WORKFORCE_PER_IC, NAVY_MUL, GEAR_PARTS, SHIP_NAMES, ARMY_BP_NAME, HOI_BG, SHIP_CLASSES, POST_WAR_OPTIONS, GER_PUPPETS, ARMY_BP_LINE, warshipTonnageOf, WAR_LINE, EXTRA_FOCUS_TEMPLATE, JUSTIFY_DAYS, NATION_SEA_REGION, SEA_INITIAL_CONTROL, NAVAL_INVASION_CONTROL,
   // v0.3.3：历史事件时间表（「战争按历史来，不要随便乱宣战」）
-  HIST_TIMELINE, histEventsAt, histWarBetween, histWarTargetsFor } from '../data/hoi1936.js?v=48.1';
-import { BUILDING_BY_ID } from '../data/buildings.js?v=48.1';
-import { ARMY_BP_BY_ID, ARMY_BLUEPRINTS } from '../data/army_parts.js?v=48.1';
-import { JOBS_BY_BUILDING, assignWorkers, jobCapacity, getAvailable } from './population.js?v=48.1';
-import { ELITE_DIVISIONS, ELITE_MUL } from '../data/hoi1936.js?v=48.1';
+  HIST_TIMELINE, histEventsAt, histWarBetween, histWarTargetsFor } from '../data/hoi1936.js?v=49.1';
+import { BUILDING_BY_ID } from '../data/buildings.js?v=49.1';
+import { ARMY_BP_BY_ID, ARMY_BLUEPRINTS } from '../data/army_parts.js?v=49.1';
+import { JOBS_BY_BUILDING, assignWorkers, jobCapacity, getAvailable } from './population.js?v=49.1';
+import { ELITE_DIVISIONS, ELITE_MUL } from '../data/hoi1936.js?v=49.1';
 // v0.3.3：战争槽位上限（与 core/war.js 同源；war.js 不 import 本文件，无循环依赖）
-import { WAR_MAX_ACTIVE } from './war.js?v=48.1';
+import { WAR_MAX_ACTIVE } from './war.js?v=49.1';
 // v0.3.4：战役系统（敌方主动进攻 + 战线管理）。battle.js 不 import 本文件，无循环依赖。
-import { startBattle, listBattles, BATTLE_MAX_PER_WAR, IDLE_PROGRESS_PER_DAY, SPACE_TERRAIN_IDS } from './battle.js?v=48.1';
+import { startBattle, listBattles, BATTLE_MAX_PER_WAR, IDLE_PROGRESS_PER_DAY, SPACE_TERRAIN_IDS } from './battle.js?v=49.1';
 
 // 依赖注入（避免与 state.js / production.js 形成循环导入）
 let _getInst = null;
@@ -31,6 +31,118 @@ export function setHoiDeps(deps) {
   if (deps && typeof deps.addLine === 'function') _addLine = deps.addLine;
   if (deps && typeof deps.lineWorkers === 'function') _lineWorkers = deps.lineWorkers;
 }
+
+// ============================================================================
+// v0.4.9：剧本适配层（scenario adapter）
+//
+// 为什么需要这一层
+//   本文件原本把数据源写死成 1936：`fociOf` 查 `HOI_DEEP[n]`、`ensureSeas` 遍历
+//   `HOI_SEAS`、`ensureFocus`… 全部直接引用 1936 的表。机制（国策树 / 阵营 /
+//   轨道圈层 / 正当化 / 战役）本身是通用的，不该被单个剧本的数据绑死。
+//
+//   现在：所有数据读取都经由 `S(acc)` 拿到的适配器，按 acc.scenario 路由到
+//   对应剧本的表。**1936 的行为逐字不变**（适配器在 hoi1936 时原样返回旧表），
+//   而科幻剧本（data/scenario_sci.js）可以复用同一套机制。
+//
+//   新增剧本只需在 scenarioAdapterOf() 里加一个分支。
+// ============================================================================
+import {
+  SCI_SCENARIO_ID, SCI_NATIONS, SCI_BY_ID, SCI_MAIN_NATIONS, SCI_MAIN_BY_ID, SCI_DEEP,
+  SCI_SEAS, SCI_SEA_INITIAL_CONTROL, SCI_SEA_RIVAL, SCI_SEA_REGIONS, SCI_BLOC_NAME, SCI_BG, SCI_TIMELINE,
+  SCI_ARMY_BP_NAME, SCI_SHIP_NAMES, SCI_SHIP_CLASSES, SCI_POST_WAR_OPTIONS,
+  SCI_ARMY_BP_LINE, SCI_ELITE_DIVISIONS, SCI_ELITE_MUL, SCI_NAVY_MUL,
+  SCI_WORKFORCE_PER_IC, SCI_POWER_PER_DIV, sciPopOf, sciWorkforceOf,
+} from '../data/scenario_sci.js?v=49.1';
+
+function hoiAdapter() {
+  return {
+    id: HOI_SCENARIO_ID,
+    nations: HOI_NATIONS,
+    byId: HOI_BY_ID,
+    main: HOI_MAIN_NATIONS,
+    mainById: HOI_MAIN_BY_ID,
+    deep: HOI_DEEP,
+    seas: HOI_SEAS,
+    seaInit: SEA_INITIAL_CONTROL,
+    // v0.4.9：seaRivals() 靠「哪国能在哪个区域竞争」这张表算 AI 巡航压力，
+    //   原来固定用 NATION_SEA_REGION（1936 的地球海区划分）——
+    //   科幻剧本的势力没有这张表，需要自己提供（见 sciAdapter 的 seaRegions）。
+    seaRegions: NATION_SEA_REGION,
+    blocName: BLOC_NAME,
+    bg: HOI_BG,
+    timeline: HIST_TIMELINE,
+    eliteDivisions: ELITE_DIVISIONS,
+    eliteMul: ELITE_MUL,
+    navyMul: NAVY_MUL,
+    armyBpName: ARMY_BP_NAME,
+    shipNames: SHIP_NAMES,
+    shipClasses: SHIP_CLASSES,
+    postWarOptions: POST_WAR_OPTIONS,
+    armyBpLine: ARMY_BP_LINE,
+    workforcePerIc: WORKFORCE_PER_IC,
+    powerPerDiv: ARMY_POWER_PER_DIV,
+    popOf,
+    workforceOf,
+    // 1936 特有：按剧本时间线门控宣战
+    histGate: true,
+  };
+}
+
+function sciAdapter() {
+  return {
+    id: SCI_SCENARIO_ID,
+    nations: SCI_NATIONS,
+    byId: SCI_BY_ID,
+    main: SCI_MAIN_NATIONS,
+    mainById: SCI_MAIN_BY_ID,
+    deep: SCI_DEEP,
+    seas: SCI_SEAS,
+    seaInit: SCI_SEA_INITIAL_CONTROL,
+    // 科幻剧本的圈层竞争关系：直接用 SCI_SEA_RIVAL（圈层 → 竞争势力 id 列表），
+    //   语义与 1936 的「按 region 反查」不同，因此额外提供 seaRivalBySea，
+    //   seaRivals() 会优先读它。
+    seaRegions: SCI_SEA_REGIONS,
+    seaRivalBySea: SCI_SEA_RIVAL,
+    blocName: SCI_BLOC_NAME,
+    bg: SCI_BG,
+    timeline: SCI_TIMELINE,
+    eliteDivisions: SCI_ELITE_DIVISIONS,
+    eliteMul: SCI_ELITE_MUL,
+    navyMul: SCI_NAVY_MUL,
+    armyBpName: SCI_ARMY_BP_NAME,
+    shipNames: SCI_SHIP_NAMES,
+    shipClasses: SCI_SHIP_CLASSES,
+    postWarOptions: SCI_POST_WAR_OPTIONS,
+    armyBpLine: SCI_ARMY_BP_LINE,
+    workforcePerIc: SCI_WORKFORCE_PER_IC,
+    powerPerDiv: SCI_POWER_PER_DIV,
+    popOf: sciPopOf,
+    workforceOf: sciWorkforceOf,
+    histGate: false,   // 科幻剧本不按史实年份门控宣战
+  };
+}
+
+/** 取账号所属剧本的适配器（无 scenario / 未知值 → 科幻，普通开局即走这条） */
+export function scenarioAdapterOf(acc) {
+  const s = acc && acc.scenario ? String(acc.scenario) : '';
+  return s === HOI_SCENARIO_ID ? hoiAdapter() : sciAdapter();
+}
+
+/**
+ * 只有一个「势力 id」、没有 acc 时的适配器选择（如 setupLines(inst, nation)）。
+ * 按 id 前缀判定 —— 两套剧本的 id 天然隔离（'sci_*' vs 'ger'/'fra'…），
+ * 前缀约定见 data/scenario_sci.js 顶部说明。
+ */
+export function adapterOfNation(nationOrId) {
+  const id = typeof nationOrId === 'string' ? nationOrId
+    : (nationOrId && nationOrId.id) || '';
+  return String(id).indexOf('sci_') === 0 ? sciAdapter() : hoiAdapter();
+}
+
+/** 直接取科幻适配器（state.js 建档时用；等价于 scenarioAdapterOf({scenario:'scifi'})） */
+export function sciAdapterOf() { return sciAdapter(); }
+/** 直接取 1936 适配器 */
+export function hoiAdapterOf() { return hoiAdapter(); }
 
 // ============================================================================
 // 剧本日历：1 真实秒 = 1 游戏天；起点固定 1936-01-01
@@ -73,16 +185,21 @@ export function ensureFocus(acc) {
  */
 export function fociOf(acc) {
   const n = acc && acc.nation;
-  const deep = HOI_DEEP[n];
+  // v0.4.9：数据源按剧本路由（1936 → HOI_DEEP；科幻 → SCI_DEEP）
+  const A = scenarioAdapterOf(acc);
+  const deep = A.deep[n];
   if (!deep) return [];
   const base = (deep.foci || []).slice();
   const extras = EXTRA_FOCUS_TEMPLATE.map((t) => Object.assign({}, t, { id: n + t.suffix }));
-  const war = (WAR_LINE[n] || []).slice();
+  // 战争线只有 1936 有（它是史实事件链：莱茵兰/奥地利/但泽…）；
+  // 科幻剧本的「战争」通过 SCI_TIMELINE 的局势转折 + 战区地图推进，不走这条线。
+  const war = A.histGate ? ((WAR_LINE[n] || []).slice()) : [];
   return base.concat(extras, war);
 }
 
 export function focusOptionsOf(acc) {
-  const deep = HOI_DEEP[acc && acc.nation];
+  const A = scenarioAdapterOf(acc);
+  const deep = A.deep[acc && acc.nation];
   if (!deep) return [];
   const f = ensureFocus(acc);
   const all = fociOf(acc);
@@ -106,8 +223,8 @@ export function focusOptionsOf(acc) {
 }
 
 export function startFocus(acc, focusId) {
-  const deep = HOI_DEEP[acc && acc.nation];
-  if (!deep) return { ok: false, reason: '非 1936 剧本存档' };
+  const deep = scenarioAdapterOf(acc).deep[acc && acc.nation];
+  if (!deep) return { ok: false, reason: '该势力没有国策数据' };
   const f = ensureFocus(acc);
   if (f.current) return { ok: false, reason: '已有国策正在推进（' + f.current.nameCn + '）' };
   const def = fociOf(acc).find((x) => x.id === focusId);
@@ -149,7 +266,7 @@ function applyFocusEffect(acc, eff) {
   if (eff.armyAtkMul) b.atkMul *= eff.armyAtkMul;
   if (eff.armyDefMul) b.defMul *= eff.armyDefMul;
   if (eff.lineMul) b.lineMul *= eff.lineMul;
-  if (eff.allyBloc && eff.allyBloc === (HOI_DEEP[acc.nation] || {}).bloc) {
+  if (eff.allyBloc && eff.allyBloc === (A.deep[acc.nation] || {}).bloc) {
     // 强化同阵营（盟友在开局已建立，这里只作为外交进度）
   }
   if (eff.navy) addNavyShips(acc, eff.navy);
@@ -164,8 +281,9 @@ function applyFocusEffect(acc, eff) {
 export function ensureSeas(acc) {
   if (!acc) return [];
   if (!Array.isArray(acc.hoiSeas) || !acc.hoiSeas.length) {
-    acc.hoiSeas = HOI_SEAS.map((s) => {
-      const init = (SEA_INITIAL_CONTROL[s.id] || {});
+    const A0 = scenarioAdapterOf(acc);
+    acc.hoiSeas = A0.seas.map((s) => {
+      const init = (A0.seaInit[s.id] || {});
       const mine = Number(init[acc.nation]) || 0;    // 本国开局既有制海权（英国控制英吉利海峡）
       const best = Object.keys(init).reduce((m, k) => Math.max(m, Number(init[k]) || 0), 0);
       return {
@@ -179,25 +297,27 @@ export function ensureSeas(acc) {
   return acc.hoiSeas;
 }
 
-/** 该国能否在该海域行动（欧洲国家只能抢欧洲海域…） */
+/** 该势力能否在该圈层行动（v0.4.9：范围表按剧本路由） */
 export function canSailIn(acc, seaId) {
-  const sea = HOI_SEAS.find((x) => x.id === seaId);
+  const A = scenarioAdapterOf(acc);
+  const sea = A.seas.find((x) => x.id === seaId);
   if (!sea) return false;
-  const regions = NATION_SEA_REGION[acc && acc.nation] || ['europe'];
+  const regions = A.seaRegions[acc && acc.nation] || [];
   return regions.indexOf(sea.region) >= 0;
 }
 
-/** 该海域里「非我方、非盟友」国家的海上实力（AI 巡航压力） */
+/** 该圈层里「非我方、非盟友」势力的实力（AI 巡航压力） */
 export function seaRivals(acc, seaId) {
-  const sea = HOI_SEAS.find((x) => x.id === seaId);
+  const A = scenarioAdapterOf(acc);
+  const sea = A.seas.find((x) => x.id === seaId);
   if (!sea) return 0;
   const allied = Array.isArray(acc.npcAllies) ? acc.npcAllies : [];
   let sum = 0;
-  for (const n of HOI_NATIONS) {
+  for (const n of A.nations) {
     if (n.id === acc.nation) continue;
     if (allied.indexOf(n.nameCn) >= 0) continue;
-    if ((NATION_SEA_REGION[n.id] || []).indexOf(sea.region) < 0) continue;
-    const init = ((SEA_INITIAL_CONTROL[seaId] || {})[n.id]) || 0;
+    if ((A.seaRegions[n.id] || []).indexOf(sea.region) < 0) continue;
+    const init = ((A.seaInit[seaId] || {})[n.id]) || 0;
     sum += (n.navy * 20 + n.ic * 3) * (1 + init);
   }
   return sum;
@@ -213,11 +333,12 @@ export function canInvadeFrom(acc, seaId) {
 
 /** 敌方海上压力：与我方交战国家（含阵营）的海军实力合计 */
 export function enemySeaPressure(acc) {
+  const A = scenarioAdapterOf(acc);
   const wars = Array.isArray(acc.wars) ? acc.wars.filter((w) => w && w.status === 'active') : [];
   let pressure = 0;
   for (const w of wars) {
     const id = String(w.targetId || '').replace(/^hoi_/, '');
-    const n = HOI_BY_ID[id] || HOI_NATIONS.find((x) => x.nameCn === w.targetName);
+    const n = A.byId[id] || A.nations.find((x) => x.nameCn === w.targetName);
     if (n) pressure += n.navy * 18 + n.ic * 4;
   }
   return pressure;
@@ -262,15 +383,17 @@ function getHomeInstLocal(acc) {
 
 /** 军队：每支 500 人，按本国编制与侧重生成 */
 export function setupArmies(acc, nation) {
-  const n = typeof nation === 'string' ? HOI_BY_ID[nation] : nation;
-  const deep = HOI_DEEP[n.id] || {};
+  const A = scenarioAdapterOf(acc);
+  const n = typeof nation === 'string' ? A.byId[nation] : nation;
+  if (!n) return { armies: [], blueprintId: null };
+  const deep = A.deep[n.id] || {};
   // v0.2.6 rev3：**师数 = 1936 年真实师数**（德国 30 / 苏联 92 / 中国 120 …），每师 500 人
   const count = Math.max(2, Math.min(130, Math.round(n.divisions)));
   // v0.2.6 rev8：高工业国家师级战力增强（工业越高，师装备越精良）
   const perPower = Math.round(ARMY_POWER_PER_DIV * (1 + Math.min(1.2, n.ic / 120)));
   acc.armies = [];
   // v0.2.6 rev9：军队蓝图更多 —— 步兵 / 装甲 / 机械化 三类轮转
-  const bpLine = ARMY_BP_LINE[n.id] || [deep.armyName || '步兵师'];
+  const bpLine = A.armyBpLine[n.id] || [deep.armyName || '步兵师'];
   acc.hoiArmyBps = bpLine;
   for (let i = 0; i < count; i++) {
     const bpName = bpLine[i % bpLine.length];
@@ -298,7 +421,7 @@ const SLOT_POWER_MUL = [1.0, 1.5, 2.4];
   // v0.2.9：军队蓝图历史化 —— 该国的三张兵种蓝图改名为本国史实名，
   //   并给「装甲师」等突击编制更高的基础战力（大幅增强）
   try {
-    const bpLine0 = ARMY_BP_LINE[n.id] || [];
+    const bpLine0 = A.armyBpLine[n.id] || [];
     // 用蓝图表的实际顺序（避免硬编码 id 与实际数据不符）
     const BP_IDS = (ARMY_BLUEPRINTS || []).map((b) => b && b.id).filter(Boolean);
     if (!BP_IDS.length) BP_IDS.push('ab_ranger', 'ab_bulwark', 'ab_thunder');
@@ -314,7 +437,7 @@ const SLOT_POWER_MUL = [1.0, 1.5, 2.4];
   } catch (e) { /* 忽略 */ }
 
   // v0.2.6 rev5：王牌师（史实名，战力与属性显著更强）
-  const elites = ELITE_DIVISIONS[n.id] || [];
+  const elites = A.eliteDivisions[n.id] || [];
   for (let i = 0; i < elites.length && i < acc.armies.length; i++) {
     const a = acc.armies[i];
     a.nameCn = elites[i] + '（王牌师）';
@@ -327,8 +450,8 @@ const SLOT_POWER_MUL = [1.0, 1.5, 2.4];
     };
   }
   // v0.2.6 rev3：师蓝图历史化（如德国「装甲师（1936 编制）」）
-  if (ARMY_BP_NAME[n.id] && Array.isArray(acc.blueprints) && acc.blueprints.length) {
-    try { acc.blueprints[0].nameCn = ARMY_BP_NAME[n.id]; acc.blueprint = acc.blueprints[0]; } catch (e) { /* 忽略 */ }
+  if (A.armyBpName[n.id] && Array.isArray(acc.blueprints) && acc.blueprints.length) {
+    try { acc.blueprints[0].nameCn = A.armyBpName[n.id]; acc.blueprint = acc.blueprints[0]; } catch (e) { /* 忽略 */ }
   }
   return acc.armies.length;
 }
@@ -338,7 +461,9 @@ const SLOT_POWER_MUL = [1.0, 1.5, 2.4];
 //   为「生产线大量工人」提供工位（工位 = 建筑数 × 该建筑 jobs）
 // ---------------------------------------------------------------------------
 export function setupFactories(inst, nation) {
-  const n = typeof nation === 'string' ? HOI_BY_ID[nation] : nation;
+  const A = adapterOfNation(nation);
+  const n = typeof nation === 'string' ? A.byId[nation] : nation;
+  if (!n) return 0;
   if (!inst) return 0;
   const ic = n.ic;
   // 住房：按「庇护需求」配足（每栋 house 提供 40 庇护）——
@@ -376,8 +501,10 @@ export function setupFactories(inst, nation) {
 
 /** 舰队：按 1936 真实海军实力造舰，并以史实舰队名编队 */
 export function setupNavy(acc, nation, createShipFn, defaultBlueprintsFn) {
-  const n = typeof nation === 'string' ? HOI_BY_ID[nation] : nation;
-  const deep = HOI_DEEP[n.id] || {};
+  const A = scenarioAdapterOf(acc);
+  const n = typeof nation === 'string' ? A.byId[nation] : nation;
+  if (!n) return { fleets: [], blueprints: [] };
+  const deep = A.deep[n.id] || {};
   acc.ships = acc.ships || [];
   acc.fleets = acc.fleets || [];
   // v0.2.6 rev3：舰艇数与吨位结构挂钩 1936 真实海军实力
@@ -388,18 +515,18 @@ export function setupNavy(acc, nation, createShipFn, defaultBlueprintsFn) {
     ? acc.blueprints
     : (defaultBlueprintsFn ? defaultBlueprintsFn() : []);
   // v0.2.6 rev3：舰船蓝图历史化（德国 Z 级驱逐舰 / U 型潜艇，英国皇家方舟级航母…）
-  const sn = SHIP_NAMES[n.id] || [];
+  const sn = A.shipNames[n.id] || [];
   for (let i = 0; i < bps.length && i < sn.length; i++) {
     try { bps[i].nameCn = sn[i]; } catch (e) { /* 忽略 */ }
   }
   // v0.2.6 rev8：史实舰级表（含航母 / 战列舰）—— 有航母战列舰的国家就有对应舰种
-  acc.hoiShipClasses = SHIP_CLASSES[n.id] || sn;
+  acc.hoiShipClasses = A.shipClasses[n.id] || sn;
   acc.blueprints = bps;
   if (!acc.blueprint && bps.length) acc.blueprint = bps[0];
   const hulls = bps.length ? bps : [];
   // v0.2.6 rev9：直接建**蓝图对应的战舰**（战列舰/航母/重巡/驱逐/潜艇），
   //   不再用探索船、运输船充数 —— 舰只自带吨位 strength（fleetPowerOf 口径）
-  const classes = SHIP_CLASSES[n.id] || sn || [n.nameCn + ' 战舰'];
+  const classes = A.shipClasses[n.id] || sn || [n.nameCn + ' 战舰'];
   const capitalShare = Math.min(0.45, n.navy / 150);       // 海军越强，主力舰占比越高
   for (let i = 0; i < shipCount; i++) {
     // 前若干艘放主力舰（战列舰/航母/战巡），随后是巡洋/驱逐/潜艇
@@ -422,7 +549,7 @@ export function setupNavy(acc, nation, createShipFn, defaultBlueprintsFn) {
       stats: { speed: Math.max(6, Math.round(ton / 12)) },
       kind: 'warship',
       mark: 1,
-      strength: Math.round(ton * 12 * (NAVY_MUL[n.id] || 1)),
+      strength: Math.round(ton * 12 * (A.navyMul[n.id] || 1)),
       hp: Math.round(ton * 8),
       // v0.2.9 修复：补齐舰队/飞船详情页所需字段（缺 blueprintId 会导致页面打不开）
       blueprintId: (acc.blueprints && acc.blueprints[0] && acc.blueprints[0].id) || 'bp_scout',
@@ -453,7 +580,7 @@ export function setupNavy(acc, nation, createShipFn, defaultBlueprintsFn) {
       lastResult: null,
     });
   }
-  acc.hoiNavyMul = NAVY_MUL[n.id] || 1;   // 海军传统加成（强国同吨位更强）
+  acc.hoiNavyMul = A.navyMul[n.id] || 1;   // 海军传统加成（强国同吨位更强）
   return { ships: acc.ships.length, fleets: acc.fleets.length, navyMul: acc.hoiNavyMul };
 }
 
@@ -508,8 +635,10 @@ export function setupColony(inst2, n, colonyPop) {
  *   · 装备流水线（part_<部件id>）一并拉好，材料取本国独特装备材料
  */
 export function setupLines(inst, nation) {
-  const n = typeof nation === 'string' ? HOI_BY_ID[nation] : nation;
-  const deep = HOI_DEEP[n.id] || {};
+  const A = adapterOfNation(nation);
+  const n = typeof nation === 'string' ? A.byId[nation] : nation;
+  if (!n) return 0;
+  const deep = A.deep[n.id] || {};
   const done = { lines: [], workers: 0 };
   if (!inst || !_addLine) return done;
   const total = workforceOf(n);
@@ -581,11 +710,13 @@ export function setupLines(inst, nation) {
 
 /** 阵营：同阵营国家自动成为盟友（德意同盟等） */
 export function setupBloc(acc, nation) {
-  const n = typeof nation === 'string' ? HOI_BY_ID[nation] : nation;
-  const deep = HOI_DEEP[n.id] || {};
+  const A = scenarioAdapterOf(acc);
+  const n = typeof nation === 'string' ? A.byId[nation] : nation;
+  if (!n) return;
+  const deep = A.deep[n.id] || {};
   if (!Array.isArray(acc.npcAllies)) acc.npcAllies = [];
   if (!deep.bloc || deep.bloc === 'neutral') return [];
-  const mates = HOI_NATIONS.filter((x) => x.id !== n.id && (HOI_DEEP[x.id] || {}).bloc === deep.bloc);
+  const mates = A.nations.filter((x) => x.id !== n.id && (A.deep[x.id] || {}).bloc === deep.bloc);
   for (const m of mates) {
     if (acc.npcAllies.indexOf(m.nameCn) < 0) acc.npcAllies.push(m.nameCn);
   }
@@ -606,13 +737,14 @@ export function setupBloc(acc, nation) {
  *   ④ 节点未到时，AI 最多只会「提议结盟」（同 bloc 或史实友好方），不会开火。
  */
 export function tickDiploAI(acc, dtSec) {
+  const A = scenarioAdapterOf(acc);
   if (!acc || acc.scenario !== HOI_SCENARIO_ID) return null;
   const days = (Number(dtSec) || 0) * GAME_DAYS_PER_SEC;
   acc.hoiDiploDays = (Number(acc.hoiDiploDays) || 0) + days;
   if (acc.hoiDiploDays < 30) return null;
   acc.hoiDiploDays = 0;
 
-  const mine = HOI_MAIN_BY_ID[acc.nation];
+  const mine = A.mainById[acc.nation];
   if (!mine) return null;
   if (!acc.hoiHistFired || typeof acc.hoiHistFired !== 'object') acc.hoiHistFired = {};
 
@@ -629,7 +761,7 @@ export function tickDiploAI(acc, dtSec) {
     if (atWarIds.has(t.foe)) continue;               // 已在交战
     if (wars.length >= WAR_MAX_ACTIVE) continue;     // 战争槽位已满
     acc.hoiHistFired[key] = 1;
-    const foe = HOI_BY_ID[t.foe];
+    const foe = A.byId[t.foe];
     if (!foe) continue;
     const w = {
       id: 'war_hist_' + t.event.day + '_' + t.foe + '_' + Date.now().toString(36),
@@ -649,8 +781,8 @@ export function tickDiploAI(acc, dtSec) {
     x.id !== acc.nation && allied.indexOf(x.nameCn) < 0 && !atWarIds.has(x.id));
   if (!candidates.length) return null;
 
-  const myBloc = (HOI_DEEP[acc.nation] || {}).bloc;
-  const sameBloc = candidates.filter((x) => myBloc && (HOI_DEEP[x.id] || {}).bloc === myBloc);
+  const myBloc = (A.deep[acc.nation] || {}).bloc;
+  const sameBloc = candidates.filter((x) => myBloc && (A.deep[x.id] || {}).bloc === myBloc);
   if (sameBloc.length && allied.indexOf(sameBloc[0].nameCn) < 0) {
     // 同阵营：立即缔约（史实轴心/同盟国的天然盟友关系）
     const p = sameBloc[0];
@@ -718,9 +850,10 @@ export function staffBuildings(pop, inst) {
  *   一律按本国史实舰级命名，形如「Z 级驱逐舰 3」「U 型潜艇 1」
  */
 export function ensureShipNames(acc, nation) {
+  const A = scenarioAdapterOf(acc);
   if (!acc || !Array.isArray(acc.ships)) return 0;
-  const n = typeof nation === 'string' ? HOI_BY_ID[nation] : nation;
-  const names = SHIP_NAMES[n && n.id] || (n ? [n.nameCn + ' 舰'] : ['战舰']);
+  const n = typeof nation === 'string' ? A.byId[nation] : nation;
+  const names = A.shipNames[n && n.id] || (n ? [n.nameCn + ' 舰'] : ['战舰']);
   const counters = {};
   let fixed = 0;
   let i = 0;
@@ -743,6 +876,7 @@ export function ensureShipNames(acc, nation) {
  *   幂等：住房达标即不再改动。
  */
 export function repairScenarioEstates(acc) {
+  const A = scenarioAdapterOf(acc);
   if (!acc || acc.scenario !== HOI_SCENARIO_ID) return 0;
   const SPH = (BUILDING_BY_ID.house && BUILDING_BY_ID.house.shelter) || 40;
   const codes = [];
@@ -769,9 +903,9 @@ export function repairScenarioEstates(acc) {
   }
   // v0.3.1：老档舰队自愈 —— 旧代码造的战舰缺字段（飞船页打不开）：补齐字段 + 史实名
   try {
-    const nation = HOI_BY_ID[acc.nation];
+    const nation = A.byId[acc.nation];
     if (nation) {
-      const classes = SHIP_CLASSES[nation.id] || [];
+      const classes = A.shipClasses[nation.id] || [];
       let i2 = 0;
       for (const sh of (acc.ships || [])) {
         if (!sh) continue;
@@ -799,11 +933,13 @@ export function repairScenarioEstates(acc) {
  *   · 傀儡：对方转为附庸盟友（提供贡品，并出现在盟友列表）
  */
 export function postwarOptionsFor(nationId) {
-  return POST_WAR_OPTIONS[nationId] || [{ key: 'annex', nameCn: '吞并（并入本土工业）' }];
+  // v0.4.9：按势力 id 前缀选剧本（sci_ → 科幻；其余 → 1936）
+  const A = adapterOfNation(nationId);
+  return A.postWarOptions[nationId] || [{ key: 'annex', nameCn: '并入版图' }];
 }
 
 export function applyPostwarChoice(acc, nationId, choice) {
-  const n = HOI_BY_ID[nationId];
+  const n = scenarioAdapterOf(acc).byId[nationId];
   if (!acc || !n) return { ok: false, reason: '国家数据缺失' };
   const inst = _getInst ? _getInst(acc.homePlanetCode) : null;
   const isPuppet = choice === 'puppet';
@@ -867,10 +1003,11 @@ export function setupGermanPuppets(acc) {
  *       ② 老存档兜底：确保 wars 有 progress 初值。
  */
 export function tickWarsHoi4(acc, dtSec) {
+  const A = scenarioAdapterOf(acc);
   if (!acc || !Array.isArray(acc.wars)) return;
   const days = (Number(dtSec) || 0) * GAME_DAYS_PER_SEC;
   if (days <= 0) return;
-  const n = HOI_BY_ID[acc.nation];
+  const n = A.byId[acc.nation];
   if (!n) return;
 
   // ---- 我方真实实力（仅用于判断「该不该被敌方打」，不再用于推进进度）----
@@ -912,7 +1049,7 @@ export function tickWarsHoi4(acc, dtSec) {
 
     // ② 没有战场：敌方实力明显占优时主动打过来（HOI4 的「对方先动手」）
     //    节拍由 _foeStrikeAt 控制，避免每秒都开新战场。
-    const foe = HOI_BY_ID[String(w.targetId || '').replace(/^hoi_/, '')];
+    const foe = A.byId[String(w.targetId || '').replace(/^hoi_/, '')];
     const myScore = Number(w.myScore) || 0;
     const battles = Number(w.battles) || 0;
     const wear = Math.max(0.25, 1 - (myScore * 0.012) - (battles * 0.01));
@@ -1050,14 +1187,15 @@ export function applyInfiniteReserve(inst) {
  *   acc.hoiJustify = { targetId, targetName, daysLeft, daysNeed }
  */
 export function canJustify(acc, nationId) {
-  const me = HOI_BY_ID[acc && acc.nation];
-  const target = HOI_BY_ID[nationId];
+  const A = scenarioAdapterOf(acc);
+  const me = A.byId[acc && acc.nation];
+  const target = A.byId[nationId];
   if (!me || !target) return { ok: false, reason: '国家数据缺失' };
   if (nationId === me.id) return { ok: false, reason: '不能对自己宣战' };
-  const myBloc = (HOI_DEEP[me.id] || {}).bloc;
-  const theirBloc = (HOI_DEEP[target.id] || {}).bloc;
+  const myBloc = (A.deep[me.id] || {}).bloc;
+  const theirBloc = (A.deep[target.id] || {}).bloc;
   if (myBloc && theirBloc && myBloc === theirBloc && myBloc !== 'neutral') {
-    return { ok: false, reason: '同阵营国家不能宣战（' + (BLOC_NAME[myBloc] || '') + '）' };
+    return { ok: false, reason: '同阵营国家不能宣战（' + (A.blocName[myBloc] || '') + '）' };
   }
   if (myBloc !== 'axis') {
     const mine = me.ic + me.divisions / 2 + me.navy / 3;
@@ -1082,15 +1220,16 @@ export function canJustify(acc, nationId) {
 /** 该国当前是否可作为宣战目标（仅历史门控，不含阵营/国力判定） */
 export function histWarGateFor(acc, nationId) {
   if (!acc || acc.scenario !== HOI_SCENARIO_ID) return { ok: true };   // 非 1936 不门控
+  const A = scenarioAdapterOf(acc);
   const today = Math.floor(gameDaysOf(acc));
   const mine = acc.nation;
-  if (!mine) return { ok: false, reason: '国家数据缺失' };
+  if (!mine) return { ok: false, reason: '势力数据缺失' };
   if (mine === nationId) return { ok: false, reason: '不能对自己宣战' };
 
   // 已在此节点交战过则不再重复放行
   const wars = Array.isArray(acc.wars) ? acc.wars : [];
   const already = wars.find((w) => w && String(w.targetId || '').replace(/^hoi_/, '') === nationId);
-  if (already) return { ok: false, reason: '与「' + (HOI_BY_ID[nationId] || {}).nameCn + '」的战争已在持续中' };
+  if (already) return { ok: false, reason: '与「' + (A.byId[nationId] || {}).nameCn + '」的战争已在持续中' };
 
   const targets = histWarTargetsFor(mine, today);
   const hit = targets.find((t) => t.foe === nationId);
@@ -1111,7 +1250,7 @@ export function histWarGateFor(acc, nationId) {
   const upFoe = upcoming ? (upcoming.actors.find((x) => x !== mine) || '') : '';
   return {
     ok: false,
-    reason: '历史上此时尚未与「' + ((HOI_BY_ID[nationId] || {}).nameCn || nationId) + '」交战'
+    reason: '历史上此时尚未与「' + ((A.byId[nationId] || {}).nameCn || nationId) + '」交战'
       + (upcoming && upFoe === nationId
         ? '（预计 ' + Math.ceil(upcoming.day - today) + ' 游戏天后：' + upcoming.nameCn + '）'
         : '（本国近期无对它的历史战争节点）'),
@@ -1121,13 +1260,16 @@ export function histWarGateFor(acc, nationId) {
 
 /** 玩家今日可宣战的历史目标列表（供 UI 下拉栏渲染「可宣战对象」） */
 export function listHistTargets(acc) {
+  // v0.4.9：历史节点门控是 1936 专属 —— 科幻剧本没有「史实年份」，
+  //   它的宣战目标来自战区地图上的敌对势力（ui/hoi.js 的势力面板），不按年份解锁。
   if (!acc || acc.scenario !== HOI_SCENARIO_ID) return [];
+  const A = scenarioAdapterOf(acc);
   const today = Math.floor(gameDaysOf(acc));
   return histWarTargetsFor(acc.nation, today)
     .map((t) => ({
       nationId: t.foe,
-      nameCn: (HOI_BY_ID[t.foe] || {}).nameCn || t.foe,
-      flag: (HOI_BY_ID[t.foe] || {}).flag || '',
+      nameCn: (A.byId[t.foe] || {}).nameCn || t.foe,
+      flag: (A.byId[t.foe] || {}).flag || '',
       eventName: t.event.nameCn,
       desc: t.event.desc,
       day: t.event.day,
@@ -1137,7 +1279,7 @@ export function listHistTargets(acc) {
 export function startJustify(acc, nationId) {
   const chk = canJustify(acc, nationId);
   if (!chk.ok) return chk;
-  const n = HOI_BY_ID[nationId];
+  const n = scenarioAdapterOf(acc).byId[nationId];
   const f = ensureFocus(acc);
   const need = Math.max(15, Math.round(JUSTIFY_DAYS * (Number(f.buffs.justifyMul) || 1)));
   acc.hoiJustify = { targetId: nationId, targetName: n.nameCn, daysLeft: need, daysNeed: need, at: Date.now() };
@@ -1164,20 +1306,23 @@ export function tickJustify(acc, dtSec) {
 }
 
 export function backgroundOf(acc) {
-  return (acc && HOI_BG[acc.nation]) || '';
+  if (!acc) return '';
+  return scenarioAdapterOf(acc).bg[acc.nation] || '';
 }
 
 export function blocNameOf(acc) {
-  const deep = HOI_DEEP[acc && acc.nation];
-  return deep ? (BLOC_NAME[deep.bloc] || '不结盟') : '';
+  const A = scenarioAdapterOf(acc);
+  const deep = A.deep[acc && acc.nation];
+  return deep ? (A.blocName[deep.bloc] || '无所属') : '';
 }
 
 export function deepOf(acc) {
-  return HOI_DEEP[acc && acc.nation] || null;
+  return scenarioAdapterOf(acc).deep[acc && acc.nation] || null;
 }
 
 export function nationOf(acc) {
-  return (acc && HOI_BY_ID[acc.nation]) || null;
+  if (!acc) return null;
+  return scenarioAdapterOf(acc).byId[acc.nation] || null;
 }
 
 export { HOI_SCENARIO_ID, popOf };

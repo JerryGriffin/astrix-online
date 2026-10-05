@@ -156,13 +156,13 @@ const app = byId.app;
 
 // 用动态 import 真正跑一遍 main.js（含启动、渲染开始界面、注册心跳）
 step('加载 main.js（启动 + 渲染开始界面）', () => {});
-await import('../js/main.js?v=48.1');
+await import('../js/main.js?v=49.1');
 
-const S = await import('../js/core/state.js?v=48.1');
-const Y = await import('../js/core/shipyard.js?v=48.1');
-const POP = await import('../js/core/population.js?v=48.1');
+const S = await import('../js/core/state.js?v=49.1');
+const Y = await import('../js/core/shipyard.js?v=49.1');
+const POP = await import('../js/core/population.js?v=49.1');
 // v0.1.2（需求 19-2）：造船除装备外还要按部件扣**材料**，测试要先把材料备齐
-const SYU = await import('../js/ui/shipyard.js?v=48.1');
+const SYU = await import('../js/ui/shipyard.js?v=49.1');
 
 const allEls = () => walkAll(app).concat(app.children);
 const findButtons = () => allEls().filter((e) => e.tagName === 'BUTTON');
@@ -571,8 +571,22 @@ step('点开飞船详情并推演 60 秒', () => {
 });
 
 step('飞船应进入心跳 tick（温度有限、非 NaN）', () => {
+  // v0.4.9：本步骤**自建**一艘 Astrix 舰船，不再依赖开局赠送的船。
+  //   起因：普通模式（初登星球）接入科幻剧本后**不再铺历史战舰**
+  //   （warship 无 Astrix 物理字段，会让舰船页与 tickShip 崩），
+  //   于是 ships[0] 为 undefined → 这里改为用正常的 createShip 流程造一艘来测物理。
+  const acc0 = S.currentAccount();
+  if (!acc0.ships || !acc0.ships.length) {
+    // 造船需要已研究船坞科技（core/shipyard.js#DOCK_TECH = 't_e3'）
+    const researched = Array.from(new Set([...(acc0.tech || []), 't_e3']));
+    const r = Y.createShip(Y.emptyBlueprint(), { researched, ships: acc0.ships || [] });
+    if (!r || !r.ok) throw new Error('无法创建测试用舰船：' + JSON.stringify((r && r.errors) || (r && r.reason) || '未知原因'));
+    acc0.ships = acc0.ships || [];
+    acc0.ships.push(r.ship);
+  }
   for (let i = 0; i < 30; i++) S.tick(1);
-  const ship = S.currentAccount().ships[0];
+  const ship = S.currentAccount().ships.find((x) => x && x.state && x.stats && x.stats.heatCapacity);
+  if (!ship) throw new Error('未找到可用于物理测试的 Astrix 舰船');
   if (!Number.isFinite(ship.state.TempK)) throw new Error('飞船温度不是有限数');
   if (ship.state.TempK < 3 || ship.state.TempK > 5000) throw new Error('飞船温度越界：' + ship.state.TempK);
   console.log('     30 秒后温度:', ship.state.TempK.toFixed(1), 'K · 船员:', Math.round(ship.state.crew),
@@ -595,7 +609,7 @@ step('切回主界面再进星球（验证返回导航）', () => {
 
 // 存档往返
 step('存档落盘并重载', async () => {
-  const S = await import('../js/core/state.js?v=48.1');
+  const S = await import('../js/core/state.js?v=49.1');
   S.saveState();
   const before = _ls.size;
   const raw = _ls.get('astrix.save.' + S.STATE.currentAccountId);
@@ -612,7 +626,7 @@ await Promise.all(pending);
 // 验证：电力面板渲染 / 造出船坞后「星球选择」tab / 星球选择含 7 星 nameCn
 // （本段只读取已有作用域：tabBtns / allText / step / PLANETS，不改动其它步骤）
 // =====================================================================
-const PL = await import('../js/data/planets.js?v=48.1');
+const PL = await import('../js/data/planets.js?v=49.1');
 
 // ⚠ 这段追加在「存档落盘并重载」之后，而它前面那一步是「返回主界面 → 点离线模式」。
 //   v0.0.6（需求 R6）之后，点「离线模式」**总是先弹存档选择界面**（不再直接进游戏），
@@ -733,7 +747,7 @@ step('v0.0.6 星球选择：进入不崩溃且遵循「已发现才可见」门�
 //   合并代码路径不崩；同时假 SDK 的 db 链一律返回空结果，避免任何真实网络调用。
 // ============================================================================
 step('v0.2.1 在线模式：导入 galaxy.js 并渲染「星际」', () => {});
-const G = await import('../js/ui/galaxy.js?v=48.1');
+const G = await import('../js/ui/galaxy.js?v=49.1');
 // 最小假云端：createWorkBuddyCloud 返回带 database 链的对象；getSession 返回无用户
 //   注意：db 链必须「非 thenable」，否则 `await db()...` 会卡在微任务里永不落定。
 const _chain = new Proxy({}, {

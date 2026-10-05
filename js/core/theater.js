@@ -32,8 +32,10 @@
 // v0.4.8：HOI_MAIN_NATIONS 只在「风暴前夜」剧本用作势力源；
 //   其余剧本改用 data/factions.js 的通用势力表（见 generateTheater 内的说明）。
 //   HOI_BY_ID 仍保留 —— UI 要靠它把 owner id 解析成国家名/旗帜。
-import { HOI_BY_ID, HOI_MAIN_NATIONS } from '../data/hoi1936.js?v=48.1';
-import { GENERIC_FACTIONS } from '../data/factions.js?v=48.1';
+import { HOI_BY_ID, HOI_MAIN_NATIONS } from '../data/hoi1936.js?v=49.1';
+import { GENERIC_FACTIONS } from '../data/factions.js?v=49.1';
+// v0.4.9：科幻剧本势力表（普通开局用；8 个完整势力，含 popM/ic/divisions 可按实力分领土）
+import { SCI_NATIONS } from '../data/scenario_sci.js?v=49.1';
 
 export const THEATER_COLS = 6;
 export const THEATER_ROWS = 6;
@@ -48,6 +50,9 @@ export const THEATER_SIZE = THEATER_COLS * THEATER_ROWS;
  *     ② 与 HOI_MAIN_NATIONS 里的德国撞名 —— 敌方分配时会 `filter(n => n.id !== myNation)`
  *        把德国自己滤掉，等于少一个对手。
  *   现改为：1936 用 acc.nation（真实国家 id），其余剧本用中性的 `'player'`。
+ *
+ * v0.4.9：普通模式接入科幻剧本后 acc.nation 已是 `sci_xxx`，直接用它即可；
+ *   `'player'` 只作为「既无 scenario 又无 nation」的最终兜底（例如老存档）。
  */
 export const MY_NATION_DEFAULT = 'player';
 export function myNationOf(acc) {
@@ -117,7 +122,7 @@ const TERRAIN_WORDS = {
 // ---------------------------------------------------------------------------
 // v0.4.7：hash32 / clamp 已收敛到 core/util.js（与 battle.js 共用唯一实现）。
 // 实测与原实现逐位一致，收敛零回归。
-import { hash32, clamp } from './util.js?v=48.1';
+import { hash32, clamp } from './util.js?v=49.1';
 function smooth(t) { return t * t * (3 - 2 * t); }
 /** 二维值噪声（格点 hash + 双线性平滑） */
 function noise2(seed, x, y) {
@@ -210,7 +215,12 @@ export function generateTheater(acc) {
   //   两套 id 天然隔离（1936 是 'ger'/'fra'…，通用势力是 'fac_*'），不会撞车。
   const scenario = String(acc.scenario || '');
   const isHoi = scenario === 'hoi1936';
-  const rivals = (isHoi ? HOI_MAIN_NATIONS : GENERIC_FACTIONS)
+  // v0.4.9：势力来源优先级 —— ① 剧本自带势力表（科幻 8 势力 / 1936 真实列强）
+  //   ② 通用势力表（data/factions.js，仅在没有剧本数据时兜底）
+  // 此前只有 1936 与「通用势力表」两档，科幻剧本会退化到通用势力（6 个轻量势力，
+  // 没有 populations/ic/divisions，因而无法按实力分配领土面积）。
+  const sciFactions = SCI_NATIONS;
+  const rivals = (isHoi ? HOI_MAIN_NATIONS : (sciFactions && sciFactions.length ? sciFactions : GENERIC_FACTIONS))
     .filter((n) => n && n.id !== myNation);
   // 按实力降序，强者先占地（贪心扩张）
   const ranked = rivals.slice().sort((a, b) => (b.divisions * 2 + b.ic) - (a.divisions * 2 + a.ic));

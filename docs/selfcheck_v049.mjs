@@ -101,7 +101,7 @@ const nonHoi = await page.evaluate(async (ct) => {
 ok(!nonHoi.hasNation, '非1936 存档没有 acc.nation（正是原 bug 根源）', 'hasNation=' + nonHoi.hasNation);
 ok(nonHoi.myNation === 'player', '我方 id 为中性 player（不再是误用的 ger）', 'myNation=' + nonHoi.myNation);
 ok(nonHoi.facCount >= 4, '地图上生成了敌对势力（非1936 也有仗可打）', '势力数=' + nonHoi.facCount);
-ok(nonHoi.facOwnerIds.every((x) => String(x).startsWith('fac_')), '势力 id 用 fac_* 前缀（与1936 国家 id 隔离）',
+ok(nonHoi.facOwnerIds.every((x) => String(x).startsWith('sci_')), '势力 id 用 sci_* 前缀（与1936 国家 id 隔离）',
   nonHoi.facOwnerIds.slice(0, 3).join(','));
 ok(nonHoi.totalRegions === 36, '地图仍是 6×6 = 36 战区', 'regions=' + nonHoi.totalRegions);
 ok(!nonHoi.renderErr, '战区页渲染不抛异常', nonHoi.renderErr || 'no throw');
@@ -146,7 +146,7 @@ const declareRes = await page.evaluate(async (ct) => {
 ok(declareRes.hasBtn, '找到「宣战」按钮');
 ok(declareRes.beforeWars === 0, '宣战前无战争', 'wars=' + declareRes.beforeWars);
 ok(declareRes.afterWars === 1, '点击后成功宣战', 'wars=' + declareRes.afterWars);
-ok(String(declareRes.warTarget).startsWith('fac_'), '战争目标是对通用势力', 'target=' + declareRes.warTarget);
+ok(String(declareRes.warTarget).startsWith('sci_'), '战争目标是对科幻势力', 'target=' + declareRes.warTarget);
 ok(!!declareRes.warTargetName && declareRes.warTargetName !== 'undefined', '战争目标名有效', declareRes.warTargetName);
 ok(declareRes.afterHasMap, '宣战后战区地图仍在（没被下拉栏分支挤掉）');
 ok(declareRes.afterHasBattle, '宣战后可见战线区（可开辟战线）');

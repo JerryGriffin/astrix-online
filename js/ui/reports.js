@@ -13,7 +13,7 @@
 // 依赖方向：ui → core（只读 currentAccount 的账号对象），不反向依赖。
 // ============================================================================
 
-import { fmtNum } from '../core/format.js?v=48.1';
+import { fmtNum } from '../core/format.js?v=49.1';
 
 const TOAST_LIFE_MS = 9000;     // 单条提示停留时长
 const TOAST_MAX = 3;            // 同屏最多几条（多余的排队）

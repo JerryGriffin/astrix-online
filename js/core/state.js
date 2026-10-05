@@ -15,62 +15,65 @@
 //    开局自带 1 座建筑工厂（设计者：「开局有一个建筑工厂」）。
 // 5. 施工队列由 tick 推进：速度 = 建筑工有效人力（受建筑工厂工位限制），无人则为 0。
 
-import { PLANETS } from '../data/planets.js?v=48.1';
-import { HOI_NATIONS, HOI_BY_ID, HOI_SCENARIO_ID } from '../data/hoi1936.js?v=48.1';   // v0.2.6 官方 mod 1936 剧本
+import { PLANETS } from '../data/planets.js?v=49.1';
+import { HOI_NATIONS, HOI_BY_ID, HOI_SCENARIO_ID } from '../data/hoi1936.js?v=49.1';   // v0.2.6 官方 mod 1936 剧本
 import {
   setHoiDeps, popOf, setupArmies, setupNavy, setupLines, setupBloc, setupFactories, setupColony, ensureShipNames, backgroundOf, repairScenarioEstates, setupGermanPuppets, tickWarsHoi4, tickJustify, tickDiploAI, staffBuildings, applyInfiniteReserve,
   ensureFocus, tickFocus, ensureSeas, scenarioDateOf, gameDaysOf,
-} from './hoi1936.js?v=48.1';
-import { BUILDING_BY_ID, buildingCost } from '../data/buildings.js?v=48.1';
-import { TECH_BY_ID, canResearch, missingPrereqs, missingBuilding } from '../data/techs.js?v=48.1';
-import { UPGRADES, upgradeCost } from '../data/upgrades.js?v=48.1';
+  // v0.4.9：科幻剧本（普通模式）—— 只需适配器与人口换算，其余铺设复用同一批 setup* 函数
+  sciAdapterOf,
+} from './hoi1936.js?v=49.1';
+import { SCI_SCENARIO_ID, SCI_BY_ID, SCI_NATIONS, sciPopOf } from '../data/scenario_sci.js?v=49.1';
+import { BUILDING_BY_ID, buildingCost } from '../data/buildings.js?v=49.1';
+import { TECH_BY_ID, canResearch, missingPrereqs, missingBuilding } from '../data/techs.js?v=49.1';
+import { UPGRADES, upgradeCost } from '../data/upgrades.js?v=49.1';
 import {
   createPopulation, tickPopulation, getAvailable, gatherLaborByLayer, jobsOfBuilding, getIntensity,
   consumptionPerSec, jobOutput,
   JOBS, freeSlots,
-} from './population.js?v=48.1';
-import { buildRateOf, buildBlockReason } from './construction.js?v=48.1';
-import { tickShip, defaultBlueprints, createShip, shipBuildTick } from './shipyard.js?v=48.1';
+} from './population.js?v=49.1';
+import { buildRateOf, buildBlockReason } from './construction.js?v=49.1';
+import { tickShip, defaultBlueprints, createShip, shipBuildTick } from './shipyard.js?v=49.1';
 // v0.0.6：电力系统与配方生产。
 // 注意这两个模块**不反向 import 本文件**（否则形成循环依赖），
 // 它们只从传入的 inst 上读 buildings / pop / inventory / recipes。
-import { energyOf, computePower, tickPower } from './power.js?v=48.1';
+import { energyOf, computePower, tickPower } from './power.js?v=49.1';
 // v0.0.91：efficiencyBonus 由 production.js 导出（建筑总座数效率乘数），
 //   这里沿用既有的 state→production 单向边引入，不反向让 production import state，避免循环依赖。
-import { tickProduction, productionRates, ensureLines, lineWorkersTotal, efficiencyBonus, ensureEntry, addLine as addProductionLine, lineSlotInfo, freeLaborOf } from './production.js?v=48.1';
+import { tickProduction, productionRates, ensureLines, lineWorkersTotal, efficiencyBonus, ensureEntry, addLine as addProductionLine, lineSlotInfo, freeLaborOf } from './production.js?v=49.1';
 // v0.0.92：星际航行与殖民（管理模式 / 独立倾向 / 随机星球）
-import { tickIndependence, outputMulOf, happinessDeltaOf, ensureDiscoveredDefaults, discoverPlanet, capturePlanet, purgeShopColonies, tickManagedColonies, SHOP_PLANET_CODE } from './planetgen.js?v=48.1';
+import { tickIndependence, outputMulOf, happinessDeltaOf, ensureDiscoveredDefaults, discoverPlanet, capturePlanet, purgeShopColonies, tickManagedColonies, SHOP_PLANET_CODE } from './planetgen.js?v=49.1';
 // v0.1.2（需求 18/19）：永久升级的「效果」改乘方，唯一实现在 data/upgrades.js#upgradeMul
 // （UI 的 research.js 也用它，别在别处再写一套公式）。
 // 此前 upg_collect/refine/power/labor/research/build 六项付了钱却没有任何效果。
-import { upgradeMul } from '../data/upgrades.js?v=48.1';
+import { upgradeMul } from '../data/upgrades.js?v=49.1';
 // v0.4.7：softFail —— 心跳里被吞掉的异常改为「可观测」（同 tag+message 只报一次，
 //   避免每 tick 抛错把控制台刷爆）。此前 40 处空 catch 无一日志，
 //   是「界面不显示 / 功能没反应」类问题反复无法定位的共同根因。
-import { softFail } from './util.js?v=48.1';
-import { tickFleetMissions, ensureFleets } from './fleet.js?v=48.1';
+import { softFail } from './util.js?v=49.1';
+import { tickFleetMissions, ensureFleets } from './fleet.js?v=49.1';
 // v0.4.7：healArmyLineLabor —— 自愈「零人力」的军队组装线（见 advanceArmyLines 注释）
-import { ensureArmies, armyBuildTick, advanceTraining, ARMY_LABOR_PER_BARRACKS, healArmyLineLabor } from './army.js?v=48.1';   // v0.2.0 军队
+import { ensureArmies, armyBuildTick, advanceTraining, ARMY_LABOR_PER_BARRACKS, healArmyLineLabor } from './army.js?v=49.1';   // v0.2.0 军队
 // v0.3.4：战役系统（HOI4 式持续交战）。必须在 ensureArmies **之后**接线 ——
 //   战役结算要从真实 acc.armies 取师（兵员/攻防），否则打的是空数组。
-import { tickBattles, ensureBattles, orbitalControlOf, startBattle, BATTLE_MAX_PER_WAR, unshiftWarLog } from './battle.js?v=48.1';
+import { tickBattles, ensureBattles, orbitalControlOf, startBattle, BATTLE_MAX_PER_WAR, unshiftWarLog } from './battle.js?v=49.1';
 // v0.4.1：行星战区地图（战区归属 / 补给网络 / 战略打击 / 敌方 AI 战略层）
 import {
   ensureTheater, refreshSupply, decayStrikePressure, tickTheaterAI,
   tickRegions, regionYieldOf, colonySupportOf,
   regionsOf, treatyOutputMulOf, STRUCTURE_OUTPUT_MUL,
-} from './theater.js?v=48.1';
+} from './theater.js?v=49.1';
 // v0.4.7：附庸上贡的换算汇率也来自 treaty.js（此前这里是写死的 *1000）
-import { tickVassals, VASSAL_ASCOIN_RATE, VASSAL_RESEARCH_RATE } from './treaty.js?v=48.1';
+import { tickVassals, VASSAL_ASCOIN_RATE, VASSAL_RESEARCH_RATE } from './treaty.js?v=49.1';
 // 注：ensureEntry 已在上面从 ./production.js 一并导入，勿重复 import。
 // v0.1.0：电脑账号（离线存档里的 NPC 势力）与其交易池联动。
 //   注意 npc.js 是叶子模块（只 import 数据表），shop.js 与 state.js 互为函数级引用、无顶层副作用。
-import { ensureNpcs, tickNpcs } from './npc.js?v=48.1';
+import { ensureNpcs, tickNpcs } from './npc.js?v=49.1';
 import {
   priceOf as shopPriceOf, suggestPriceOf as shopSuggestPriceOf,
   tickShop as shopTick,
-} from './shop.js?v=48.1';
-import { tickAuctions, tickNpcAuctionSpawner } from './auction.js?v=48.1';   // v0.2.6 拍卖行；v0.2.10 NPC 挂单
+} from './shop.js?v=49.1';
+import { tickAuctions, tickNpcAuctionSpawner } from './auction.js?v=49.1';   // v0.2.6 拍卖行；v0.2.10 NPC 挂单
 
 const SAVE_PREFIX = 'astrix.save.';
 const INDEX_KEY = SAVE_PREFIX + 'index';
@@ -236,7 +239,19 @@ export function createAccount(name, mode, opts) {
     try {
       const inst = getPlanetInstance(acc.homePlanetCode);
       applyDeepStart(acc, inst);
+      // v0.4.9：漫溯深空接入科幻剧本 —— 势力层 + 经济层（中期开局，铺得起）
+      const fid = (opts && opts.countryId) || SCI_NATIONS[0].id;
+      try { applySciStart(acc, inst, fid); } catch (e2) { softFail('科幻势力层（漫溯深空）', e2); }
+      try { applySciEconomy(acc, inst, fid); } catch (e2) { softFail('科幻经济层（漫溯深空）', e2); }
     } catch (e) { softFail('失败也要保证基础存档可用', e); }
+  } else if (mode === 'fresh') {
+    // v0.4.9：初登星球**只加势力层**（身份/国策/轨道圈层/战区地图/阵营），
+    //   **不铺经济** —— 「一座工厂起步」是这模式的原始定位，铺工厂/科技/物资
+    //   会同时破坏既有自检前提（未建船坞不该有星际 tab、未解锁熔炉不该出现…）。
+    try {
+      const inst = getPlanetInstance(acc.homePlanetCode);
+      applySciStart(acc, inst, (opts && opts.countryId) || SCI_NATIONS[0].id);
+    } catch (e) { softFail('科幻势力层（初登星球）', e); }
   }
   // v0.2.6：官方 mod「1936 剧本」开局 —— 选国家，铺本土 + 属地两颗星球
   if (mode === 'hoi1936') {
@@ -1237,13 +1252,21 @@ export function tick(dt = 1) {
     try { tickAuctions(acc, dt, { getInst: () => getPlanetInstance(acc.homePlanetCode) }); } catch (e) { softFail('拍卖推进', e); }
     // v0.2.10 NPC 拍卖挂单：拍卖行实时出现电脑势力的挂单
     try { tickNpcAuctionSpawner(acc); } catch (e) { softFail('NPC拍卖生成', e); }
-    // v0.2.6：1936 剧本 —— 国策按游戏天数推进 + 产线加成同步到星球
+    // 国策按游戏天数推进 + 产线加成同步到星球
+    // v0.4.9：国策推进对**所有剧本**生效（1936 历史向 / 科幻向都有一套国策树）。
+    //   但下面三件事仍是 1936 专属，因为它们依赖「史实历史节点」：
+    //     · tickDiploAI —— AI 按历史节点主动宣战 / 结盟
+    //     · tickWarsHoi4 —— 战争推进条按历史战役结算
+    //     · tickJustify —— 战争正当化按历史节点解锁对象
+    //   科幻剧本的战争由战区地图的敌方 AI（tickTheaterAI）与玩家主动宣战驱动。
     try {
-      if (acc.scenario === 'hoi1936') {
+      if (acc.scenario) {
         tickFocus(acc, dt);
-        tickDiploAI(acc, dt);   // v0.2.6 rev3：AI 国家主动宣战 / 结盟
-        tickWarsHoi4(acc, dt);  // v0.2.6 rev9：HOI4 式战争推进条
-        tickJustify(acc, dt);   // v0.3.0：战争正当化（60 天）
+        if (acc.scenario === 'hoi1936') {
+          tickDiploAI(acc, dt);
+          tickWarsHoi4(acc, dt);
+          tickJustify(acc, dt);
+        }
         // v0.2.6 rev7：旧存档自愈（住房按庇护需求补齐）—— 进入存档后仅执行一次
         if (!acc._estatesRepaired) {
           acc._estatesRepaired = true;
@@ -1522,6 +1545,173 @@ export const START_MODES = [
 //   设计者要求：开局先选国家，与其他星球模拟的国家对战；数据采用真实历史数据；
 //   本土一个星球 + 殖民地一个星球；参考钢铁雄心 4「风暴前夜」开局。
 // ============================================================================
+// ============================================================================
+// v0.4.9：科幻向开局（普通模式「初登星球」/「漫溯深空」用）
+//
+// 为什么要它
+//   设计者要求「去除二战和地球元素完整移植到普通模式」。此前普通开局虽然已有
+//   行星战区地图（v0.4.8），但那只是**空壳版图**：没有势力性格、没有国策、
+//   军事与经济都是 1936 那套的残留口径（甚至 myNation 兜底成德国）。
+//
+// ⚠ 分层原则（v0.4.9 返工教训）
+//   第一版把 apply1936Start 整套（科技/工厂/物资/人口/装备/产线）照搬过来，
+//   结果**破坏了「初登星球从零开始」的定位** —— 一开局就有几千工位的厂房、
+//   大量科技与物资，连带打破了既有自检的前提：
+//     · 「未建船坞时不应出现星球选择 tab」→ 船坞被铺出来了
+//     · 「未解锁的熔炉不应出现在建筑面板」→ 科技被点满了
+//     · 「装备未齐时不应能开组装线」→ 装备被配发了
+//   设计者要的是**内容与机制去二战化**，不是把标准开局改造成另一个剧本开局。
+//   因此拆成两层：
+//     · applySciStart()      —— 势力层（身份/国策/圈层/战区/阵营），所有模式都加，
+//                               不动经济基础，玩家仍从零开始
+//     · applySciEconomy()    —— 经济层（工厂/物资/人口/装备/产线），
+//                               **只给「漫溯深空」这种中期开局**用
+// ============================================================================
+
+/** 势力层：给账号一个科幻势力身份 + 一套可玩的战争系统（不铺经济） */
+function applySciStart(acc, inst, factionId) {
+  const A = sciAdapterOf();
+  const n = A.byId[factionId] || A.nations[0];
+  acc.scenario = SCI_SCENARIO_ID;
+  acc.nation = n.id;
+  acc.wars = acc.wars || [];
+  acc.warLog = acc.warLog || [];
+  acc.capturedPlanets = Array.isArray(acc.capturedPlanets) ? acc.capturedPlanets : [];
+
+  // 1) 本土星球：以势力首府命名（仅当玩家还没自定义过名字时才改）
+  if (!inst.nameCn || inst.nameCn.indexOf('（本土）') >= 0) {
+    inst.nameCn = n.capital;
+    inst.nameEn = n.nameEn;
+  }
+
+  // 2) 剧本时钟 + 国策 + 轨道圈层（机制层，不涉及经济）
+  acc.scenarioStartedAt = Date.now();
+  ensureFocus(acc);
+  ensureSeas(acc);
+
+  // 3) 开局简报（替代 1936 的「历史背景」）
+  try {
+    if (!acc._sciBrief) {
+      acc._sciBrief = true;
+      const bg = backgroundOf(acc);
+      if (bg) acc.warLog.unshift({ at: Date.now(), text: '【开局 · 局势】' + bg });
+      acc.warLog.unshift({ at: Date.now(), text: '【所属】' + n.nameCn + ' · 首府 ' + n.capital
+        + ' · 陆军 ' + n.divisions + ' 师 · 海军 ' + n.navy + ' 舰 · 轨道火力 ' + n.airforce
+        + '　|　阵营：' + (blocNameOf(acc) || '无所属') });
+      acc.warLog.unshift({ at: Date.now(), text: '【提示】在「战区」页选择国策推进势力发展；'
+        + '地图上的敌对势力可直接宣战，占领其战区与殖民地。' });
+    }
+  } catch (e) { softFail('科幻开局简报', e); }
+
+  // 4) 阵营（同阵营势力自动成为盟友）
+  try { setupBloc(acc, n); } catch (e) { softFail('科幻阵营初始化', e); }
+
+  // 5) 战区地图：按科幻势力表铺版图（generateTheater 内部按 scenario 选势力源）
+  try { ensureTheater(acc); } catch (e) { softFail('科幻战区地图生成', e); }
+}
+
+/**
+ * 经济层：按势力规模铺工业 / 物资 / 人口 / 装备 / 产线。
+ * **仅「漫溯深空」调用** —— 初登星球保持「一座工厂起步」的原始定位。
+ */
+function applySciEconomy(acc, inst, factionId) {
+  const A = sciAdapterOf();
+  const n = A.byId[factionId] || A.nations[0];
+  const ic = n.ic;
+
+  // 1) 科技：工业全线贯通 + 军事三级（与 1936 同口径，保证战斗/产线系统可用）
+  acc.tech = ['t_a1', 't_a2', 't_b8', 't_b1', 't_c1', 't_e2', 't_b2', 't_c2', 't_e4',
+    't_a4', 't_b5', 't_b7', 't_e3', 't_d1', 't_d2', 't_b3', 't_c3', 't_e1',
+    't_m1', 't_m2', 't_m3'];
+  acc._armyTechV3 = true;
+  acc.researchPoints = Math.round(ic * 2500);
+
+  // 2) 工业建筑群（按工业规模铺开，为生产线提供工位）
+  try { setupFactories(inst, n); } catch (e) { softFail('科幻本土工厂铺设', e); }
+
+  // 2) 物资：按工业与人口换算，资源禀赋按势力产业侧重倾斜
+  //   （替代 1936 的「历史资源禀赋」表 —— 这里按科幻设定给每个势力不同的特产）
+  const SCI_RES_MUL = {
+    sci_terran: { 钢: 1.3, 铝: 1.2, 钛: 1.1, 塑料: 1.1 },
+    sci_martian: { 铁: 1.5, 钢: 1.2, 碳化钨: 1.3 },
+    sci_outer: { 铝: 1.4, 钛: 1.2, 钢: 0.9 },
+    sci_lunar: { 铝: 1.5, 钛合金: 1.4, 钢: 0.8 },
+    sci_ceres: { 碳: 1.5, 钢: 1.1, 铜: 1.2 },
+    sci_europa: { 水: 1.5, 陶瓷: 1.2, 有机质: 1.2 },
+    sci_titan: { 有机质: 1.4, 橡胶: 1.3, 铝: 1.1 },
+    sci_belt: { 碳: 1.3, 铁: 1.2, 塑料: 1.2 },
+  };
+  const rmul = (mat) => ((SCI_RES_MUL[n.id] || {})[mat] || 1);
+  const bundle = {
+    石头: 1e5, 泥土: 6e4,
+    有机质: Math.round(n.popM * 900), 水: Math.round(n.popM * 900),
+    粘土: 3e4, 石墨: 2e4, 石英: Math.round(ic * 500),
+    铁: Math.round(ic * 700), 铜: Math.round(ic * 300), 铝: Math.round(ic * 350),
+    钢: Math.round(ic * 260), 玻璃: Math.round(ic * 120), 陶瓷: Math.round(ic * 130),
+    塑料: Math.round(ic * 90), 橡胶: Math.round(ic * 55), 钛: Math.round(ic * 40),
+    铝合金: Math.round(ic * 25), 碳化钨: Math.round(ic * 12), 钛合金: Math.round(ic * 18),
+  };
+  for (const name in bundle) {
+    const e = inst.inventory.find((x) => x && x.mat === name);
+    const qty = Math.round(bundle[name] * rmul(name));
+    if (e) e.owned = Math.min(Number(e.reserve) || qty, (Number(e.owned) || 0) + qty);
+    else {
+      const ne = ensureEntry(inst, name, 'refined');
+      ne.owned = qty;
+    }
+  }
+  inst.facilityStock = Object.assign({}, inst.facilityStock || {}, { battery_m: 4, solar_m: 3, wind_m: 3, thermal_m: 2 });
+
+  // 5) 人口 + 剧本时钟（1 真实秒 = 1 游戏天）
+  if (inst.pop) {
+    inst.pop.total = sciPopOf(n);
+    inst.pop.consumeScale = 1 / 650;   // 与 1936 同口径：否则大人口秒吃空库存
+  }
+  acc.ascoin = Math.round(ic * 4000 + n.divisions * 600);
+
+  // 3) 装备配发（与工业挂钩）
+  inst.equipment = inst.equipment || {};
+  const gearMul = 1 + Math.min(1.5, n.ic / 80);
+  const gm = (x) => Math.max(1, Math.round(x * gearMul));
+  const gear = {
+    'ap_frame_light@钢': gm(n.divisions * 3), 'ap_wpn_rifle@钢': gm(n.divisions * 4),
+    'ap_armor_light@钢': gm(n.divisions * 1.5), 'ap_mob_wheel@钢': gm(n.divisions * 1.5),
+    'ap_frame_heavy@钢': gm(n.divisions), 'ap_wpn_hmg@钢': gm(n.divisions),
+    'ap_armor_composite@钢': gm(n.divisions * 0.8), 'ap_wpn_howitzer@钢': gm(n.divisions * 0.6),
+    'ap_sup_radar@钢': gm(n.divisions * 0.4), 'ap_sup_supply@钢': gm(n.divisions * 0.4),
+  };
+  for (const key in gear) {
+    const [partId, material] = key.split('@');
+    const cnt = Math.max(0, Math.round(gear[key]));
+    if (!cnt) continue;
+    const e = inst.equipment[key] || { partId, material: material || null, count: 0 };
+    e.count = (Number(e.count) || 0) + cnt;
+    inst.equipment[key] = e;
+  }
+
+  // 4) 军队 / 产线（走适配器 → 科幻数据）
+  //   注意：阵营与战区地图属于**势力层**（applySciStart 已做），这里不重复。
+  try { setupArmies(acc, n); } catch (e) { softFail('科幻军队铺设', e); }
+  acc.blueprints = defaultBlueprints();
+  acc.blueprint = acc.blueprints[0];
+  // v0.4.9：**科幻剧本不铺历史战舰**。
+  //   setupNavy 造的是 `kind:'warship'` 的战役用 warships（strength/hp，HOI4 口径），
+  //   它们**没有 Astrix 舰船物理字段**（TempK / massT / heatCapacity…），
+  //   而舰船页与 tickShip 会按 Astrix 舰船处理它们 →
+  //   普通模式一旦铺了战舰，「舰船」页详情与心跳就会崩（v0.4.9 回归自检实测）。
+  //   科幻剧本的海军由**轨道圈层控制权**表达（见 ensureSeas / contestSea），
+  //   玩家要建舰走正常的「船坞 + 蓝图」流程，那条链路是完整可用的。
+  try {
+    const wf = setupLines(inst, n);
+    acc.hoiWorkforce = (wf && wf.workers) || 0;
+    acc.hoiLines = (wf && wf.lines) || [];
+  } catch (e) { softFail('科幻生产线铺设', e); }
+  try {
+    const st = staffBuildings(inst.pop, inst);
+    acc.hoiStaffJobs = (st && st.jobs) || 0;
+  } catch (e) { softFail('科幻岗位分配', e); }
+}
+
 function apply1936Start(acc, inst, countryId) {
   const n = HOI_BY_ID[countryId] || HOI_NATIONS[0];
   acc.scenario = HOI_SCENARIO_ID;

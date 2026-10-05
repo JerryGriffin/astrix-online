@@ -9,17 +9,17 @@
 // 「船上设施」已从科技树移到「设施」子分类，科技树里只保留解锁它们的节点。
 //
 // 研究点存放在账号对象上（acc.researchPoints / acc.tech / acc.upgrades）。
-import { TECHS, TECH_BY_ID, BRANCHES, techsByTier, canResearch, missingPrereqs, missingBuilding, facilityTechs } from '../data/techs.js?v=48.1';
-import { researchTech, buyUpgrade, currentAccount, getPlanetInstance, RESEARCH_UNIT } from '../core/state.js?v=48.1';
-import { UPGRADES, upgradeCost, upgradeMul, upgradeFactorAt } from '../data/upgrades.js?v=48.1';
-import { BUILDING_BY_ID } from '../data/buildings.js?v=48.1';
-import { FACILITIES, MATERIAL_SLOTS, DEFAULT_MATERIAL, isPartUnlocked } from '../data/ship_parts.js?v=48.1';
-import { materialMul, resolvePart } from '../core/shipyard.js?v=48.1';
-import { fmtNum, fmtTime, fmtRate } from '../core/format.js?v=48.1';
-import { jobsOfBuilding, jobOutput } from '../core/population.js?v=48.1';
+import { TECHS, TECH_BY_ID, BRANCHES, techsByTier, canResearch, missingPrereqs, missingBuilding, facilityTechs } from '../data/techs.js?v=49.1';
+import { researchTech, buyUpgrade, currentAccount, getPlanetInstance, RESEARCH_UNIT } from '../core/state.js?v=49.1';
+import { UPGRADES, upgradeCost, upgradeMul, upgradeFactorAt } from '../data/upgrades.js?v=49.1';
+import { BUILDING_BY_ID } from '../data/buildings.js?v=49.1';
+import { FACILITIES, MATERIAL_SLOTS, DEFAULT_MATERIAL, isPartUnlocked } from '../data/ship_parts.js?v=49.1';
+import { materialMul, resolvePart } from '../core/shipyard.js?v=49.1';
+import { fmtNum, fmtTime, fmtRate } from '../core/format.js?v=49.1';
+import { jobsOfBuilding, jobOutput } from '../core/population.js?v=49.1';
 // v0.4.7：el() 收敛到 ui/common.js（此前本文件自带一份；全项目共 14 份、两种不兼容签名，
 //   v0.3.2「列强区块不显示」即源于把 A 型调用写进了 B 型文件）
-import { el } from './common.js?v=48.1';
+import { el } from './common.js?v=49.1';
 
 function esc(s) {
   return String(s).replace(/[&<>"']/g, (c) => (

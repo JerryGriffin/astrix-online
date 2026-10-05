@@ -67,25 +67,56 @@ export function isGenericFaction(id) {
   return String(id || '').indexOf(FAC_PREFIX) === 0;
 }
 
+/** 是否是科幻剧本势力（sci_ 前缀） */
+export function isSciFaction(id) {
+  return String(id || '').indexOf('sci_') === 0;
+}
+
 /**
  * 任意 owner id → 势力名。
- * 同时认识 1936 国家与通用势力，供 UI 在两种剧本下都能显示战区归属。
+ * 同时认识三类 id：1936 国家（'ger'）、通用势力（'fac_*'）、科幻剧本势力（'sci_*'）。
+ * 供 UI 在三种剧本下都能显示战区归属。
  * 查不到时返回兜底名（而不是 undefined，避免 UI 出现「undefined」字样）。
  *
- * @param {string} id owner id（如 'ger' / 'fac_rim' / 'player'）
+ * @param {string} id owner id（如 'ger' / 'fac_rim' / 'sci_martian' / 'player'）
  * @param {object} hoiById 1936 国家表（可选，传入可解析国家名）
- * @param {object} opts { playerName } 玩家自己的势力名（默认「我方」）
+ * @param {object} opts { playerName, playerId } 玩家自己的势力名
  */
 export function factionNameCn(id, hoiById, opts) {
   const key = String(id || '');
   const o = opts || {};
-  if (o.playerName && (key === o.playerId || (!o.playerId && key === 'player'))) return o.playerName;
+  if (o.playerName && key === o.playerId) return o.playerName;
   const g = GENERIC_FACTION_BY_ID[key];
   if (g) return g.nameCn;
+  // v0.4.9：科幻剧本势力（data/scenario_sci.js）。这里按需引用以避免本模块
+  //   与 scenario_sci 形成加载顺序依赖 —— 静态 import 会在两文件互相引用时出问题。
+  if (key.indexOf('sci_') === 0) {
+    const sci = sciFactionOf(key);
+    if (sci) return sci.nameCn;
+  }
   if (key === 'player') return '我方';
   if (hoiById && hoiById[key] && hoiById[key].nameCn) return hoiById[key].nameCn;
   if (!key) return '中立';
   return '未知势力';
+}
+
+/** 按需取科幻势力定义（带缓存；找不到返回 null） */
+let _sciTable = null;
+function sciFactionOf(id) {
+  if (!_sciTable) {
+    try {
+      // 同步 require 不可用（ESM），改为读全局缓存 —— 由 scenario_sci.js 注入。
+      _sciTable = (typeof globalThis !== 'undefined' && globalThis.__SCI_NATIONS__) || null;
+    } catch (e) { _sciTable = null; }
+  }
+  if (!_sciTable) return null;
+  return _sciTable.find((n) => n && n.id === id) || null;
+}
+
+/** scenario_sci.js 在加载时调用，把自己注入全局（避免 factions.js 静态 import 造成循环） */
+export function registerSciFactions(list) {
+  _sciTable = Array.isArray(list) ? list : null;
+  if (typeof globalThis !== 'undefined') globalThis.__SCI_NATIONS__ = _sciTable;
 }
 
 /** 任意 owner id → 旗帜（无则空串） */
@@ -93,6 +124,7 @@ export function factionFlag(id, hoiById) {
   const key = String(id || '');
   const g = GENERIC_FACTION_BY_ID[key];
   if (g) return g.flag || '';
+  if (key.indexOf('sci_') === 0) { const s2 = sciFactionOf(key); if (s2) return s2.flag || ''; }
   if (hoiById && hoiById[key] && hoiById[key].flag) return hoiById[key].flag;
   return '';
 }
@@ -102,6 +134,7 @@ export function factionDesc(id, hoiById) {
   const key = String(id || '');
   const g = GENERIC_FACTION_BY_ID[key];
   if (g) return g.desc || '';
+  if (key.indexOf('sci_') === 0) { const s2 = sciFactionOf(key); if (s2) return s2.desc || ''; }
   if (hoiById && hoiById[key] && hoiById[key].desc) return hoiById[key].desc || '';
   return '';
 }
@@ -111,6 +144,7 @@ export function factionPower(id, hoiById) {
   const key = String(id || '');
   const g = GENERIC_FACTION_BY_ID[key];
   if (g) return { divisions: Number(g.divisions) || 0, ic: Number(g.ic) || 0 };
+  if (key.indexOf('sci_') === 0) { const s2 = sciFactionOf(key); if (s2) return { divisions: Number(s2.divisions) || 0, ic: Number(s2.ic) || 0 }; }
   const n = hoiById && hoiById[key];
   if (n) return { divisions: Number(n.divisions) || 0, ic: Number(n.ic) || 0 };
   return { divisions: 0, ic: 0 };

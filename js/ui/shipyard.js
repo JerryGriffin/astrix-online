@@ -12,32 +12,32 @@
 //
 // 全部数值计算都在 js/core/shipyard.js，本文件只负责渲染与交互。
 
-import { MATERIALS } from '../data/materials.js?v=48.1';
+import { MATERIALS } from '../data/materials.js?v=49.1';
 import {
   HULLS, ENGINES, WEAPONS, FACILITIES,
   MATERIAL_SLOTS, DEFAULT_MATERIAL,
   isPartUnlocked,
-} from '../data/ship_parts.js?v=48.1';
-import { POWER_FACILITIES, POWER_FACILITY_BY_ID } from '../data/facilities.js?v=48.1';
-import { FUELS } from '../data/fuels.js?v=48.1';
+} from '../data/ship_parts.js?v=49.1';
+import { POWER_FACILITIES, POWER_FACILITY_BY_ID } from '../data/facilities.js?v=49.1';
+import { FUELS } from '../data/fuels.js?v=49.1';
 import {
   emptyBlueprint, evaluateBlueprint, launchShip, tickShip,
   resolvePart, materialMul, materialOptionsFor, safeTempBand, tempStatus, envTempK, equilibriumTemp,
   ensureBlueprints, shipBuildCheck, findBlueprint, blueprintBuildCost,
   blueprintOfShip,
-} from '../core/shipyard.js?v=48.1';
-import { BUILDING_BY_ID } from '../data/buildings.js?v=48.1';
-import { fmtNum, fmtTime } from '../core/format.js?v=48.1';
+} from '../core/shipyard.js?v=49.1';
+import { BUILDING_BY_ID } from '../data/buildings.js?v=49.1';
+import { fmtNum, fmtTime } from '../core/format.js?v=49.1';
 // v0.0.5：建筑计数已迁到星球实例（inst.buildings），船坞工占用来自人力系统
-import { getPlanetInstance, getBuildingCounts, currentAccount } from '../core/state.js?v=48.1';
-import { jobsOfBuilding, getJobCount, buildingSlots, assignedToBuilding, freeSlots, getIntensity } from '../core/population.js?v=48.1';
+import { getPlanetInstance, getBuildingCounts, currentAccount } from '../core/state.js?v=49.1';
+import { jobsOfBuilding, getJobCount, buildingSlots, assignedToBuilding, freeSlots, getIntensity } from '../core/population.js?v=49.1';
 // v0.1.1（需求 3）：建造按钮改为创建 dock 造船线，走生产线的工位与人力结算
-import { addLine, ensureLines, linesOf, removeLine, lineSlotInfo, freeLaborOf, materialLookup } from '../core/production.js?v=48.1';
+import { addLine, ensureLines, linesOf, removeLine, lineSlotInfo, freeLaborOf, materialLookup } from '../core/production.js?v=49.1';
 // R19-2：造船除装备外按部件扣材料（spendOwned 整笔扣，ownedOf 查库存），不碰 core/state.js
-import { ownedOf, spendOwned } from '../core/state.js?v=48.1';
+import { ownedOf, spendOwned } from '../core/state.js?v=49.1';
 // v0.4.7：el() 收敛到 ui/common.js（此前本文件自带一份；全项目共 14 份、两种不兼容签名，
 //   v0.3.2「列强区块不显示」即源于把 A 型调用写进了 B 型文件）
-import { el } from './common.js?v=48.1';
+import { el } from './common.js?v=49.1';
 
 const SHIP_BUILDING_ID = 'dock';
 const SHIP_TECH_ID = 't_e3';

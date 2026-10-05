@@ -1,12 +1,14 @@
 // 开始界面：标题、离线/在线模式、账号选择、各次要入口模态层（Astrix）
-import {  STATE, createAccount, switchAccount, deleteAccount, currentAccount, START_MODES, switchPool  } from '../core/state.js?v=48.1';
-import { HOI_NATIONS } from '../data/hoi1936.js?v=48.1';   // v0.2.6 官方 mod 1936 剧本
-import { fmtNum, fmtTime } from '../core/format.js?v=48.1';
+import {  STATE, createAccount, switchAccount, deleteAccount, currentAccount, START_MODES, switchPool  } from '../core/state.js?v=49.1';
+import { HOI_NATIONS } from '../data/hoi1936.js?v=49.1';   // v0.2.6 官方 mod 1936 剧本
+// v0.4.9：科幻势力（普通模式开局可选，与 HOI_NATIONS 同构）
+import { SCI_NATIONS } from '../data/scenario_sci.js?v=49.1';
+import { fmtNum, fmtTime } from '../core/format.js?v=49.1';
 // 版本号与更新日志的唯一来源：任何地方要显示版本都从这里取，改版本只改 js/version.js 一处
-import { VERSION, VERSIONS } from '../version.js?v=48.1';
+import { VERSION, VERSIONS } from '../version.js?v=49.1';
 // v0.4.7：el() 收敛到 ui/common.js（此前本文件自带一份；全项目共 14 份、两种不兼容签名，
 //   v0.3.2「列强区块不显示」即源于把 A 型调用写进了 B 型文件）
-import { el } from './common.js?v=48.1';
+import { el } from './common.js?v=49.1';
 
 function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, (c) => (
@@ -217,37 +219,63 @@ function renderNewSaveForm(body, ctx, pool) {
     modeTip.textContent = START_MODES[0].desc;
   }
 
-  // v0.2.6：1936 剧本 —— 选择国家（真实历史数据预览）
-  let countryId = HOI_NATIONS[0].id;
+  // 开局势力/国家选择。
+  // v0.2.6：1936 剧本选国家（真实历史数据预览）
+  // v0.4.9：普通模式（初登星球 / 漫溯深空）也接入**科幻势力**选择 ——
+  //   两套数据同构（flag/nameCn/nameEn/capital/popM/ic/divisions/navy/airforce/desc），
+  //   所以复用同一个下拉框，只按当前开局模式换数据源。
+  const isSci = () => mode !== 'hoi1936';
+  const factionList = () => (isSci() ? SCI_NATIONS : HOI_NATIONS);
+  let countryId = (isSci() ? SCI_NATIONS[0] : HOI_NATIONS[0]).id;
   const countryBox = el('div', 'acc-country-box');
-  countryBox.style.display = 'none';
   const cSel = document.createElement('select');
   cSel.className = 'acc-new-input';
   cSel.style.minHeight = '44px';
-  for (const n of HOI_NATIONS) {
-    const o = document.createElement('option');
-    o.value = n.id;
-    o.textContent = n.flag + ' ' + n.nameCn + '（' + n.nameEn + '）';
-    cSel.appendChild(o);
-  }
   const cInfo = el('p', 'acc-new-tip muted', '');
+
+  // 切换开局模式 → 换势力列表（两套 id 前缀不同，必须重建 option）
+  const fillFactionOptions = () => {
+    const list = factionList();
+    if (!list.some((x) => x.id === countryId)) countryId = list[0].id;
+    cSel.innerHTML = '';
+    for (const n of list) {
+      const o = document.createElement('option');
+      o.value = n.id;
+      o.textContent = n.flag + ' ' + n.nameCn + '（' + n.nameEn + '）';
+      cSel.appendChild(o);
+    }
+    cSel.value = countryId;
+    renderCountryInfo();
+  };
   const renderCountryInfo = () => {
-    const n = HOI_NATIONS.find((x) => x.id === countryId) || HOI_NATIONS[0];
-    cInfo.textContent = '首都 ' + n.capital + ' · 人口 ' + n.popM + ' 百万 · 工业 ' + n.ic
-      + ' · 陆军 ' + n.divisions + ' 师 · 海军 ' + n.navy + ' 舰 · 空军 ' + n.airforce + ' 百架\n'
-      + '本土：' + n.capital + '　属地：' + n.colony.name + '\n' + n.desc;
+    const list = factionList();
+    const n = list.find((x) => x.id === countryId) || list[0];
+    // v0.4.9：1936 有「属地」字段（历史殖民地），科幻势力没有这一项
+    const colonyLine = n.colony ? ('\n本土：' + n.capital + '　属地：' + n.colony.name) : '';
+    cInfo.textContent = (isSci() ? '首府 ' : '首都 ') + n.capital
+      + ' · 人口 ' + n.popM + ' 百万 · 工业 ' + n.ic
+      + ' · 陆军 ' + n.divisions + ' 师 · 海军 ' + n.navy + ' 舰'
+      + ' · ' + (isSci() ? '轨道火力 ' : '空军 ') + n.airforce + '\n'
+      + colonyLine + '\n' + (n.desc || '');
     cInfo.style.whiteSpace = 'pre-line';
   };
   cSel.addEventListener('change', () => { countryId = cSel.value; renderCountryInfo(); });
   countryBox.append(cSel, cInfo);
-  renderCountryInfo();
+  fillFactionOptions();
 
-  // 切换开局模式时显示 / 隐藏国家选择
+  // 切换开局模式时刷新势力列表
+  // v0.4.9：用「后注册先执行」的顺序**同步**刷新，不用 setTimeout。
+  //   原先用 setTimeout(syncCountryBox, 0) 会读到**还没被更新的 mode** 闭包值
+  //   （mode 在上面那个 onclick 里才赋值），导致选「风暴前夜」时下拉里
+  //   仍显示科幻势力 —— 冒烟 A 段实测 optionCount=8 / firstOption=地球联邦。
+  //   addEventListener 在 onclick 之后注册 → 同一事件里后执行，此时 mode 已是新值。
   const modeBtnsAll = Array.from(modeRow.querySelectorAll('button'));
-  const syncCountryBox = () => { countryBox.style.display = mode === 'hoi1936' ? 'block' : 'none'; };
+  const syncCountryBox = () => {
+    countryBox.style.display = 'block';   // v0.4.9：所有开局都可选势力
+    fillFactionOptions();
+  };
   for (const b of modeBtnsAll) {
-    const prev = b.onclick;
-    b.addEventListener('click', () => setTimeout(syncCountryBox, 0));
+    b.addEventListener('click', syncCountryBox);
   }
   syncCountryBox();
 
