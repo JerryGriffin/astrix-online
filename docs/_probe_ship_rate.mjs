@@ -1,7 +1,7 @@
 // 临时探针：验证「造船严格一个一个造」+ 乘员提升 + 速率下调（v0.3.3）
-import { shipBuildTick, blueprintBuildCost, evaluateBlueprint, aggregate, addEquipment, createShip } from '../js/core/shipyard.js?v=49.1';
-import { HULLS, ENGINES, FACILITIES, craftWorkOf } from '../js/data/ship_parts.js?v=49.1';
-import { ARMY_PARTS } from '../js/data/army_parts.js?v=49.1';
+import { shipBuildTick, blueprintBuildCost, evaluateBlueprint, aggregate, addEquipment, createShip } from '../js/core/shipyard.js?v=49.2';
+import { HULLS, ENGINES, FACILITIES, craftWorkOf } from '../js/data/ship_parts.js?v=49.2';
+import { ARMY_PARTS } from '../js/data/army_parts.js?v=49.2';
 
 let pass = 0, fail = 0;
 function check(name, cond, detail) {

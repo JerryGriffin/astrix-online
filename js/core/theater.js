@@ -32,10 +32,10 @@
 // v0.4.8：HOI_MAIN_NATIONS 只在「风暴前夜」剧本用作势力源；
 //   其余剧本改用 data/factions.js 的通用势力表（见 generateTheater 内的说明）。
 //   HOI_BY_ID 仍保留 —— UI 要靠它把 owner id 解析成国家名/旗帜。
-import { HOI_BY_ID, HOI_MAIN_NATIONS } from '../data/hoi1936.js?v=49.1';
-import { GENERIC_FACTIONS } from '../data/factions.js?v=49.1';
+import { HOI_BY_ID, HOI_MAIN_NATIONS } from '../data/hoi1936.js?v=49.2';
+import { GENERIC_FACTIONS } from '../data/factions.js?v=49.2';
 // v0.4.9：科幻剧本势力表（普通开局用；8 个完整势力，含 popM/ic/divisions 可按实力分领土）
-import { SCI_NATIONS } from '../data/scenario_sci.js?v=49.1';
+import { SCI_NATIONS } from '../data/scenario_sci.js?v=49.2';
 
 export const THEATER_COLS = 6;
 export const THEATER_ROWS = 6;
@@ -122,7 +122,7 @@ const TERRAIN_WORDS = {
 // ---------------------------------------------------------------------------
 // v0.4.7：hash32 / clamp 已收敛到 core/util.js（与 battle.js 共用唯一实现）。
 // 实测与原实现逐位一致，收敛零回归。
-import { hash32, clamp } from './util.js?v=49.1';
+import { hash32, clamp } from './util.js?v=49.2';
 function smooth(t) { return t * t * (3 - 2 * t); }
 /** 二维值噪声（格点 hash + 双线性平滑） */
 function noise2(seed, x, y) {
@@ -866,7 +866,32 @@ export function aiFlankPlans(acc, war, target) {
   //   AI 夹击会静默失效（plans 恒为 0），测试直接把它抓出来了。
   const pool = acc.foePools && acc.foePools[foePoolKey(war)];
   if (!pool || pool.divisions <= 0) return [];       // 被打空了就没法再投师
-  const origins = neighborsIn(t.regions, target).filter((r) => r.owner === foe);
+
+  // ---- 来源战区选取：邻接优先，不足则**跨区投送**（v0.4.9）----
+  // v0.4.7 修好了这里的崩溃，但触发条件本身太严：原本只认 8 邻接的敌方战区，
+  //   而 generateTheater 的 growBlob 让各势力领土连成互不相连的块
+  //   （taken 集合保证不重叠 + candidateHomes 把敌方本土放得远离玩家）
+  //   → 实测 15 个种子，「我方战区有 ≥2 个敌方 8 邻接」的最大值只有 0~1，
+  //   也就是说 v0.4.3 主打的「敌方多路夹击」在真实游戏里几乎永远开不出来。
+  // 现在：邻接区优先；不够 2 个时退化为「从任意敌方战区按距离取最近的补足」，
+  //   语义上等于**战略投送**（AI 调兵而非贴身推进），frontInfoOf 只要求
+  //   originId 互不相同即可形成多方向夹击，因此这样是成立的。
+  const near = neighborsIn(t.regions, target).filter((r) => r.owner === foe);
+  let origins = near;
+  if (origins.length < 2) {
+    // 距离目标越近越优先（曼哈顿距离，平手按 id 稳定排序 —— 保证结果可复现）
+    const all = t.regions
+      .filter((r) => r.owner === foe)
+      .map((r) => ({ r, d: Math.abs(r.x - target.x) + Math.abs(r.y - target.y) }))
+      .sort((a, b) => (a.d - b.d) || (a.r.id < b.r.id ? -1 : 1))
+      .map((x) => x.r);
+    const picked = near.slice();
+    for (const r of all) {
+      if (picked.length >= 2) break;
+      if (picked.indexOf(r) < 0) picked.push(r);
+    }
+    origins = picked;
+  }
   if (origins.length < 2) return [];
   // 每个来源只出一条战线（同来源叠加无效，见 frontInfoOf）
   const plans = [];

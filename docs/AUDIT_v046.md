@@ -140,7 +140,7 @@ try {
 | **`clamp` 5 份 / `mulberry32` 2 份 / `hash32` 2 份** | 无 `core/util.js` | 第三处新增时无从复用 |
 | **师战力推导三套写法** | battle.js:410 / 1616 / 1339 | 需手工保持同步，UI 显示值可能与实际入战战力不符 |
 | **旧战后处置路径未删** | galaxy.js:29 仍 import `applyPostwarChoice` | 新旧两条路径产出不同战后状态，且都可达 |
-| **229 处 `?v=49.1` 硬编码** | 36 个文件 | 全靠 `docs/bump_imports.mjs` 文本替换维持；漏跑即产生模块双实例（STATE 单例分裂） |
+| **229 处 `?v=49.2` 硬编码** | 36 个文件 | 全靠 `docs/bump_imports.mjs` 文本替换维持；漏跑即产生模块双实例（STATE 单例分裂） |
 
 ### 🟠 P2 性能
 

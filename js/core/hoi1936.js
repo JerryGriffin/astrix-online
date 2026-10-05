@@ -12,15 +12,15 @@
 import { HOI_NATIONS, HOI_BY_ID, HOI_MAIN_NATIONS, HOI_MAIN_BY_ID, HOI_DEEP, HOI_SEAS, ARMY_MEN, popOf, BLOC_NAME, HOI_SCENARIO_ID,
   workforceOf, ARMY_POWER_PER_DIV, WORKFORCE_PER_IC, NAVY_MUL, GEAR_PARTS, SHIP_NAMES, ARMY_BP_NAME, HOI_BG, SHIP_CLASSES, POST_WAR_OPTIONS, GER_PUPPETS, ARMY_BP_LINE, warshipTonnageOf, WAR_LINE, EXTRA_FOCUS_TEMPLATE, JUSTIFY_DAYS, NATION_SEA_REGION, SEA_INITIAL_CONTROL, NAVAL_INVASION_CONTROL,
   // v0.3.3：历史事件时间表（「战争按历史来，不要随便乱宣战」）
-  HIST_TIMELINE, histEventsAt, histWarBetween, histWarTargetsFor } from '../data/hoi1936.js?v=49.1';
-import { BUILDING_BY_ID } from '../data/buildings.js?v=49.1';
-import { ARMY_BP_BY_ID, ARMY_BLUEPRINTS } from '../data/army_parts.js?v=49.1';
-import { JOBS_BY_BUILDING, assignWorkers, jobCapacity, getAvailable } from './population.js?v=49.1';
-import { ELITE_DIVISIONS, ELITE_MUL } from '../data/hoi1936.js?v=49.1';
+  HIST_TIMELINE, histEventsAt, histWarBetween, histWarTargetsFor } from '../data/hoi1936.js?v=49.2';
+import { BUILDING_BY_ID } from '../data/buildings.js?v=49.2';
+import { ARMY_BP_BY_ID, ARMY_BLUEPRINTS } from '../data/army_parts.js?v=49.2';
+import { JOBS_BY_BUILDING, assignWorkers, jobCapacity, getAvailable } from './population.js?v=49.2';
+import { ELITE_DIVISIONS, ELITE_MUL } from '../data/hoi1936.js?v=49.2';
 // v0.3.3：战争槽位上限（与 core/war.js 同源；war.js 不 import 本文件，无循环依赖）
-import { WAR_MAX_ACTIVE } from './war.js?v=49.1';
+import { WAR_MAX_ACTIVE } from './war.js?v=49.2';
 // v0.3.4：战役系统（敌方主动进攻 + 战线管理）。battle.js 不 import 本文件，无循环依赖。
-import { startBattle, listBattles, BATTLE_MAX_PER_WAR, IDLE_PROGRESS_PER_DAY, SPACE_TERRAIN_IDS } from './battle.js?v=49.1';
+import { startBattle, listBattles, BATTLE_MAX_PER_WAR, IDLE_PROGRESS_PER_DAY, SPACE_TERRAIN_IDS } from './battle.js?v=49.2';
 
 // 依赖注入（避免与 state.js / production.js 形成循环导入）
 let _getInst = null;
@@ -52,7 +52,7 @@ import {
   SCI_ARMY_BP_NAME, SCI_SHIP_NAMES, SCI_SHIP_CLASSES, SCI_POST_WAR_OPTIONS,
   SCI_ARMY_BP_LINE, SCI_ELITE_DIVISIONS, SCI_ELITE_MUL, SCI_NAVY_MUL,
   SCI_WORKFORCE_PER_IC, SCI_POWER_PER_DIV, sciPopOf, sciWorkforceOf,
-} from '../data/scenario_sci.js?v=49.1';
+} from '../data/scenario_sci.js?v=49.2';
 
 function hoiAdapter() {
   return {

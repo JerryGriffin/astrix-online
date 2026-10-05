@@ -28,17 +28,17 @@
 // 约定：不 import state.js（账号对象由调用方传入），与 army.js 同构。
 // ============================================================================
 
-import { armyById, armyEffStats, armyPowerOf } from './army.js?v=49.1';
-import { fleetPowerOf } from './fleet.js?v=49.1';   // v0.4.0：空间舰队实力 → 轨道控制
-import { HOI_BY_ID } from '../data/hoi1936.js?v=49.1';
+import { armyById, armyEffStats, armyPowerOf } from './army.js?v=49.2';
+import { fleetPowerOf } from './fleet.js?v=49.2';   // v0.4.0：空间舰队实力 → 轨道控制
+import { HOI_BY_ID } from '../data/hoi1936.js?v=49.2';
 // v0.4.1：行星战区地图 —— 战斗「在哪打」、打赢后归谁、补给通不通
 import {
   ensureTheater, regionById, regionSupplyOf, refreshSupply, captureRegion,
   applyColonyProgress, decayStrikePressure, GARRISON_MAX,
   frontInfoOf, canOpenFront, REGION_MAX_FRONTS, SIEGE_REQUIRED,
-} from './theater.js?v=49.1';
+} from './theater.js?v=49.2';
 // 迫降线（与 core/war.js 同源常量；此处只读，避免反向依赖 war.js）
-import { WAR_FORCE_SURRENDER_SCORE } from './war.js?v=49.1';
+import { WAR_FORCE_SURRENDER_SCORE } from './war.js?v=49.2';
 // 注意：**不 import core/hoi1936.js** —— 它要 import 本模块来驱动敌方进攻，
 //   这里再反向 import 就成了循环依赖。战役时钟用本文件自己的 BATTLE_HOURS_PER_SEC。
 
@@ -227,7 +227,7 @@ export function orbitalControlOf(acc, targetId) {
 // v0.4.7：确定性随机与 clamp 已收敛到 core/util.js（唯一实现）。
 // 本文件继续 re-export，外部调用方（自检脚本等）无需改动。
 // 实测 hash32 / mulberry32 与原实现逐位一致，收敛零回归。
-import { mulberry32, hash32, clamp } from './util.js?v=49.1';
+import { mulberry32, hash32, clamp } from './util.js?v=49.2';
 let _seq = 0;
 function newId() {
   _seq = (_seq + 1) % 1000000;

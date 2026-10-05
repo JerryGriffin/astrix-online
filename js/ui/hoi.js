@@ -5,10 +5,10 @@
 //   · 顶部：剧本日历（到天）、国家、阵营、人口、军队 / 舰队概览
 //   · 国策树：工业 / 军事 / 外交三支，各两支；按游戏天数推进，完成即生效
 //   · 轨道圈层：母星行星的 7 个轨道圈层，争夺轨道控制权
-import { fmtNum } from '../core/format.js?v=49.1';
-import { currentAccount, getPlanetInstance } from '../core/state.js?v=49.1';
-import { listArmies, totalArmyPowerOf } from '../core/army.js?v=49.1';
-import { listFleets, fleetPowerOf } from '../core/fleet.js?v=49.1';
+import { fmtNum } from '../core/format.js?v=49.2';
+import { currentAccount, getPlanetInstance } from '../core/state.js?v=49.2';
+import { listArmies, totalArmyPowerOf } from '../core/army.js?v=49.2';
+import { listFleets, fleetPowerOf } from '../core/fleet.js?v=49.2';
 import {
   scenarioDateOf, gameDaysOf, ensureFocus, focusOptionsOf, startFocus,
   ensureSeas, contestSea, blocNameOf, nationOf, deepOf, enemySeaPressure, backgroundOf, HOI_SCENARIO_ID,
@@ -17,12 +17,12 @@ import {
   //   ARMY_MEN 本身在 data/hoi1936.js 且 core 层未 re-export，
   //   这里用 core/hoi1936.js 已经导出的 ARMY_MEN_MAX（= ARMY_MEN 的再导出）。
   ARMY_MEN_MAX,
-} from '../core/hoi1936.js?v=49.1';
+} from '../core/hoi1936.js?v=49.2';
 // v0.3.3：战争数据（实时交战双方状态）
 // v0.4.8：declareWar / warWith —— 非 1936 剧本的战区页要能直接对敌对势力宣战
-import { activeWarsOf, declareWar, warWith } from '../core/war.js?v=49.1';
+import { activeWarsOf, declareWar, warWith } from '../core/war.js?v=49.2';
 // v0.4.8：通用势力名解析（fac_* 势力在非 1936 剧本下用于战区归属显示）
-import { factionNameCn, factionFlag, factionDesc, factionPower, isGenericFaction } from '../data/factions.js?v=49.1';
+import { factionNameCn, factionFlag, factionDesc, factionPower, isGenericFaction } from '../data/factions.js?v=49.2';
 // v0.3.4：战役系统（师级交战 / 组织度 / 补给 / 工事 / 增援）—— 替代「只有进度条」
 import {
   listBattles, battleView, startBattle, committableArmies, foeRemaining,
@@ -30,7 +30,7 @@ import {
   ORBITAL_BOMB_CHARGES, orbitalControlOf,
   // v0.4.5（需求 2）：指挥官 + 战役事件
   commandersOf, assignCommander, battleById,
-} from '../core/battle.js?v=49.1';
+} from '../core/battle.js?v=49.2';
 // v0.4.1：行星战区地图（战区归属 / 补给网络 / 战略轨道打击 / 殖民地争夺）
 import {
   ensureTheater, theaterView, attackTargetsOf, canStrikeRegion, strikeRegion,
@@ -38,11 +38,11 @@ import {
   frontInfoOf as THfrontInfo, canOpenFront as THcanFront,
   REGION_MAX_FRONTS as TH_MAX_FRONTS, SIEGE_REQUIRED as TH_SIEGE,
   regionYieldOf, colonySupportOf,
-} from '../core/theater.js?v=49.1';
-import { HOI_SEAS, HOI_BY_ID, HIST_TIMELINE } from '../data/hoi1936.js?v=49.1';
+} from '../core/theater.js?v=49.2';
+import { HOI_SEAS, HOI_BY_ID, HIST_TIMELINE } from '../data/hoi1936.js?v=49.2';
 // v0.4.7：el() 收敛到 ui/common.js（此前本文件自带一份；全项目共 14 份、两种不兼容签名，
 //   v0.3.2「列强区块不显示」即源于把 A 型调用写进了 B 型文件）
-import { el } from './common.js?v=49.1';
+import { el } from './common.js?v=49.2';
 
 // v0.4.1：地图交互状态（同样放模块级，避免每秒重绘冲掉选中项）
 // v0.4.3：plan = 多路战线规划（同时开辟多条战线），mode='plan' 时点目标只入队不立即开战

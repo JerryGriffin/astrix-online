@@ -548,6 +548,39 @@ console.log('\nT16 战区产出不含气体（回归守卫）');
 }
 
 // ---------------------------------------------------------------------------
+// v0.4.9：夹击必须在**真实生成的地图**上开得出来（防止退回「永不触发」）
+//
+// v0.4.7 修好了 tickTheaterAI 的崩溃，但触发条件本身太严：aiFlankPlans 原本只认
+//   目标战区的 8 邻接敌方区，而 growBlob 让各势力领土连成互不相连的块
+//   → 实测 20 个种子，能开出 ≥2 路夹击的是 **0 个**。
+// 现已放宽为「邻接优先，不足则按距离跨区投送」，本守卫锁定该行为。
+// ---------------------------------------------------------------------------
+{
+  const SEEDS = [424242, 1, 7, 42, 100, 999, 12345, 55555, 777, 20260930, 31415,
+                 8888, 24680, 13579, 11223, 5, 66, 7777, 314, 2718];
+  let canFlank = 0, oneLand = 0;
+  for (const sd of SEEDS) {
+    const acc2 = {
+      id: 'th_flank_' + sd, nation: 'ger', scenario: 'hoi1936', theaterSeed: sd,
+      ships: [], fleets: [], armies: [], battles: [], warLog: [],
+      wars: [{ id: 'w', status: 'active', targetId: 'fra', progress: 0,
+               myScore: 0, theirScore: 0, battles: [], log: [] }],
+      foePools: { w: { divisions: 8 } },
+    };
+    const t2 = TH.ensureTheater(acc2);
+    const mine = t2.regions.filter((r) => r.owner === t2.myNation);
+    const foeLands = t2.regions.filter((r) => r.owner === 'fra').length;
+    if (foeLands < 2) { oneLand++; continue; }   // 数学上不可能有 2 个来源
+    const plans = TH.aiFlankPlans(acc2, acc2.wars[0], mine[0]);
+    if (plans.length >= 2) canFlank++;
+  }
+  const testable = SEEDS.length - oneLand;
+  ok(canFlank >= Math.floor(testable * 0.8),
+     '夹击在多数种子的真实地图上开得出来（≥80%）',
+     canFlank + '/' + testable + '（敌方仅占 1 块地、已跳过的种子 ' + oneLand + ' 个）');
+}
+
+// ---------------------------------------------------------------------------
 console.log('\n通过 ' + pass + ' / 失败 ' + fail);
 if (fail) {
   console.log('\n失败项：');
