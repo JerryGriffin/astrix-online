@@ -3,11 +3,11 @@
 // 所有相对导入一律带 ?v=13.2（与冻结契约一致）。
 // Node 无 localStorage → 必须先 S.setAdapter 注入内存 Map，否则持久化链空转。
 // 运行：node docs/_probe_equipsell.mjs
-import * as S from '../js/core/state.js?v=47.2';
-import { equipmentList } from '../js/core/shipyard.js?v=47.2';
+import * as S from '../js/core/state.js?v=48.1';
+import { equipmentList } from '../js/core/shipyard.js?v=48.1';
 import {
   sell, listForSale, deliverOrder, priceOf, suggestPriceOf,
-} from '../js/core/shop.js?v=47.2';
+} from '../js/core/shop.js?v=48.1';
 
 // ---------------------------------------------------------------------------
 // Node 内存适配器（无 localStorage，避免持久化链空转）

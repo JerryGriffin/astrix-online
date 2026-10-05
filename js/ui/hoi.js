@@ -5,10 +5,10 @@
 //   · 顶部：剧本日历（到天）、国家、阵营、人口、军队 / 舰队概览
 //   · 国策树：工业 / 军事 / 外交三支，各两支；按游戏天数推进，完成即生效
 //   · 轨道圈层：母星行星的 7 个轨道圈层，争夺轨道控制权
-import { fmtNum } from '../core/format.js?v=47.2';
-import { currentAccount, getPlanetInstance } from '../core/state.js?v=47.2';
-import { listArmies, totalArmyPowerOf } from '../core/army.js?v=47.2';
-import { listFleets, fleetPowerOf } from '../core/fleet.js?v=47.2';
+import { fmtNum } from '../core/format.js?v=48.1';
+import { currentAccount, getPlanetInstance } from '../core/state.js?v=48.1';
+import { listArmies, totalArmyPowerOf } from '../core/army.js?v=48.1';
+import { listFleets, fleetPowerOf } from '../core/fleet.js?v=48.1';
 import {
   scenarioDateOf, gameDaysOf, ensureFocus, focusOptionsOf, startFocus,
   ensureSeas, contestSea, blocNameOf, nationOf, deepOf, enemySeaPressure, backgroundOf, HOI_SCENARIO_ID,
@@ -17,9 +17,12 @@ import {
   //   ARMY_MEN 本身在 data/hoi1936.js 且 core 层未 re-export，
   //   这里用 core/hoi1936.js 已经导出的 ARMY_MEN_MAX（= ARMY_MEN 的再导出）。
   ARMY_MEN_MAX,
-} from '../core/hoi1936.js?v=47.2';
+} from '../core/hoi1936.js?v=48.1';
 // v0.3.3：战争数据（实时交战双方状态）
-import { activeWarsOf } from '../core/war.js?v=47.2';
+// v0.4.8：declareWar / warWith —— 非 1936 剧本的战区页要能直接对敌对势力宣战
+import { activeWarsOf, declareWar, warWith } from '../core/war.js?v=48.1';
+// v0.4.8：通用势力名解析（fac_* 势力在非 1936 剧本下用于战区归属显示）
+import { factionNameCn, factionFlag, factionDesc, factionPower, isGenericFaction } from '../data/factions.js?v=48.1';
 // v0.3.4：战役系统（师级交战 / 组织度 / 补给 / 工事 / 增援）—— 替代「只有进度条」
 import {
   listBattles, battleView, startBattle, committableArmies, foeRemaining,
@@ -27,7 +30,7 @@ import {
   ORBITAL_BOMB_CHARGES, orbitalControlOf,
   // v0.4.5（需求 2）：指挥官 + 战役事件
   commandersOf, assignCommander, battleById,
-} from '../core/battle.js?v=47.2';
+} from '../core/battle.js?v=48.1';
 // v0.4.1：行星战区地图（战区归属 / 补给网络 / 战略轨道打击 / 殖民地争夺）
 import {
   ensureTheater, theaterView, attackTargetsOf, canStrikeRegion, strikeRegion,
@@ -35,11 +38,11 @@ import {
   frontInfoOf as THfrontInfo, canOpenFront as THcanFront,
   REGION_MAX_FRONTS as TH_MAX_FRONTS, SIEGE_REQUIRED as TH_SIEGE,
   regionYieldOf, colonySupportOf,
-} from '../core/theater.js?v=47.2';
-import { HOI_SEAS, HOI_BY_ID, HIST_TIMELINE } from '../data/hoi1936.js?v=47.2';
+} from '../core/theater.js?v=48.1';
+import { HOI_SEAS, HOI_BY_ID, HIST_TIMELINE } from '../data/hoi1936.js?v=48.1';
 // v0.4.7：el() 收敛到 ui/common.js（此前本文件自带一份；全项目共 14 份、两种不兼容签名，
 //   v0.3.2「列强区块不显示」即源于把 A 型调用写进了 B 型文件）
-import { el } from './common.js?v=47.2';
+import { el } from './common.js?v=48.1';
 
 // v0.4.1：地图交互状态（同样放模块级，避免每秒重绘冲掉选中项）
 // v0.4.3：plan = 多路战线规划（同时开辟多条战线），mode='plan' 时点目标只入队不立即开战
@@ -92,6 +95,18 @@ const CSS = `
   .hoi-war-ongoing { display:flex; flex-wrap:wrap; gap:6px; padding:8px 12px 0; }
   .hoi-war-chip { font-size:11px; border:1px solid #34465a; border-radius:10px; padding:2px 8px; }
   .hoi-war-chip.hot { color:#f09595; border-color:rgba(240,149,149,.5); }
+  /* v0.4.8：势力宣战面板（对所有剧本可用） */
+  .hoi-fac-row { display:flex; align-items:center; gap:10px; flex-wrap:wrap;
+    padding:10px 12px; margin:6px 0; background:#16202b; border:1px solid #2a3645; border-radius:10px; }
+  .hoi-fac-info { flex:1 1 240px; min-width:0; }
+  .hoi-fac-name { font-size:14px; font-weight:700; color:#e8eef2; }
+  .hoi-fac-meta { font-size:12px; margin-top:2px; }
+  .hoi-fac-desc { font-size:11px; margin-top:3px; line-height:1.6; opacity:.75; }
+  @media (max-width:560px) {
+    .hoi-fac-row { padding:10px; }
+    .hoi-fac-info { flex:1 1 100%; }
+    .hoi-fac-row .army-go { width:100%; min-height:44px; }   /* 移动端点击区 ≥44px */
+  }
 `;
 
 // ============================================================================
@@ -106,6 +121,82 @@ const TERRAIN_GRAV = {
   dust: 0.90, lava: 1.04, ice: 0.97, dome: 1.00,
 };
 const STRUCT_SYM = { orbital: 'O', depot: 'D', colony: 'C', mine: 'M', dome: 'Q' };
+
+/**
+ * 势力宣战面板（v0.4.8）—— 非 1936 剧本下让玩家能主动对地图上的敌对势力开战。
+ *
+ * 为什么需要
+ *   战区地图原本只在「有战争」时出现，而宣战入口又只在 1936 剧本的星系页
+ *   （依赖历史节点门禁）。结果非 1936 存档打开战区页既看不到地图、也无法开战 ——
+ *   地图成了纯装饰。这里补上「看到势力 → 点它 → 宣战」的闭环。
+ *
+ * 复用 core/war.js#declareWar（该模块本就是剧本无关的），
+ * 不传 histGate —— 意味着非 1936 剧本没有历史节点限制，可自由开战。
+ */
+function buildFactionWarBoard(acc, refresh) {
+  const wrap = el('div', 'hoi-sec');
+  const t = ensureTheater(acc);
+  wrap.appendChild(el('div', 'hoi-sec-h', [
+    el('span', null, '敌对势力'),
+    el('span', { class: 'hoi-sub', text: '选择一个势力宣战，战役胜利即可占领其战区' }),
+  ]));
+  if (!t || !Array.isArray(t.regions)) return wrap;
+
+  // 汇总地图上的全部敌方势力（按战区数排序，多的排前面）
+  const byOwner = new Map();
+  for (const r of t.regions) {
+    if (!r.owner || r.owner === t.myNation) continue;
+    if (!byOwner.has(r.owner)) byOwner.set(r.owner, []);
+    byOwner.get(r.owner).push(r);
+  }
+  if (!byOwner.size) {
+    wrap.appendChild(el('div', 'hoi-note', '地图上暂无其他势力 —— 全部战区都已并入我方版图。'));
+    return wrap;
+  }
+
+  const list = Array.from(byOwner.entries())
+    .sort((a, b) => b[1].length - a[1].length);
+
+  for (const [owner, regs] of list) {
+    const atWar = !!warWith(acc, owner);
+    const name = factionNameCn(owner, HOI_BY_ID);
+    const flag = factionFlag(owner, HOI_BY_ID);
+    const pw = factionPower(owner, HOI_BY_ID);
+    const colonies = regs.filter((r) => r.structure === 'colony').length;
+    const domes = regs.filter((r) => r.structure === 'dome').length;
+
+    const row = el('div', 'hoi-fac-row');
+    const info = el('div', 'hoi-fac-info');
+    const nm = (flag ? flag + ' ' : '') + name + (atWar ? '（交战中）' : '');
+    info.appendChild(el('div', { class: 'hoi-fac-name', text: nm }));
+    const detailBits = [regs.length + ' 处战区'];
+    if (colonies) detailBits.push('殖民地 ' + colonies);
+    if (domes) detailBits.push('穹顶 ' + domes);
+    detailBits.push('实力 ≈ 师 ' + pw.divisions + ' / 工业 ' + pw.ic);
+    info.appendChild(el('div', { class: 'hoi-fac-meta muted', text: detailBits.join(' · ') }));
+    const desc = factionDesc(owner, HOI_BY_ID);
+    if (desc) info.appendChild(el('div', { class: 'hoi-fac-desc muted', text: desc }));
+    row.appendChild(info);
+
+    const btn = el('button', 'army-go btn btn-sm' + (atWar ? '' : ' btn-primary'),
+      atWar ? '查看战场' : '宣战');
+    if (!atWar) {
+      btn.onclick = () => {
+        const r = declareWar(acc, { id: owner, nameCn: name, kind: 'npc' });
+        if (r && r.ok) {
+          if (typeof refresh === 'function') refresh();
+        } else {
+          alert((r && r.reason) || '宣战失败');
+        }
+      };
+    } else {
+      btn.onclick = () => { if (typeof refresh === 'function') refresh(); };
+    }
+    row.appendChild(btn);
+    wrap.appendChild(row);
+  }
+  return wrap;
+}
 
 /** 行星战区地图（网格 + 选中详情 + 进攻/打击按钮） */
 function buildTheaterMap(acc, war, refresh) {
@@ -170,7 +261,7 @@ function buildTheaterMap(acc, war, refresh) {
     if (tags.length) cell.appendChild(el('span', { class: 'tags', text: tags.join('·') }));
     cell.title = (r.nameCn || r.id) + '｜' + (TERRAIN_CN[r.terrain] || r.terrain)
       + '（' + (TERRAIN_GRAV[r.terrain] || 1).toFixed(2) + 'g）'
-      + '｜属主：' + (r.owner ? ((HOI_BY_ID[r.owner] || {}).nameCn || r.owner) : '中立')
+      + '｜属主：' + (r.owner ? (factionNameCn(r.owner, HOI_BY_ID)) : '中立')
       + (r.structureCn ? '｜' + r.structureCn : '')
       + '｜驻防 ' + Math.round(r.garrison * 100) + '%'
       + '｜补给 ' + Math.round(r.supply * 100) + '%';
@@ -306,7 +397,7 @@ function buildRegionPanel(acc, war, r, ctrl, refresh) {
   const t = ensureTheater(acc);
   const raw = (t.regions || []).find((x) => x.id === r.id);
   const box = el('div', 'hoi-region');
-  const ownerNation = r.owner ? ((HOI_BY_ID[r.owner] || {}).nameCn || r.owner) : '中立';
+  const ownerNation = r.owner ? (factionNameCn(r.owner, HOI_BY_ID)) : '中立';
   const meta = el('div', 'hoi-region-head');
   meta.appendChild(el('span', { class: 'nm', text: r.nameCn || r.id }));
   meta.appendChild(el('span', { class: 'hoi-sub',
@@ -336,7 +427,7 @@ function buildRegionPanel(acc, war, r, ctrl, refresh) {
     if (targets.length) {
       row.appendChild(el('span', 'hoi-note', '由此进攻（多路同时打可形成夹击）：'));
       for (const tg of targets) {
-        const tName = tg.owner ? ((HOI_BY_ID[tg.owner] || {}).nameCn || tg.owner) : '中立';
+        const tName = tg.owner ? (factionNameCn(tg.owner, HOI_BY_ID)) : '中立';
         const tf = THfrontInfo(acc, tg.id);
         const inPlan = _mapSel.plan.some((q) => q.regionId === tg.id && q.originId === raw.id);
         const btn = el('button', 'hoi-mini-btn'
@@ -741,17 +832,27 @@ export function renderHoi(root, ctx) {
   // v0.3.4：战线操作（开辟/撤出/结束）后立刻重绘，不必等下一秒的定时器
   const refresh = () => renderHoi(root, ctx);
   root.innerHTML = '';
-  if (!acc || acc.scenario !== HOI_SCENARIO_ID) {
-    // 非 1936 存档：本页无内容可刷，但仍需清掉上一轮可能残留的定时器
+  if (!acc) {
+    // 没有账号：清掉残留定时器即可（否则旧 timer 会继续往已重绘的 root 里写）
     if (root._hoiTimer) { clearInterval(root._hoiTimer); root._hoiTimer = null; }
     root.appendChild(el('div', { class: 'hoi-panel' },
-      el('p', { class: 'hoi-note', text: '仅 1936 剧本存档可用（新建存档 → 开局模式选「1936 剧本」）。' })));
+      el('p', { class: 'hoi-note', text: '请先进入游戏。' })));
     return;
   }
+  // v0.4.8：行星战区地图对**所有剧本**开放。
+  //   此前这一页整个被 `acc.scenario !== HOI_SCENARIO_ID` 挡掉，只有「风暴前夜」可见 ——
+  //   而行星战区地图本是通用系统（core/theater.js 与 core/war.js 都不依赖 1936）。
+  //   现在：地图 / 补给 / 战区列表 / 战争进度对所有剧本显示；
+  //   而**剧本专属**区块（国策树、轨道圈层、历史节点日历、1936 开局旁白）
+  //   仍只在「风暴前夜」下出现。
+  const isHoi = acc.scenario === HOI_SCENARIO_ID;
   root.appendChild(el('style', { text: CSS }));
   const panel = el('div', 'hoi-panel');
 
   const n = nationOf(acc);
+  // v0.4.8：非 1936 剧本下 nationOf 返回 null，这里给出**通用**的我方显示名，
+  //   供下拉栏 / 交战双方面板使用（此前直接读 n.nameCn 会抛 TypeError）。
+  const myNameCn = n ? n.nameCn : (acc.name || '我方');
   const deep = deepOf(acc) || {};
   const f = ensureFocus(acc);
   const seas = ensureSeas(acc);
@@ -760,18 +861,29 @@ export function renderHoi(root, ctx) {
     try { return s + (fleetPowerOf(acc, x.id) || 0); } catch (e) { return s; }
   }, 0);
 
-  // ---- 顶部：剧本日历与国情 ----
+  // ---- 顶部：国情概览 ----
+  // v0.4.8：拆成「通用概览」与「1936 专属」两段。
+  //   剧本日历 / 国名 / 首都 / 阵营 / 编制 / 史实海军换算都依赖 1936 数据，
+  //   在其他剧本下要么是 null 要么是误导（如「国内工业 —」）——
+  //   所以只有 stats 里的通用项（人口 / 军队 / 战力）对所有剧本显示。
   const head = el('div', 'hoi-head');
-  head.appendChild(el('div', 'hoi-date', scenarioDateOf(acc)));
-  head.appendChild(el('div', 'hoi-sub',
-    (n ? (n.flag + ' ' + n.nameCn + '（' + n.nameEn + '）') : '未知国家')
+  if (isHoi) {
+    head.appendChild(el('div', 'hoi-date', scenarioDateOf(acc)));
+    head.appendChild(el('div', 'hoi-sub',
+      (n ? (n.flag + ' ' + n.nameCn + '（' + n.nameEn + '）') : '未知国家')
     + ' · 首都 ' + (n ? n.capital : '—')
     + ' · 阵营：' + (blocNameOf(acc) || '不结盟')
     + '　|　剧本已进行 ' + Math.floor(gameDaysOf(acc)) + ' 天'));
-  if (n) {
+    if (n) {
+      head.appendChild(el('div', 'hoi-sub',
+        '本体编制：' + (deep.armyName || '登陆兵师') + '（每支 ' + ARMY_MEN_MAX + ' 人）'
+        + '　|　史实海军 ' + n.navy + ' 舰 → 游戏内 ' + acc.ships.length + ' 艘 / ' + navies.length + ' 支舰队'));
+    }
+  } else {
+    // v0.4.8：非 1936 存档给一行中性抬头（不编造国名/阵营）
     head.appendChild(el('div', 'hoi-sub',
-      '本体编制：' + (deep.armyName || '登陆兵师') + '（每支 ' + ARMY_MEN_MAX + ' 人）'
-      + '　|　史实海军 ' + n.navy + ' 舰 → 游戏内 ' + acc.ships.length + ' 艘 / ' + navies.length + ' 支舰队'));
+      '行星战区 · ' + (acc.name || '指挥官')
+      + '　|　战役可视化对所有剧本开放；国策与轨道圈层为「风暴前夜」专属。'));
   }
   const stats = el('div', 'hoi-stats');
   const addStat = (lbl, val) => stats.appendChild(el('div', 'hoi-stat', [
@@ -782,12 +894,16 @@ export function renderHoi(root, ctx) {
   addStat('军队', listArmies(acc).length + ' 支');
   addStat('陆军战力', fmtNum(totalArmyPowerOf(acc)));
   addStat('舰队战力', fmtNum(Math.round(navPower)));
-  addStat('国内工业', n ? String(n.ic) : '—');
-  addStat('工业建筑', fmtNum(homeInst.hoiIndustry ? homeInst.hoiIndustry.buildings : 0) + ' 座');
-  addStat('产线工人', fmtNum(acc.hoiWorkforce || 0));
-  addStat('舰队传统', '×' + (Number(acc.hoiNavyMul) || 1).toFixed(2));
+  // v0.4.8：以下四项是 1936 剧本专属（读 hoiIndustry / hoiWorkforce / hoiNavyMul），
+  //   其他剧本下恒为空或显示 0，会让玩家误以为「工业为零」。
+  if (isHoi) {
+    addStat('国内工业', n ? String(n.ic) : '—');
+    addStat('工业建筑', fmtNum(homeInst.hoiIndustry ? homeInst.hoiIndustry.buildings : 0) + ' 座');
+    addStat('产线工人', fmtNum(acc.hoiWorkforce || 0));
+    addStat('舰队传统', '×' + (Number(acc.hoiNavyMul) || 1).toFixed(2));
+  }
   head.appendChild(stats);
-  const bg = backgroundOf(acc);
+  const bg = isHoi ? backgroundOf(acc) : null;   // v0.4.8：历史旁白仅 1936
   if (bg) {
     const bgBox = el('div', 'hoi-sub');
     bgBox.style.cssText = 'margin-top:8px;padding:8px 10px;background:#101820;border-radius:8px;font-size:12px;line-height:1.8;';
@@ -796,6 +912,8 @@ export function renderHoi(root, ctx) {
   }
   panel.appendChild(head);
 
+  // v0.4.8：国策树为「风暴前夜」专属（读 hoiFocus / 国策蓝图），其余剧本跳过
+  if (isHoi) {
   // ---- 国策树 ----
   const focusSec = el('div', 'hoi-sec');
   const cur = f.current;
@@ -843,6 +961,7 @@ export function renderHoi(root, ctx) {
     focusSec.appendChild(wrap);
   }
   panel.appendChild(focusSec);
+  }   // v0.4.8：end if (isHoi) —— 国策树仅「风暴前夜」显示
 
   // ==========================================================================
   // v0.3.3：战争 —— 下拉栏选战争 + 交战双方实时状态
@@ -863,9 +982,18 @@ export function renderHoi(root, ctx) {
   ]));
 
   // 敌国对象：优先按 targetId 反查（可靠），回退按名称找
+  // v0.4.8：非 1936 剧本的 targetId 是通用势力 id（fac_*），
+  //   原来只查 HOI_BY_ID 会返回 null → 下拉栏与战报里显示「未知」。
+  //   现在用 factionNameCn 兜底，两种剧本都能正确显示势力名。
   function foeOf(w) {
     const id = String(w && w.targetId || '').replace(/^hoi_/, '');
     return HOI_BY_ID[id] || null;
+  }
+  function foeNameOf(w) {
+    const f = foeOf(w);
+    if (f) return f.nameCn;
+    return factionNameCn(String(w && w.targetId || '').replace(/^hoi_/, ''), HOI_BY_ID)
+      || (w && w.targetName) || '未知';
   }
   // 我方「实时」战力：用玩家真实的军队与舰队，而非 1936 静态值
   function myLive() {
@@ -882,12 +1010,24 @@ export function renderHoi(root, ctx) {
       fleetCount += (fl.shipIds || []).length;
       try { fleetStr += fleetPowerOf(acc, fl.id) || 0; } catch (e) { /* 忽略 */ }
     }
-    const ic = inst && inst.hoiIndustry ? (Number(inst.hoiIndustry.ic) || 0) : (n.ic || 0);
+    // v0.4.8：`n` 是 1936 的国家对象，其他剧本下 nationOf(acc) 返回 **null** ——
+    //   此前直接读 n.ic 会抛 TypeError（曾导致非 1936 存档宣战后整页崩）。
+    const ic = inst && inst.hoiIndustry ? (Number(inst.hoiIndustry.ic) || 0)
+      : (n ? (Number(n.ic) || 0) : 0);
     const pop = inst && inst.pop ? (Number(inst.pop.total) || 0) : 0;
     return { armyStr, armyCount, fleetStr, fleetCount, ic, pop, inst };
   }
 
-  if (!wars.length) {
+  if (!wars.length && !isHoi) {
+    // v0.4.8：非 1936 剧本无战争时 —— 仍然**显示战区地图**，并给出可直接开战的势力列表。
+    //   此前这一段只对 1936 有内容（历史节点提示），而战区地图又只嵌在
+    //   「有战争」的下拉栏里 → 其他剧本打开本页只能看到一句「当前无战争」。
+    //   现在：地图常驻 + 点势力即可宣战，战争系统对所有剧本可用。
+    warSec.appendChild(el('div', 'hoi-note',
+      '当前无战争。行星战区上的敌对势力都可以主动宣战 —— 打赢战役即可逐步占领其战区。'));
+    warSec.appendChild(buildTheaterMap(acc, null, refresh));
+    warSec.appendChild(buildFactionWarBoard(acc, refresh));
+  } else if (!wars.length) {
     // 无战争：给出下一个历史节点提示，让玩家知道「什么时候能开战」
     const today = Math.floor(gameDaysOf(acc));
     const upcoming = HIST_TIMELINE
@@ -919,11 +1059,11 @@ export function renderHoi(root, ctx) {
     warSel.className = 'hoi-war-sel';
     for (const w of wars) {
       const foe = foeOf(w);
-      const foeName = foe ? foe.nameCn : (w.targetName || '未知');
+      const foeName = foeNameOf(w);
       const evName = w.histKey ? ('（' + (HIST_TIMELINE.find((e) => String(e.day) === String(w.histKey).split(':')[0]) || {}).nameCn + '）') : '';
       const o = document.createElement('option');
       o.value = w.id;
-      o.textContent = n.nameCn + ' vs ' + foeName + evName;
+      o.textContent = myNameCn + ' vs ' + foeName + evName;
       warSel.appendChild(o);
     }
     selRow.appendChild(el('span', 'hoi-note', '选择战争：'));
@@ -939,7 +1079,7 @@ export function renderHoi(root, ctx) {
       const w = wars.find((x) => x.id === warSel.value) || wars[0];
       if (!w) return;
       const foe = foeOf(w);
-      const foeName = foe ? foe.nameCn : (w.targetName || '未知');
+      const foeName = foeNameOf(w);
       const my = myLive();
       const days = Math.max(0, Math.round((Date.now() - (w.startedAt || Date.now())) / 86400000 * 10) / 10);
 
@@ -962,7 +1102,7 @@ export function renderHoi(root, ctx) {
       const scoreTotal = (Number(w.myScore) || 0) + (Number(w.theirScore) || 0) || 1;
       const myPct = Math.round((Number(w.myScore) || 0) / scoreTotal * 100);
 
-      body.appendChild(side(n.nameCn, n.flag, n.capital, [
+      body.appendChild(side(myNameCn, n ? n.flag : '🏳', n ? n.capital : '—', [
         ['陆军', my.armyCount + ' 支 · 战力 ' + fmtNum(Math.round(my.armyStr))],
         ['舰队', my.fleetCount + ' 艘 · 战力 ' + fmtNum(Math.round(my.fleetStr))],
         ['工业 / 人口', fmtNum(my.ic) + ' / ' + fmtNum(my.pop)],
@@ -1006,6 +1146,8 @@ export function renderHoi(root, ctx) {
   }
   panel.appendChild(warSec);
 
+  // v0.4.8：轨道圈层为 1936 专属（读 hoiSeas / 敌方海军压力）
+  if (isHoi) {
   // ---- 轨道圈层 ----
   const seaSec = el('div', 'hoi-sec');
   const pressure = enemySeaPressure(acc);
@@ -1071,16 +1213,24 @@ export function renderHoi(root, ctx) {
     seaSec.appendChild(row);
   }
   panel.appendChild(seaSec);
+  }   // v0.4.8：end if (isHoi) —— 轨道圈层仅「风暴前夜」显示
 
   // ---- 口径说明 ----
-  panel.appendChild(el('p', 'hoi-note',
-    '说明：本页为官方 mod「1936 剧本」专属。交战采用钢铁雄心式多回合结算（编队宽度 3、组织度耗尽撤退）；'
-    + '轨道战按舰队实力与真实海军规模换算（含舰队传统加成）；国策按游戏天数推进，'
-    + '同支国策需按序解锁，外交线两策互斥。'
-    + '战争严格按历史时间表推进：只有踩到对应史实节点才可宣战，AI 也只在节点日开战；'
-    + '「战争」栏可下拉选择进行中的战争并查看双方实时状态（我方为真实 army/fleet/工业，'
-    + '敌方为 1936 年基准静态值）。'
-    + '另外：「星球管理 → 战时总动员」在全存档可用（产出 +30%、幸福度下滑）。'));
+  // v0.4.8：按剧本给不同说明 —— 非 1936 存档不再显示「本页为 1936 专属」这种
+  //   与实际不符的话（战区地图现在对所有剧本开放）。
+  panel.appendChild(el('p', 'hoi-note', isHoi
+    ? '说明：本页为官方 mod「1936 剧本」专属。交战采用钢铁雄心式多回合结算（编队宽度 3、组织度耗尽撤退）；'
+      + '轨道战按舰队实力与真实海军规模换算（含舰队传统加成）；国策按游戏天数推进，'
+      + '同支国策需按序解锁，外交线两策互斥。'
+      + '战争严格按历史时间表推进：只有踩到对应史实节点才可宣战，AI 也只在节点日开战；'
+      + '「战争」栏可下拉选择进行中的战争并查看双方实时状态（我方为真实 army/fleet/工业，'
+      + '敌方为 1936 年基准静态值）。'
+      + '另外：「星球管理 → 战时总动员」在全存档可用（产出 +30%、幸福度下滑）。'
+    : '说明：行星战区地图与战争结算对所有剧本开放。交战采用钢铁雄心式多回合结算'
+      + '（编队宽度 3、组织度耗尽撤退）；补给只在我方连片战区内流通，'
+      + '断供或失守会大幅压低该战区产出。'
+      + '「国策」与「轨道圈层」为「风暴前夜」剧本专属，本页不显示。'
+      + '另外：「星球管理 → 战时总动员」在全存档可用（产出 +30%、幸福度下滑）。'));
 
   root.appendChild(panel);
 

@@ -29,11 +29,31 @@
 //   · 不 import state.js（账号对象由调用方传入），与 battle.js 同构。
 // ============================================================================
 
-import { HOI_BY_ID, HOI_MAIN_NATIONS } from '../data/hoi1936.js?v=47.2';
+// v0.4.8：HOI_MAIN_NATIONS 只在「风暴前夜」剧本用作势力源；
+//   其余剧本改用 data/factions.js 的通用势力表（见 generateTheater 内的说明）。
+//   HOI_BY_ID 仍保留 —— UI 要靠它把 owner id 解析成国家名/旗帜。
+import { HOI_BY_ID, HOI_MAIN_NATIONS } from '../data/hoi1936.js?v=48.1';
+import { GENERIC_FACTIONS } from '../data/factions.js?v=48.1';
 
 export const THEATER_COLS = 6;
 export const THEATER_ROWS = 6;
 export const THEATER_SIZE = THEATER_COLS * THEATER_ROWS;
+
+/**
+ * 我方在战区地图上的 owner id。
+ *
+ * v0.4.8：此前一律兜底成 `'ger'`（德国）—— 那是「风暴前夜」剧本的专属值。
+ *   其他开局（初登星球 / 漫溯深空）的 `acc.nation` 根本不存在，兜底成德国会：
+ *     ① 让玩家在地图上显示为「德意志国」（错乱）；
+ *     ② 与 HOI_MAIN_NATIONS 里的德国撞名 —— 敌方分配时会 `filter(n => n.id !== myNation)`
+ *        把德国自己滤掉，等于少一个对手。
+ *   现改为：1936 用 acc.nation（真实国家 id），其余剧本用中性的 `'player'`。
+ */
+export const MY_NATION_DEFAULT = 'player';
+export function myNationOf(acc) {
+  const n = acc && acc.nation ? String(acc.nation) : '';
+  return n || MY_NATION_DEFAULT;
+}
 
 // 建筑的补给/战略意义
 export const REGION_STRUCTURES = {
@@ -97,7 +117,7 @@ const TERRAIN_WORDS = {
 // ---------------------------------------------------------------------------
 // v0.4.7：hash32 / clamp 已收敛到 core/util.js（与 battle.js 共用唯一实现）。
 // 实测与原实现逐位一致，收敛零回归。
-import { hash32, clamp } from './util.js?v=47.2';
+import { hash32, clamp } from './util.js?v=48.1';
 function smooth(t) { return t * t * (3 - 2 * t); }
 /** 二维值噪声（格点 hash + 双线性平滑） */
 function noise2(seed, x, y) {
@@ -133,13 +153,13 @@ export function ensureTheater(acc) {
     return acc.theater;
   }
   // 玩家本国必须存在（老存档补生成时用）
-  if (!acc.theater.myNation) acc.theater.myNation = String(acc.nation || 'ger');
+  if (!acc.theater.myNation) acc.theater.myNation = myNationOf(acc);
   return acc.theater;
 }
 
 /** 生成一张行星地图（确定性：同 acc.nation + 同 seed → 同版图） */
 export function generateTheater(acc) {
-  const myNation = String(acc.nation || 'ger');
+  const myNation = myNationOf(acc);
   // ⚠️ 种子必须**可复现**：把 theaterSeed 存进 theater，之后任何时候都能重建同一张图。
   //   （只存 hash 后的 seed 不够 —— 无法反推出原始 theaterSeed。）
   const rawSeed = (acc.theaterSeed == null) ? (Date.now() % 100000) : Number(acc.theaterSeed);
@@ -181,10 +201,19 @@ export function generateTheater(acc) {
   home.structure = 'orbital';
   home.nameCn = '本土 · ' + pickName(seed, home, 0);
 
-  // ---- 2) 各主国本土 + 连片领土（按师数/工业决定面积）----
-  const others = HOI_MAIN_NATIONS.filter((n) => n && n.id !== myNation);
+  // ---- 2) 各势力本土 + 连片领土（按师数/工业决定面积）----
+  // v0.4.8：势力来源按剧本切换。
+  //   此前固定用 HOI_MAIN_NATIONS（1936 的真实列强），于是**只有「风暴前夜」剧本
+  //   才有敌方势力**；其他开局要么被 UI 门禁挡掉，要么生成一张
+  //   「玩家 vs 11 个二战国家」的错乱版图。
+  //   现在：1936 用真实列强（保留史实感），其余剧本用 data/factions.js 的通用势力表。
+  //   两套 id 天然隔离（1936 是 'ger'/'fra'…，通用势力是 'fac_*'），不会撞车。
+  const scenario = String(acc.scenario || '');
+  const isHoi = scenario === 'hoi1936';
+  const rivals = (isHoi ? HOI_MAIN_NATIONS : GENERIC_FACTIONS)
+    .filter((n) => n && n.id !== myNation);
   // 按实力降序，强者先占地（贪心扩张）
-  const ranked = others.slice().sort((a, b) => (b.divisions * 2 + b.ic) - (a.divisions * 2 + a.ic));
+  const ranked = rivals.slice().sort((a, b) => (b.divisions * 2 + b.ic) - (a.divisions * 2 + a.ic));
   const taken = new Set([home.id]);
   // 起始点放在远离玩家的一侧，避免开局贴脸
   const spots = candidateHomes(regions, home, ranked.length);
@@ -376,7 +405,7 @@ function ensureTheaterRaw(acc) {
   if (!acc.theater || !Array.isArray(acc.theater.regions) || acc.theater.regions.length !== THEATER_SIZE) {
     acc.theater = generateTheater(acc);
   }
-  if (!acc.theater.myNation) acc.theater.myNation = String(acc.nation || 'ger');
+  if (!acc.theater.myNation) acc.theater.myNation = myNationOf(acc);
   return acc.theater;
 }
 

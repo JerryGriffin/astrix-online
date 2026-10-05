@@ -9,13 +9,13 @@
 //        「编队里没有运输船」，货舱格数退化为兜底值。
 //   3. population.js 多处直接索引 pop.assignments
 //      → 老档/云端合并存档缺该字段时抛 TypeError，中断 tick 与页面渲染。
-import { armyBuildTick, armyBuildCheck, listArmies } from '../js/core/army.js?v=47.2';
-import { ARMY_BP_BY_ID, armyBpPartNeeds } from '../js/data/army_parts.js?v=47.2';
-import { createShip } from '../js/core/shipyard.js?v=47.2';
-import { createFleet, addShipToFleet, listFleets, fleetCargoCells, startMission } from '../js/core/fleet.js?v=47.2';
-import { HULLS, ENGINES, FACILITIES } from '../js/data/ship_parts.js?v=47.2';
-import { CELL_VOLUME } from '../js/core/footprint.js?v=47.2';
-import { assignedToBuilding, getAssigned, jobOutput, getJobCount, assignWorkers, setJobIntensity } from '../js/core/population.js?v=47.2';
+import { armyBuildTick, armyBuildCheck, listArmies } from '../js/core/army.js?v=48.1';
+import { ARMY_BP_BY_ID, armyBpPartNeeds } from '../js/data/army_parts.js?v=48.1';
+import { createShip } from '../js/core/shipyard.js?v=48.1';
+import { createFleet, addShipToFleet, listFleets, fleetCargoCells, startMission } from '../js/core/fleet.js?v=48.1';
+import { HULLS, ENGINES, FACILITIES } from '../js/data/ship_parts.js?v=48.1';
+import { CELL_VOLUME } from '../js/core/footprint.js?v=48.1';
+import { assignedToBuilding, getAssigned, jobOutput, getJobCount, assignWorkers, setJobIntensity } from '../js/core/population.js?v=48.1';
 
 let pass = 0, fail = 0;
 function check(name, cond, detail) {

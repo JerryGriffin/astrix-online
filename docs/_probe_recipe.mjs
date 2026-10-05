@@ -3,7 +3,7 @@
 // 用途：核验 R13 / R14 / R17 / R10 的配方改动。
 // 运行：node docs/_probe_recipe.mjs
 
-import { RECIPES, RECIPE_BY_ID } from '../js/data/recipes.js?v=47.2';
+import { RECIPES, RECIPE_BY_ID } from '../js/data/recipes.js?v=48.1';
 
 let passed = 0;
 let failed = 0;

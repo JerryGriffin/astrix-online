@@ -8,16 +8,16 @@ import {
   computePower, energyOf,
   installedFacilities, installFacility, uninstallFacility, facilityStockOf,
   panelEffOf, facilityFuelOf, buildingCountBonus,
-} from '../core/power.js?v=47.2';
-import { POWER_FACILITIES, POWER_FACILITY_BY_ID } from '../data/facilities.js?v=47.2';
-import { BUILDING_BY_ID } from '../data/buildings.js?v=47.2';
-import { RECIPES } from '../data/recipes.js?v=47.2';
-import { linesOf } from '../core/production.js?v=47.2';
-import { jobsOfBuilding, jobOutput, assignedToBuilding, buildingSlots } from '../core/population.js?v=47.2';
-import { fmtNum, fmtRate, fmtRateBody } from '../core/format.js?v=47.2';
+} from '../core/power.js?v=48.1';
+import { POWER_FACILITIES, POWER_FACILITY_BY_ID } from '../data/facilities.js?v=48.1';
+import { BUILDING_BY_ID } from '../data/buildings.js?v=48.1';
+import { RECIPES } from '../data/recipes.js?v=48.1';
+import { linesOf } from '../core/production.js?v=48.1';
+import { jobsOfBuilding, jobOutput, assignedToBuilding, buildingSlots } from '../core/population.js?v=48.1';
+import { fmtNum, fmtRate, fmtRateBody } from '../core/format.js?v=48.1';
 // v0.4.7：el() 收敛到 ui/common.js（此前本文件自带一份；全项目共 14 份、两种不兼容签名，
 //   v0.3.2「列强区块不显示」即源于把 A 型调用写进了 B 型文件）
-import { el } from './common.js?v=47.2';
+import { el } from './common.js?v=48.1';
 
 const CSS = `
   .pwr-panel { font-family: system-ui, sans-serif; color: #e8eef2; padding: 12px; box-sizing: border-box; }

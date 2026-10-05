@@ -13,8 +13,8 @@
 // ⚠️ 必须带 ?v=32.1 —— 与被测模块（hoi.js）引用的是**同一份** state.js 实例。
 //    不带版本号会加载出第二个模块实例，STATE 不是同一个对象，renderHoi 读到的
 //    currentAccount() 会是 null，从而误走「非 1936 存档」分支（本探针踩过两次）。
-import { STATE } from '../js/core/state.js?v=47.2';
-import { HOI_BY_ID } from '../js/data/hoi1936.js?v=47.2';
+import { STATE } from '../js/core/state.js?v=48.1';
+import { HOI_BY_ID } from '../js/data/hoi1936.js?v=48.1';
 
 // ---- 极简 DOM 桩：记录元素树，支持 textContent/innerHTML/appendChild ----
 function mkEl(tag) {
@@ -50,7 +50,7 @@ globalThis.document = { createElement: mkEl, createTextNode: (t) => ({ nodeType:
 globalThis.alert = () => {};
 
 // document 桩就绪后再动态 import 被测模块
-const { renderHoi } = await import('../js/ui/hoi.js?v=47.2');
+const { renderHoi } = await import('../js/ui/hoi.js?v=48.1');
 
 // ---- 遍历工具 ----
 function walk(node, out = []) {
