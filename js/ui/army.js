@@ -10,27 +10,27 @@
 //   * 每支军队人数在 100 人上下（由框架数决定），列内展示。
 // 本页由 planet.js 的 showPanel 动态接入，异常只影响本 tab。
 
-import { reinforceArmy } from '../core/hoi1936.js?v=47.1';
+import { reinforceArmy } from '../core/hoi1936.js?v=47.2';
 import {
   ARMY_BLUEPRINTS, ARMY_PART_BY_ID, ARMY_SLOT_BY_CAT, ARMY_PART_COST,
   armyCapOf, armyBpPartNeeds, armyBpMaterialNeeds,
-} from '../data/army_parts.js?v=47.1';
+} from '../data/army_parts.js?v=47.2';
 import {
   armyStatsOfBp, armyPowerOf, armyPowerOfInstance, armyBuildCheck, listArmies, disbandArmy,
   getArmyBp, armyEffStats, armyPartMaterialOptions, trainArmy, cancelTraining, ARMY_LABOR_PER_BARRACKS,
   attachShipToArmy, detachShipFromArmy, shipEligibleForArmy, shipArmyOf, ARMY_SHIP_TECH,
-} from '../core/army.js?v=47.1';
-import { addLine, removeLine } from '../core/production.js?v=47.1';
-import { fmtNum, fmtTime } from '../core/format.js?v=47.1';
+} from '../core/army.js?v=47.2';
+import { addLine, removeLine, freeLaborOf } from '../core/production.js?v=47.2';
+import { fmtNum, fmtTime } from '../core/format.js?v=47.2';
 // v0.4.6：从 core/shipyard.js 取材料合并表（**不从 production.js 取**——
 //   后者与 state.js 循环引用，直接 import 会在模块求值顺序不对时抛
 //   「Cannot access '_getInst' before initialization」）。
-import { materialMul, materialLookupFor } from '../core/shipyard.js?v=47.1';
-import { currentAccount, getBuildingCounts } from '../core/state.js?v=47.1';
-import { TECH_BY_ID } from '../data/techs.js?v=47.1';
+import { materialMul, materialLookupFor } from '../core/shipyard.js?v=47.2';
+import { currentAccount, getBuildingCounts } from '../core/state.js?v=47.2';
+import { TECH_BY_ID } from '../data/techs.js?v=47.2';
 // v0.4.7：el() 收敛到 ui/common.js（此前本文件自带一份；全项目共 14 份、两种不兼容签名，
 //   v0.3.2「列强区块不显示」即源于把 A 型调用写进了 B 型文件）
-import { el } from './common.js?v=47.1';
+import { el } from './common.js?v=47.2';
 
 const ARMY_TECH = 't_m1';
 const ARMY_CATS = ['frame', 'mobility', 'weapon', 'armor', 'support'];
@@ -297,22 +297,37 @@ function buildBpCard(bp, root, ctx, techSet, barracks) {
   }
 
   // 全宽开线按钮：不可开工时直接显示原因
+  // v0.4.7：把「人力不足」也纳入按钮禁用原因 —— 组装线现在**真的消耗人力**
+  //   （v0.4.4 起），没派到人的线 progress 恒为 0，玩家会看到进度条卡死却毫无线索。
+  const freeLabor = freeLaborOf(inst);
   const goBtn = el('button', 'army-go',
     !unlocked ? '未解锁'
     : (!(barracks > 0)) ? '需建军营'
-    : (!allEnough ? '装备未齐，不能开工' : '开设组装线'));
-  goBtn.disabled = !unlocked || !allEnough || !(barracks > 0);
+    : (!allEnough ? '装备未齐，不能开工'
+      : (!(freeLabor > 0) ? '没有可用人力' : '开设组装线')));
+  goBtn.disabled = !unlocked || !allEnough || !(barracks > 0) || !(freeLabor > 0);
   if (!unlocked && bp.tech) goBtn.title = '需研究「' + techNameCn(bp.tech) + '」';
   if (!allEnough && missCount > 0) goBtn.title = '还差 ' + missCount + ' 件军事装备';
+  if (!(freeLabor > 0)) goBtn.title = '组装线需要派人去干活：当前没有空闲人力（可在「人力」页重新分配）';
   const msg = el('span', 'army-form-msg muted');
   goBtn.addEventListener('click', () => {
+    // v0.4.7 修复：此前传 workers: 0（v0.2.4「军营驱动、不占人力」的旧写法），
+    //   而 v0.4.4 已改为组装线消耗自己分配的人力 —— core/advanceArmyLines 里
+    //   `if (!(workers > 0)) continue` 会把这条线整个跳过，
+    //   于是**生产线进度条永远停在 0%，军队永远造不出来**（用户报告）。
+    //   现按造船线同一口径派工：军营线无工位上限，取全部可用人力。
+    const free = freeLaborOf(inst);
+    if (!(free > 0)) {
+      msg.textContent = '没有可用人力：请先到「人力」页给这条组装线派人（进度条需要人力才能推进）';
+      return;
+    }
     const res = addLine(inst, 'barracks', null, {
       armyBlueprintId: isCustom ? null : bp.id,
       armyBlueprint: isCustom ? bp : undefined,
-      workers: 0,
+      workers: free,
     });
     if (res && res.ok) {
-      msg.textContent = '已开设组装线（军营驱动）';
+      msg.textContent = '已开设组装线（派 ' + res.line.workers + ' 人，推进速度随军营数量提升）';
       renderArmyPage(root, ctx);
     } else {
       msg.textContent = (res && res.reason) || '开线失败';
@@ -465,6 +480,11 @@ function buildArmyRow(a, root, ctx, trainingCount) {
 // ============================================================================
 function renderArmyDesigner(sec, root, ctx, techSet) {
   const acc = ctx.account || currentAccount();
+  // v0.4.7 修复：此前本函数**没有声明 inst**，而下面的 renderParts() 与 refreshEval()
+  //   都在引用它（v0.4.6 加「部件材料自选」时引入 armyPartMaterialOptions(it.id, inst)），
+  //   于是点进「设计与建造」页直接抛 ReferenceError: inst is not defined，
+  //   整页军队系统加载失败（用户截图）。口径与 renderTroops / buildBpCard / buildArmyRow 一致。
+  const inst = ctx.planet || null;
   // 草稿挂 root 上，跨重绘保留
   if (!root._armyDraft) {
     root._armyDraft = {

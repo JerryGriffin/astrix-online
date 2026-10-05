@@ -1,12 +1,12 @@
 // 开始界面：标题、离线/在线模式、账号选择、各次要入口模态层（Astrix）
-import {  STATE, createAccount, switchAccount, deleteAccount, currentAccount, START_MODES, switchPool  } from '../core/state.js?v=47.1';
-import { HOI_NATIONS } from '../data/hoi1936.js?v=47.1';   // v0.2.6 官方 mod 1936 剧本
-import { fmtNum, fmtTime } from '../core/format.js?v=47.1';
+import {  STATE, createAccount, switchAccount, deleteAccount, currentAccount, START_MODES, switchPool  } from '../core/state.js?v=47.2';
+import { HOI_NATIONS } from '../data/hoi1936.js?v=47.2';   // v0.2.6 官方 mod 1936 剧本
+import { fmtNum, fmtTime } from '../core/format.js?v=47.2';
 // 版本号与更新日志的唯一来源：任何地方要显示版本都从这里取，改版本只改 js/version.js 一处
-import { VERSION, VERSIONS } from '../version.js?v=47.1';
+import { VERSION, VERSIONS } from '../version.js?v=47.2';
 // v0.4.7：el() 收敛到 ui/common.js（此前本文件自带一份；全项目共 14 份、两种不兼容签名，
 //   v0.3.2「列强区块不显示」即源于把 A 型调用写进了 B 型文件）
-import { el } from './common.js?v=47.1';
+import { el } from './common.js?v=47.2';
 
 function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, (c) => (

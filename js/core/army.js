@@ -12,8 +12,8 @@
 
 import {
   ARMY_BP_BY_ID, ARMY_PART_BY_ID, ARMY_SLOT_BY_CAT, armyBpPartNeeds,
-} from '../data/army_parts.js?v=47.1';
-import { materialMul, materialOptionsFor } from './shipyard.js?v=47.1';   // 无循环：shipyard 不依赖本模块
+} from '../data/army_parts.js?v=47.2';
+import { materialMul, materialOptionsFor } from './shipyard.js?v=47.2';   // 无循环：shipyard 不依赖本模块
 
 // ============================================================================
 // 一、账号军队列表（迁移 + 查询）
@@ -63,6 +63,37 @@ function migrateArmyTechs(acc) {
 
 export function armyById(acc, armyId) {
   return listArmies(acc).find((a) => a && a.id === armyId) || null;
+}
+
+/**
+ * v0.4.7 修复「军队组装线进度条永远 0%」—— 给零人力的军营线补派工人。
+ *
+ * 背景
+ *   v0.2.4 时组装线是「军营驱动、不占人力」，UI 建线传 `workers: 0`；
+ *   v0.4.4（需求 1）改成组装线**真正消耗自己分配的人力**，
+ *   core/state.js#advanceArmyLines 随即加了 `if (!(workers > 0)) continue`。
+ *   于是 v0.2.4~v0.4.6 期间建的军营线 workers 恒为 0，被这一行整个跳过 ——
+ *   表现就是用户报告的「生产线进度条一直 0%，军队部署不了」，
+ *   而人力页只管职业岗位、不列产线工人，玩家无法自行补救。
+ *
+ * 放在 advanceArmyLines 就地修（而不是 ensureArmies），因为只有那里才拿到
+ * 星球实例 —— ensureArmies(acc) 只有账号，碰不到 inst.lines。
+ *
+ * 幂等：派上后 workers>0，后续 tick 不再重复处理。
+ */
+export function healArmyLineLabor(inst, freeLabor) {
+  if (!inst || !Array.isArray(inst.lines)) return 0;
+  let fixed = 0;
+  for (const line of inst.lines) {
+    if (!line || !line.armyBlueprintId) continue;
+    if (line.buildingId !== 'barracks' && line.buildingId !== 'fabricator') continue;
+    if (Number(line.workers) > 0) continue;
+    const free = Math.max(0, Math.floor(Number(freeLabor) || 0));
+    if (free <= 0) continue;
+    line.workers = free;
+    fixed++;
+  }
+  return fixed;
 }
 
 // ============================================================================

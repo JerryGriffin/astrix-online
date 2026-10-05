@@ -26,13 +26,34 @@ export const VERSION_DATE = '2026-10-04';
 //   VERSION     —— 玩家看到的版本（设计者说不变就不变）
 //   REVISION    —— 只要改了 css/ 或 js/，这里就 +1
 //   CACHE_TAG   —— 实际写进 index.html 的 ?v= 串
-export const REVISION = 1;
+export const REVISION = 2;
 // index.html 里所有 css 链接与 js/main.js 入口都用它；改代码后记得 +1
 export const CACHE_TAG = VERSION_NUM + '.' + REVISION;
 
 // 更新日志：从新到旧。每项 [版本号, 日期, [条目...]]
 export const VERSIONS = [
   ['v0.4.7', '2026-10-05', [
+    '**修掉「军队系统加载失败：inst is not defined」** —— 点进「军队 → 设计与建造」'
+      + '整页崩掉。根因是 `renderArmyDesigner` 函数体内**从未声明 `inst`**，'
+      + '而嵌套的 `renderParts()` 与 `refreshEval()` 都在引用它'
+      + '（v0.4.6 加「部件材料自选」时引入了 `armyPartMaterialOptions(it.id, inst)`）。'
+      + '现已补上声明，口径与其余四个函数一致。',
+    '**修掉「军队组装线进度条永远 0%，军队部署不了」** —— 这是**两处口径打架**造成的：'
+      + 'v0.2.4 时组装线是「军营驱动、不占人力」，UI 建线时传 `workers: 0`；'
+      + 'v0.4.4 改成组装线真正消耗自己分配的人力，core 随即加了 `if (!(workers > 0)) continue`。'
+      + '于是**所有 v0.2.4~v0.4.6 期间建的军营线 workers 恒为 0**，被这一行整个跳过 ——'
+      + '而人力页只管职业岗位、不列产线工人，玩家根本无法自行补救。'
+      + '现做两件事：① UI 建线时按造船线同一口径自动派工；'
+      + '② 新增 `healArmyLineLabor` 在 tick 时给零人力的历史线**自动补派**（幂等）。',
+    '**组装线开线按钮新增「没有可用人力」状态** —— 此前人力为 0 时按钮照样可点，'
+      + '点完进度条却不动，玩家完全无从判断原因。',
+    '**新增自检 `docs/selfcheck_v048.mjs`（23 项）**，两个 bug 都有专项守卫，'
+      + '并已用**变异测试**逐个验证：删掉 `const inst` → 页面异常精确复现'
+      + '「inst is not defined」；禁用自愈 → 精确复现「workers=0、progress=0」；'
+      + '恢复后均 23/0。'
+      + '**这里还纠正了一个假阴性**：最初只渲染默认「我的军队」页就断言，'
+      + '而 `renderArmyDesigner` 只在「设计与建造」tab 激活时才执行 —— '
+      + '测试因此在 bug 存在时依然全绿。已改为真实点击该标签页。',
     '**修掉三个 P0 级缺陷（自检全绿却功能整块失效）** —— 本轮起因是一次代码审计：'
       + '9 套自检 2000+ 项全绿，但逐条运行时验证后发现三个 P0，且**全部落在自检盲区里**。',
     '**敌方夹击 AI 与补给刷新 100% 失效**：`theater.js#tickTheaterAI` 里用了三个'

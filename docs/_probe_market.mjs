@@ -1,5 +1,5 @@
 // v0.2.12 商店星探针：价格持续波动 / 共享价格应用与夹取 / 跳过噪声开关
-import { tickShop, shopStateOf, applySharedPrice, priceSnapshotOf } from '../js/core/shop.js?v=47.1';
+import { tickShop, shopStateOf, applySharedPrice, priceSnapshotOf } from '../js/core/shop.js?v=47.2';
 
 let pass = 0, fail = 0;
 function ok(cond, msg) { if (cond) { pass++; console.log('  ✓ ' + msg); } else { fail++; console.log('  ✗ ' + msg); } }

@@ -29,7 +29,7 @@
 //   · 不 import state.js（账号对象由调用方传入），与 battle.js 同构。
 // ============================================================================
 
-import { HOI_BY_ID, HOI_MAIN_NATIONS } from '../data/hoi1936.js?v=47.1';
+import { HOI_BY_ID, HOI_MAIN_NATIONS } from '../data/hoi1936.js?v=47.2';
 
 export const THEATER_COLS = 6;
 export const THEATER_ROWS = 6;
@@ -97,7 +97,7 @@ const TERRAIN_WORDS = {
 // ---------------------------------------------------------------------------
 // v0.4.7：hash32 / clamp 已收敛到 core/util.js（与 battle.js 共用唯一实现）。
 // 实测与原实现逐位一致，收敛零回归。
-import { hash32, clamp } from './util.js?v=47.1';
+import { hash32, clamp } from './util.js?v=47.2';
 function smooth(t) { return t * t * (3 - 2 * t); }
 /** 二维值噪声（格点 hash + 双线性平滑） */
 function noise2(seed, x, y) {
