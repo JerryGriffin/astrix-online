@@ -24,6 +24,13 @@ docs/add_*.mjs
 docs/improve_*.mjs
 docs/make_*.mjs
 docs/cleanup_docs.mjs
+docs/extract_*.mjs
+docs/merge_*.mjs
+docs/purge_*.mjs
+docs/repair_*.mjs
+docs/share_*.mjs
+docs/step*.mjs
+docs/tidy_*.mjs
 
 # 本机自带的 node 运行时，不入库
 node.exe
