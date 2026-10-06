@@ -10,10 +10,10 @@
 // 现在：版本号只在这里定义一次，任何地方要显示都从这里取；
 // index.html 的入口脚本带 ?v= 查询串（与 VERSION 同步），改版本号即自动击穿缓存。
 
-export const VERSION = 'v0.4.14';
+export const VERSION = 'v0.4.15';
 
 // 版本号数字形式（用于存档迁移判断）
-export const VERSION_NUM = 54;   // v0.4.10 → 50（十位进位，见 selfcheck_v005 的版本号一致性断言）
+export const VERSION_NUM = 55;   // v0.4.10 → 50（十位进位，见 selfcheck_v005 的版本号一致性断言）
 
 export const VERSION_DATE = '2026-10-06';
 
@@ -26,12 +26,37 @@ export const VERSION_DATE = '2026-10-06';
 //   VERSION     —— 玩家看到的版本（设计者说不变就不变）
 //   REVISION    —— 只要改了 css/ 或 js/，这里就 +1
 //   CACHE_TAG   —— 实际写进 index.html 的 ?v= 串
-export const REVISION = 5;
+export const REVISION = 6;
 // index.html 里所有 css 链接与 js/main.js 入口都用它；改代码后记得 +1
 export const CACHE_TAG = VERSION_NUM + '.' + REVISION;
 
 // 更新日志：从新到旧。每项 [版本号, 日期, [条目...]]
 export const VERSIONS = [
+  ['v0.4.15', '2026-10-06', [
+    '**清理 `docs/`：删掉 66 个一次性文件**（全部 54 个 `_probe_*` / `_smoke_*` / '
+      + '`*.log` / `_tmp_*`，2 个 probe 脚本，9 个一次性迁移脚本，1 张调试截图），'
+      + '从 95 个文件降到 30 个、约 1MB 降到 0.5MB。删前逐项查过引用：'
+      + '`*.json` 是源码注释里标注的「数据来源」参考资料（保留）、'
+      + '`army_ui.png` 的唯一引用方是同批删除的探针、'
+      + '`js/ui/colony.js` 里那处引用只是注释（已改指 `selfcheck_v048.mjs`）',
+    '**发现并修掉清理无效的根因**：`push_github.mjs` 用的是一份**硬编码**忽略表，'
+      + '与仓库根目录的 `.gitignore` 完全脱钩 —— 往 `.gitignore` 里加规则**根本不生效**。'
+      + '这就是那 66 个调试文件能一路被提交进仓库的原因：当时以为 .gitignore 管住了。'
+      + '现改为真正解析 `.gitignore`（支持目录规则 / 前缀 / 后缀 / `?` / 字符类 / `!`），'
+      + '并在推送前打印「按 .gitignore 跳过 N 个文件」（`GITIGNORE_VERBOSE=1` 可列明细）',
+    '**让推送能真正删除远端文件**：Git Trees API 的 `base_tree` 是**增量**语义 —— '
+      + '不列出的条目保持不变，所以本地删掉的文件会原封不动留在 GitHub 上，'
+      + '「清理」只会做成本地清理。现把远端 tree 全量拉下来比对，'
+      + '对「远端有、本地无」的补一条 `sha: null`（该 API 的删除写法）。'
+      + '**刻意不因被 .gitignore 忽略就跳过删除** —— git 的语义是 .gitignore 只管'
+      + '「未跟踪文件要不要加入」，已跟踪文件的删除不受它影响；'
+      + '首版错加了 `!ignored()` 过滤，结果那 66 个残留因刚好命中新规则而被判「不删」，'
+      + '清理反而成了空操作',
+    '`.gitignore` 补齐规则：docs/_*、docs/probe_*、docs/smoke_*、docs/*.log、docs/*.txt、'
+      + '一次性维护脚本（fix_/rename_/add_/improve_/make_/cleanup_docs）、node.exe',
+    '远端 `docs/` 现存 29 个文件（12 自检 + 3 工具 + 11 文档 + 3 参考数据），'
+      + '调试残留已归零；全量回归 10 套全绿',
+  ]],
   ['v0.4.14', '2026-10-06', [
     '**推送令牌换成 fine-grained PAT 并写回 `.git/config`** —— 原来的那枚是'
       + '40 位十六进制的早期令牌（`x-access-token` 用户名格式），GitHub 早已停用，'
