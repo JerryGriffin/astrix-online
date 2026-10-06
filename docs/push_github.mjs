@@ -43,7 +43,7 @@ function readRemote() {
     token: envToken || m[2],
     owner: m[3],
     repo: m[4],
-    tokenSource: envToken ? '环境变量 GITHUB_TOKEN/GH_TOKEN' : '.git/config 内嵌（可能已失效）',
+    tokenSource: envToken ? '环境变量 GITHUB_TOKEN/GH_TOKEN' : '.git/config 内嵌',
   };
 }
 
@@ -91,6 +91,28 @@ const R = readRemote();
 if (!R) {
   console.error('无法从 .git/config 解析出带令牌的 GitHub remote —— 无法推送。');
   process.exit(2);
+}
+
+// v0.4.14：**先实测令牌再动手**。
+//   之前只有 api() 报错时才看得出令牌坏了，而那时已经把上百个 blob 传完了，
+//   报错信息还被淹没在进度里。现在开头就验一次，失败直接退出并给出三条出路。
+try {
+  const me = await api('/user');
+  console.log('  令牌有效，登录为 ' + (me && me.login ? me.login : '?') + '（来源: ' + R.tokenSource + '）');
+} catch (e) {
+  console.error('\n✗ 令牌无效或无权限，推送中止。');
+  console.error('  来源: ' + R.tokenSource);
+  console.error('');
+  console.error('  三条出路，任选其一：');
+  console.error('   1) 设一个环境变量（最快，优先用这个）:');
+  console.error("      `$env:GITHUB_TOKEN = 'github_pat_...'   # 或 ghp_...");
+  console.error('      node docs\\push_github.mjs');
+  console.error('   2) 换一个令牌：https://github.com/settings/tokens');
+  console.error('      fine-grained 只需给 ' + R.owner + '/' + R.repo + ' 这一个仓库、');
+  console.error('      权限勾 Contents: Read and write 即可（比 classic 的 repo 全仓库权限安全得多）。');
+  console.error('   3) 换掉 .git/config 里已失效的那枚（本机没有 git CLI 时需手改）：');
+  console.error("      remote.origin.url = https://x-access-token:<新令牌>@github.com/" + R.owner + '/' + R.repo + '.git');
+  process.exit(3);
 }
 
 console.log('目标仓库: ' + R.owner + '/' + R.repo + '   (令牌来源: ' + R.tokenSource + '，不会打印)');
@@ -141,6 +163,16 @@ const newTree = await api('/repos/' + R.owner + '/' + R.repo + '/git/trees', {
   body: JSON.stringify({ base_tree: baseCommit.tree.sha, tree: treeEntries }),
 });
 console.log('  tree: ' + newTree.sha.slice(0, 10));
+
+// v0.4.14 **零变化短路**：tree 与远端当前 tree 完全一致，说明本次没有任何
+//   文件改动。此前仍会照样建一个 commit —— 产出的是内容相同的空提交，
+//   白白推进历史，也让「刚才推了什么」变得难以分辨（曾出现 tree 哈希相同
+//   却多出一个 commit 的情况）。这里直接判定为无需推送。
+if (newTree.sha === baseCommit.tree.sha) {
+  console.log('  tree 与远端一致 —— 本地与远端无差异，无需推送。');
+  console.log('✅ 无需操作：' + R.owner + '/' + R.repo + ' @ ' + baseSha.slice(0, 10));
+  process.exit(0);
+}
 
 // 4) 建 commit —— 版本号与条目**从 js/version.js 动态取**，不再硬编码
 //    （原先写死 'v0.4.1'，结果推 v0.4.2 时提交信息仍是旧版本号，误导后续排查）
