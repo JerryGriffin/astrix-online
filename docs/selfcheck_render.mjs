@@ -113,6 +113,10 @@ globalThis.document = {
   //   真实浏览器里没聚焦时是 body，这里给 null 等价于「没在操作」。
   activeElement: null,
   body: documentEl,
+  // v0.4.16：common.js#ensureStyle 会把面板样式挂到 document.head 上。
+  //   垫片补一个 head，否则电力 / 建筑 / 人力 / 战区 / 殖民地这几个面板会因
+  //   document.head 为 undefined 而整体渲染失败。
+  head: new El('head'),
 };
 globalThis.window = {
   addEventListener: () => {},
@@ -156,13 +160,13 @@ const app = byId.app;
 
 // 用动态 import 真正跑一遍 main.js（含启动、渲染开始界面、注册心跳）
 step('加载 main.js（启动 + 渲染开始界面）', () => {});
-await import('../js/main.js?v=55.6');
+await import('../js/main.js?v=56.7');
 
-const S = await import('../js/core/state.js?v=55.6');
-const Y = await import('../js/core/shipyard.js?v=55.6');
-const POP = await import('../js/core/population.js?v=55.6');
+const S = await import('../js/core/state.js?v=56.7');
+const Y = await import('../js/core/shipyard.js?v=56.7');
+const POP = await import('../js/core/population.js?v=56.7');
 // v0.1.2（需求 19-2）：造船除装备外还要按部件扣**材料**，测试要先把材料备齐
-const SYU = await import('../js/ui/shipyard.js?v=55.6');
+const SYU = await import('../js/ui/shipyard.js?v=56.7');
 
 const allEls = () => walkAll(app).concat(app.children);
 const findButtons = () => allEls().filter((e) => e.tagName === 'BUTTON');
@@ -208,6 +212,21 @@ step('新建存档并进入星球', () => {
 });
 
 const tabBtns = () => allEls().filter((e) => e.className.includes('tab-btn'));
+
+// v0.4.16 入口整合：「军队 / 舰队 / 战区 / 势力」不再是顶层 tab，而是
+//   「军事」tab 下的子页（.fleet-subnav-btn）。测试要进这些页面得先点军事 tab。
+const milSubBtns = () => allEls().filter((e) => e.className.includes('fleet-subnav-btn'));
+function gotoMil(label) {
+  const top = tabBtns().find((x) => x.textContent === '军事');
+  if (!top) throw new Error('未找到「军事」tab');
+  top.dispatch('click');
+  const b = milSubBtns().find((x) => x.textContent === label);
+  if (!b) {
+    throw new Error('「军事」下未找到子页：' + label
+      + '（现有子页：' + milSubBtns().map((x) => x.textContent).join(' / ') + '）');
+  }
+  b.dispatch('click');
+}
 console.log('\n星球内 tab:', tabBtns().map((b) => b.textContent).join(' | ') || '(无)');
 
 // v0.0.6：底部菜单新增「电力」（储电站与设施）；原来的占位「殖民」tab 被
@@ -215,7 +234,9 @@ console.log('\n星球内 tab:', tabBtns().map((b) => b.textContent).join(' | ') 
 //   所以这里不检查它，等下面造出船坞后再单独验证。
 // v0.2.0：「军队」「星际」两个新 tab 与「星球选择」同一门槛（hasDock 后才出现），
 //   无船坞阶段同样不检查，到下面造出船坞的段落再验证。
-for (const label of ['物品栏', '人力', '科研', '建筑', '电力', '舰队']) {
+// v0.4.16 入口整合：舰队 / 军队 / 战区 已合并为单一「军事」tab，
+//   顶层巡检改为点「军事」。
+for (const label of ['物品栏', '人力', '科研', '建筑', '电力', '军事']) {
   step(`切换到「${label}」`, () => {
     const b = tabBtns().find((x) => x.textContent === label);
     if (!b) throw new Error('未找到该 tab');
@@ -228,9 +249,10 @@ step('未建船坞时不应出现「星球选择」tab', () => {
     throw new Error('还没造船坞就出现了「星球选择」tab（需求 R13 要求造出船坞后才出现）');
   }
 });
-step('v0.2.4 未建船坞时：军队 tab 恒显示，星际/星球选择不应出现', () => {
-  if (!tabBtns().find((x) => x.textContent === '军队')) {
-    throw new Error('军队 tab 应恒显示（v0.2.4：未解锁科技时页内提示，不再藏按钮）');
+step('v0.2.4 未建船坞时：军事 tab 恒显示，星际/星球选择不应出现', () => {
+  // v0.4.16：军队 / 舰队 / 战区 已并入单一「军事」入口，这里校验的是它
+  if (!tabBtns().find((x) => x.textContent === '军事')) {
+    throw new Error('军事 tab 应恒显示（v0.4.16：军队/舰队/战区合并到此入口）');
   }
   const early = tabBtns().filter((x) => x.textContent === '星际' || x.textContent === '星球选择');
   if (early.length) {
@@ -439,7 +461,8 @@ step('科研 → 设施，点开第一个设施详情', () => {
 // ---- 舰队：未建船坞时应给出门槛提示而不是崩溃 ----
 step('舰队（未建船坞）应显示门槛提示', () => {
   closeModals();
-  const b = tabBtns().find((x) => x.textContent === '舰队');
+  gotoMil('舰队');
+  const b = { dispatch() {} };
   b.dispatch('click');
   const txt = allText();
   if (!txt.includes('船坞尚未建成')) throw new Error('未显示船坞门槛提示');
@@ -466,7 +489,8 @@ step('解锁船坞科技并建造船坞后，蓝图编辑器应可用', () => {
   POP.assignWorkers(inst.pop, 'dock_worker', 8, inst.buildings);
   console.log('     船坞工在岗:', Y.dockWorkerCount ? 'n/a' : 'n/a', '| 就绪:',
     JSON.stringify(SY_dockReady(inst, acc)));
-  const b = tabBtns().find((x) => x.textContent === '舰队');
+  gotoMil('舰队');
+  const b = { dispatch() {} };
   b.dispatch('click');
   // v0.1.2（需求 4）：蓝图编辑器已迁到「设计」子页 —— 舰船子页**不应**再出现。
   // （迁移时曾把 renderShipyard 里的 `researched` 定义一起删掉，舰船页一打开就
@@ -550,9 +574,9 @@ step('造船线推进 → 满进度自动下水并扣装备', () => {
 
 step('点开飞船详情并推演 60 秒', () => {
   // v0.1.1 需求 3：下水是 core 侧（shipBuildTick）推进的，UI 不会自动重绘，
-  // 这里必须重新切一次「舰队」tab 才能拿到带新船的列表。
-  const fleetTab = tabBtns().find((x) => x.textContent === '舰队');
-  if (fleetTab) fleetTab.dispatch('click');
+  // 这里必须重新切一次「舰队」页才能拿到带新船的列表。
+  // v0.4.16：舰队不再是顶层 tab，改走「军事 → 舰队」。
+  gotoMil('舰队');
   const view = allEls().find((e) => e.tagName === 'BUTTON' && e.textContent === '查看');
   if (!view) throw new Error('未找到「查看」按钮');
   view.dispatch('click');
@@ -609,7 +633,7 @@ step('切回主界面再进星球（验证返回导航）', () => {
 
 // 存档往返
 step('存档落盘并重载', async () => {
-  const S = await import('../js/core/state.js?v=55.6');
+  const S = await import('../js/core/state.js?v=56.7');
   S.saveState();
   const before = _ls.size;
   const raw = _ls.get('astrix.save.' + S.STATE.currentAccountId);
@@ -626,7 +650,7 @@ await Promise.all(pending);
 // 验证：电力面板渲染 / 造出船坞后「星球选择」tab / 星球选择含 7 星 nameCn
 // （本段只读取已有作用域：tabBtns / allText / step / PLANETS，不改动其它步骤）
 // =====================================================================
-const PL = await import('../js/data/planets.js?v=55.6');
+const PL = await import('../js/data/planets.js?v=56.7');
 
 // ⚠ 这段追加在「存档落盘并重载」之后，而它前面那一步是「返回主界面 → 点离线模式」。
 //   v0.0.6（需求 R6）之后，点「离线模式」**总是先弹存档选择界面**（不再直接进游戏），
@@ -673,7 +697,7 @@ step('v0.0.6 星球选择：造出船坞后底部菜单出现「星球选择」t
 // ---- v0.2.4：军队（tab 恒显示；未解锁提示科技；军营驱动；装备全齐才能开线）----
 // 注意 v0.2.1（需求 A）：星际功能只在在线模式存在，离线模式**不**显示「星际」tab。
 step('v0.2.4 军队：tab 恒显示且单兵武器解锁后可进入（星际离线不出现）', () => {
-  if (!tabBtns().find((x) => x.textContent === '军队')) {
+  if (!tabBtns().find((x) => x.textContent === '军事')) {
     throw new Error('军队 tab 应恒显示（v0.2.4）');
   }
   if (tabBtns().find((x) => x.textContent === '星际')) {
@@ -682,8 +706,7 @@ step('v0.2.4 军队：tab 恒显示且单兵武器解锁后可进入（星际离
   console.log('     「军队」tab 恒显示；「星际」tab 在离线模式正确隐藏');
 });
 step('v0.2.4 军队：切到「军队」tab', () => {
-  const b = tabBtns().find((x) => x.textContent === '军队');
-  b.dispatch('click');
+  gotoMil('军队');
 });
 await new Promise((r) => setTimeout(r, 300));   // 军队面板是异步动态 import
 step('v0.2.4 军队：无军营时显示军营指引（组装线由军营驱动）', () => {
@@ -698,8 +721,7 @@ step('v0.2.4 军队：建军营并重进军队页', () => {
   inst.buildings = inst.buildings || {};
   inst.buildings.fabricator = 1;
   inst.buildings.barracks = 1;
-  const b = tabBtns().find((x) => x.textContent === '军队');
-  b.dispatch('click');
+  gotoMil('军队');
 });
 await new Promise((r) => setTimeout(r, 300));
 step('v0.2.4 军队：游骑兵立即可造、铁壁/雷霆按科技锁定、装备未齐不能开线', () => {
@@ -747,7 +769,7 @@ step('v0.0.6 星球选择：进入不崩溃且遵循「已发现才可见」门�
 //   合并代码路径不崩；同时假 SDK 的 db 链一律返回空结果，避免任何真实网络调用。
 // ============================================================================
 step('v0.2.1 在线模式：导入 galaxy.js 并渲染「星际」', () => {});
-const G = await import('../js/ui/galaxy.js?v=55.6');
+const G = await import('../js/ui/galaxy.js?v=56.7');
 // 最小假云端：createWorkBuddyCloud 返回带 database 链的对象；getSession 返回无用户
 //   注意：db 链必须「非 thenable」，否则 `await db()...` 会卡在微任务里永不落定。
 const _chain = new Proxy({}, {

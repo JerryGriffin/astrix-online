@@ -10,10 +10,10 @@
 // 现在：版本号只在这里定义一次，任何地方要显示都从这里取；
 // index.html 的入口脚本带 ?v= 查询串（与 VERSION 同步），改版本号即自动击穿缓存。
 
-export const VERSION = 'v0.4.15';
+export const VERSION = 'v0.4.16';
 
 // 版本号数字形式（用于存档迁移判断）
-export const VERSION_NUM = 55;   // v0.4.10 → 50（十位进位，见 selfcheck_v005 的版本号一致性断言）
+export const VERSION_NUM = 56;   // v0.4.10 → 50（十位进位，见 selfcheck_v005 的版本号一致性断言）
 
 export const VERSION_DATE = '2026-10-06';
 
@@ -26,12 +26,52 @@ export const VERSION_DATE = '2026-10-06';
 //   VERSION     —— 玩家看到的版本（设计者说不变就不变）
 //   REVISION    —— 只要改了 css/ 或 js/，这里就 +1
 //   CACHE_TAG   —— 实际写进 index.html 的 ?v= 串
-export const REVISION = 6;
+export const REVISION = 7;
 // index.html 里所有 css 链接与 js/main.js 入口都用它；改代码后记得 +1
 export const CACHE_TAG = VERSION_NUM + '.' + REVISION;
 
 // 更新日志：从新到旧。每项 [版本号, 日期, [条目...]]
 export const VERSIONS = [
+  ['v0.4.16', '2026-10-06', [
+    '**② 军事系统合并为单一入口**：顶层不再有「舰队」「军队」「战区」三个平级页签，'
+      + '只剩一个「军事」，内部子页 = 战区 / 军队 / 舰队 / 势力。'
+      + '此前同一套军事内容散在 4 个顶层入口里，其中军队页与舰队页还各自带一层'
+      + '**结构相同却各写一遍**的子导航控件，跨页切换要来回跳。'
+      + '旧页签 key（hoi/army/fleet）保留为重定向，任何遗留 selectTab 都不会掉进'
+      + '「尚未开放」占位页；子页切换会改写 currentTab，数据变化后重绘仍停在同一子页',
+    '**① 电脑势力（交易 / 进攻 / 结盟）从星际页迁到「军事 → 势力」**：星际页此前'
+      + '与战区页同时摆着两套战斗入口，正是用户说的「多个入口里存在新旧窗口」。'
+      + '现在星际页只剩一句指引，不再有进攻 / 交易按钮。'
+      + '**没有把 NPC 画进战区地图**是刻意的：NPC 是贸易站（有买卖价、金库、守军），'
+      + '而战区地图表达的是领土归属（占领 / 补给 / 围城），把贸易站画成地图势力会'
+      + '混淆两种语义 —— NPC 没有「战区」可占',
+    '**③ 五个模块不再把整块 CSS 塞进渲染容器**：hoi / buildings / colony / '
+      + 'population / power 原本都是 root.appendChild(el(\'style\', ...))，'
+      + '而这些页面大多带定时重绘 —— 这段 CSS 每秒被重新插入、重新解析，再被 '
+      + 'innerHTML 清空。副作用是**整段 CSS 文本混进面板的 textContent**，'
+      + '任何读面板文字的地方都会读到一堆 CSS 规则。'
+      + '实测战区页 textContent 5752 字符里大半是 CSS，收敛后降到 1666。'
+      + '现统一走 common.js#ensureStyle（按 id 去重挂到 document.head），'
+      + '并对缺少 head 的宿主（Node 自检垫片）有防护',
+    '**③ 清掉 18 个死 import**（import 了但全文再没出现第二次），'
+      + '分布在 auction / fleet / production / shop / state / army / buildings / '
+      + 'colony / fleet / hoi / inventory / shipyard 共 12 个文件',
+    '**③ 收掉 main.js 自带的那份 el()**，改从 ui/common.js 引入 —— 全库两份 el、'
+      + '两种不兼容签名正是 v0.3.2「列强区块不显示」的根因，当时全库曾有 14 份',
+    '**③ population / power / shop 三个文件本地重写的 clamp() 收敛到 core/util.js**'
+      + '（已逐字节核对实现完全一致）',
+    '新增 `docs/audit_redundancy.mjs` 冗余审计脚本（死 import / 重名实现 / '
+      + '空函数 / el 多份定义），新增 `docs/scan_tab_refs.mjs` 页签引用扫描。'
+      + '扫描确认除 planet.js 自身外无任何文件引用旧 tab key，合并因此安全',
+    'selfcheck_render.mjs 适配新入口（新增 gotoMil 辅助，14 处断言改走「军事 → 子页」），'
+      + '并给 DOM 垫片补上 document.head；selfcheck_fixes 新增 38 条断言'
+      + '（59 → 97），锁住入口结构、样式收敛与冗余清理',
+    '浏览器实测：顶层 7 个页签全部正常、军事 4 个子页全部正常、'
+      + '7 个页签 + 4 个子页的 textContent **均无 CSS 泄漏**、'
+      + '样式在 head 里只有一份（12 次切换后仍为 1）',
+    '全量回归：materials / render / battle 100 / theater 99 / fixes 97 / v005 1388 / '
+      + 'v006 258 / v045 83 / v046 73 / v047 23，全部绿',
+  ]],
   ['v0.4.15', '2026-10-06', [
     '**清理 `docs/`：删掉 66 个一次性文件**（全部 54 个 `_probe_*` / `_smoke_*` / '
       + '`*.log` / `_tmp_*`，2 个 probe 脚本，9 个一次性迁移脚本，1 张调试截图），'

@@ -7,14 +7,15 @@
 // 运输：本模块只负责「下单与结算」；**货必须由运输船运**（运输判定在 core/fleet.js，
 //   订单上带 cells 供其判断载货格数是否够）。
 
-import { MATERIALS } from '../data/materials.js?v=55.6';
-import { ownedOf, spendOwned, currentAccount, STATE } from './state.js?v=55.6';
-import { ensureEntry } from './production.js?v=55.6';
-import { ASCOIN_PER_GOLD } from './currency.js?v=55.6';
+import { MATERIALS } from '../data/materials.js?v=56.7';
+import { clamp } from './util.js?v=56.7';
+import { ownedOf, spendOwned, STATE} from './state.js?v=56.7';
+import { ensureEntry } from './production.js?v=56.7';
+import { ASCOIN_PER_GOLD } from './currency.js?v=56.7';
 // v0.1.2 R9：装备类交易键走 partId@材料（与 v0.1.1 贡品契约同口径），
 // 需能识别部件 id 并估值，故引入部件数据表（PART_BY_ID）与 resolvePart。
-import { PART_BY_ID } from '../data/ship_parts.js?v=55.6';
-import { resolvePart } from './shipyard.js?v=55.6';
+import { PART_BY_ID } from '../data/ship_parts.js?v=56.7';
+import { resolvePart } from './shipyard.js?v=56.7';
 
 const MAT_BY_NAME = Object.fromEntries(MATERIALS.map((m) => [m.nameCn, m]));
 
@@ -440,7 +441,6 @@ export const MARKET_FEE = 0.05;
 // （此前只是概率 ∝ 建议价/挂单价 → 趋近 0 但不等于 0，离谱高价仍有极小概率被买走。）
 export const SHOP_ABSURD_RATIO = 8;
 
-function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
 
 // 把卖单结算款发给挂单者（玩家或电脑账号）。
 // 佣金口径：total 为成交全额（挂牌价 × 成交数量），本函数统一扣除 MARKET_FEE

@@ -247,6 +247,71 @@ console.log('\n#13 电解池不消耗碳');
     ok(/\.army-deploy-tag\s*\{/.test(css), '.army-deploy-tag 有样式');
   }
 
+  // ---------------------------------------------------------------------------
+  console.log('\n#v0.4.16 单一军事入口 / 冗余收敛');
+  {
+    const planet = srcOf('js/ui/planet.js');
+    // ① 舰队 / 军队 / 战区 已合并为单一「军事」顶层页签
+    // 只看**顶层 tabs 数组**里的条目 —— 「舰队 / 军队」作为军事入口的**子页**
+    // 定义仍然应该存在（那是合并后的正确形态），不能一并当成"顶层残留"判死。
+    const topTabs = (planet.match(/const tabs = \[([\s\S]*?)\n\s*\];/) || [, ''])[1];
+    ok(/key: 'mil', label: '军事'/.test(topTabs), '顶层 tabs 里有单一「军事」页签');
+    ok(!/key: 'fleet'/.test(topTabs), '顶层 tabs 里不再有独立「舰队」页签');
+    ok(!/key: 'army'/.test(topTabs), '顶层 tabs 里不再有独立「军队」页签');
+    ok(!/key: 'hoi'/.test(topTabs), '顶层 tabs 里不再有独立「战区」页签');
+    ok(!/tabs\.push\(\{ key: 'hoi'/.test(planet), '战区不再被单独 push 成顶层页签');
+    ok(/function renderMilitary\(/.test(planet), '有 renderMilitary 单一入口渲染函数');
+    // 四个子页都要在
+    ok(/key: 'hoi', label: '战区'/.test(planet), '军事下有「战区」子页');
+    ok(/key: 'army', label: '军队'/.test(planet), '军事下有「军队」子页');
+    ok(/key: 'fleet', label: '舰队'/.test(planet), '军事下有「舰队」子页');
+    ok(/key: 'forces', label: '势力'/.test(planet), '军事下有「势力」子页（NPC 从星际页迁来）');
+    // 旧 key 必须重定向，否则遗留 selectTab('army') 会掉进「尚未开放」占位页
+    ok(/MIL_SUB_FROM_TAB/.test(planet), '有旧页签 key 的重定向表');
+    ok(/if \(MIL_SUB_FROM_TAB\[key\]\)/.test(planet), 'selectTab 会把旧 key 重定向到新入口');
+    ok(/showForces\(/.test(planet), '军事入口能打开势力子页');
+  }
+  {
+    const galaxy = srcOf('js/ui/galaxy.js');
+    // ② 电脑势力（交易 / 进攻）只在军事入口出现，星际页不再重复提供
+    ok(/export function renderForcesPanel\(/.test(galaxy), 'galaxy 导出 renderForcesPanel 供军事入口挂载');
+    ok(/军事 → 势力/.test(galaxy), '星际页留了指向新入口的指引');
+    // 星际页不再调用 renderNpcGrid（那是入口重复的直接证据）
+    const secIdx = galaxy.indexOf('电脑势力');
+    ok(secIdx >= 0, '星际页仍有电脑势力说明区（只读指引）');
+    ok(!/renderNpcGrid\(npcGrid, ctx, rerender, acc, ''\)/.test(galaxy),
+      '星际页不再渲染 NPC 网格（不再提供第二个入口）');
+    ok(!/searchInput\.addEventListener\('input'[\s\S]{0,200}renderNpcGrid/.test(galaxy),
+      '星际页搜索框不再驱动 NPC 网格');
+  }
+  {
+    const common = srcOf('js/ui/common.js');
+    // ③ 样式注入收敛到 common#ensureStyle，不再往渲染容器里塞 <style>
+    ok(/export function ensureStyle\(/.test(common), 'common.js 导出 ensureStyle');
+    ok(/!document\.head/.test(common), 'ensureStyle 对缺少 head 的宿主有防护（自检垫片就是这种）');
+    for (const [f, id] of [['js/ui/hoi.js', 'hoi-css'], ['js/ui/buildings.js', 'buildings-css'],
+                          ['js/ui/colony.js', 'colony-css'], ['js/ui/population.js', 'population-css'],
+                          ['js/ui/power.js', 'power-css']]) {
+      const s = srcOf(f);
+      ok(s.includes("ensureStyle('" + id + "'"), f + ' 用 ensureStyle 注入样式');
+      // 先剥掉注释行：hoi.js 里那段解释来由的注释本身写着旧写法，不该被判死
+      const sCode = s.split('\n').filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l)).join('\n');
+      ok(!/appendChild\(el\('style'/.test(sCode), f + ' 不再往渲染容器里塞 <style>');
+    }
+  }
+  {
+    // ④ 冗余收敛：死 import 清零、el 只剩一份、本地 clamp 归位 util.js
+    ok(!/^function el\(tag, cls, text\)/m.test(srcOf('js/main.js')),
+      'main.js 不再自带 el()（曾与 common.js 并存，是两种不兼容签名的隐患）');
+    ok(/import \{ el \} from '\.\/ui\/common\.js/.test(srcOf('js/main.js')),
+      'main.js 的 el 改从 ui/common.js 引入');
+    for (const f of ['js/core/population.js', 'js/core/power.js', 'js/core/shop.js']) {
+      const s = srcOf(f);
+      ok(!/^function clamp\(v, lo, hi\)/m.test(s), f + ' 不再自带 clamp()（统一用 core/util.js）');
+      ok(/from '\.\/util\.js/.test(s), f + ' 已从 core/util.js 引入');
+    }
+  }
+
 console.log('\n通过 ' + pass + ' / 失败 ' + fail);
 if (fail) {
   console.log('\n失败项：');

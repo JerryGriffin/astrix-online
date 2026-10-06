@@ -13,29 +13,29 @@
 import {
   ARMY_BLUEPRINTS, ARMY_PART_BY_ID, ARMY_SLOT_BY_CAT, ARMY_PART_COST,
   armyCapOf, armyBpPartNeeds, armyBpMaterialNeeds,
-} from '../data/army_parts.js?v=55.6';
+} from '../data/army_parts.js?v=56.7';
 import {
   armyStatsOfBp, armyPowerOf, armyPowerOfInstance, armyBuildCheck, listArmies, disbandArmy,
   getArmyBp, armyEffStats, armyPartMaterialOptions, trainArmy, cancelTraining, ARMY_LABOR_PER_BARRACKS,
   attachShipToArmy, detachShipFromArmy, shipEligibleForArmy, shipArmyOf, ARMY_SHIP_TECH,
   // v0.4.9：补员搬进 core/army.js（自动整补 + 手动紧急补员），不再从剧本层 hoi1936.js 取
   reinforceArmy, menMaxOf,
-} from '../core/army.js?v=55.6';
-import { addLine, removeLine, freeLaborOf } from '../core/production.js?v=55.6';
-import { fmtNum, fmtTime } from '../core/format.js?v=55.6';
+} from '../core/army.js?v=56.7';
+import { addLine, removeLine, freeLaborOf } from '../core/production.js?v=56.7';
+import { fmtNum, fmtTime } from '../core/format.js?v=56.7';
 // v0.4.6：从 core/shipyard.js 取材料合并表（**不从 production.js 取**——
 //   后者与 state.js 循环引用，直接 import 会在模块求值顺序不对时抛
 //   「Cannot access '_getInst' before initialization」）。
-import { materialMul, materialLookupFor } from '../core/shipyard.js?v=55.6';
+import { materialLookupFor} from '../core/shipyard.js?v=56.7';
 // v0.4.13 修真实缺陷：`getPlanetInstance` 在 buildArmyRow（补员按钮）里被调用，
 //   但此前**从未 import** —— 点「补员」在浏览器里直接抛 ReferenceError，
 //   按钮等于废的。静态检查抓不到（未声明标识符要到运行期才炸），
 //   是这次给部署徽标做渲染验证时顺带撞出来的。
-import { currentAccount, getBuildingCounts, getPlanetInstance } from '../core/state.js?v=55.6';
-import { TECH_BY_ID } from '../data/techs.js?v=55.6';
+import { currentAccount, getBuildingCounts, getPlanetInstance } from '../core/state.js?v=56.7';
+import { TECH_BY_ID } from '../data/techs.js?v=56.7';
 // v0.4.7：el() 收敛到 ui/common.js（此前本文件自带一份；全项目共 14 份、两种不兼容签名，
 //   v0.3.2「列强区块不显示」即源于把 A 型调用写进了 B 型文件）
-import { el } from './common.js?v=55.6';
+import { el } from './common.js?v=56.7';
 
 const ARMY_TECH = 't_m1';
 const ARMY_CATS = ['frame', 'mobility', 'weapon', 'armor', 'support'];
@@ -109,8 +109,8 @@ function findDeployment(acc, armyId) {
 
 
 // v0.4.13（③）部署徽标用到的引擎 API：取进行中的战役、交战上限常量、查战区名
-import { activeBattlesOf, BATTLE_MAX_HOURS } from '../core/battle.js?v=55.6';
-import { regionById } from '../core/theater.js?v=55.6';
+import { activeBattlesOf, BATTLE_MAX_HOURS } from '../core/battle.js?v=56.7';
+import { regionById } from '../core/theater.js?v=56.7';
 
 export function renderArmyPage(root, ctx) {
   ctx = ctx || {};

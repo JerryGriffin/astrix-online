@@ -1,9 +1,13 @@
 // 应用入口：路由、全局模态层与启动（Astrix）
-import { STATE, loadState, createAccount, currentAccount, saveState, tick, settleOffline, OFFLINE_RATIO } from './core/state.js?v=55.6';
-import { renderStart, openAccountPicker } from './ui/start.js?v=55.6';
-import { renderPlanet } from './ui/planet.js?v=55.6';
+import { STATE, loadState, createAccount, currentAccount, saveState, tick, settleOffline, OFFLINE_RATIO } from './core/state.js?v=56.7';
+import { renderStart, openAccountPicker } from './ui/start.js?v=56.7';
+import { renderPlanet } from './ui/planet.js?v=56.7';
+// v0.4.16：本文件原先自带一份 el()，与 ui/common.js 的 el 并存 ——
+//   两种不兼容签名正是 v0.3.2「列强区块不显示」的根因（全库曾有 14 份 el）。
+//   本文件只用三参数位置式，与 common 版兼容，故统一从 common 引入。
+import { el } from './ui/common.js?v=56.7';
 // v0.2.1：在线模式前置 —— 进入游戏前必须先绑定邮箱（验证码登录 / 注册）
-import { cloudUser, loginWithName, registerWithName, ensureReady } from './core/cloud.js?v=55.6';
+import { cloudUser, loginWithName, registerWithName, ensureReady } from './core/cloud.js?v=56.7';
 
 const root = document.getElementById('app');
 const modalRoot = document.getElementById('modal-root');
@@ -225,12 +229,6 @@ function openOnlineBindModal(onBound) {
 }
 
 // 小工具：建元素（与 ui 模块同款，避免为 main 单独 import）
-function el(tag, cls, text) {
-  const e = document.createElement(tag);
-  if (cls) e.className = cls;
-  if (text != null) e.textContent = String(text);
-  return e;
-}
 
 // ===== 全局游戏心跳（v0.0.2）=====
 // 之前 tick 只由物品栏内部定时器驱动，切到别的 tab 或返回主界面后产出就停了、

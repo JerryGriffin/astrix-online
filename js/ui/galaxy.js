@@ -16,30 +16,30 @@ import {
   ensureReady, cloudStatus, cloudUser,
   loginWithName, registerWithName, signOutCloud,
   listPublicPlanets, publishMyPlanet, postIncident, fetchInbox, markIncidentResolved,
-} from '../core/cloud.js?v=55.6';
-import { currentAccount, getPlanetInstance, ownedOf, spendOwned } from '../core/state.js?v=55.6';
-import { ensureEntry } from '../core/production.js?v=55.6';
-import { listFleets, fleetPowerOf, defenseBonusOf } from '../core/fleet.js?v=55.6';
-import { totalArmyPowerOf, listArmies, disbandArmy, resolveBattle, armyToUnit, armyPowerOfInstance } from '../core/army.js?v=55.6';
+} from '../core/cloud.js?v=56.7';
+import { currentAccount, getPlanetInstance, ownedOf, spendOwned } from '../core/state.js?v=56.7';
+import { ensureEntry } from '../core/production.js?v=56.7';
+import { listFleets, fleetPowerOf, defenseBonusOf } from '../core/fleet.js?v=56.7';
+import { totalArmyPowerOf, listArmies, disbandArmy, resolveBattle, armyToUnit, armyPowerOfInstance } from '../core/army.js?v=56.7';
 // v0.2.1：内嵌殖民地管理（含内联报告），取代在线模式独立的「星球选择」tab
-import { renderColony } from './colony.js?v=55.6';
-import { PLANETS } from '../data/planets.js?v=55.6';
-import { HOI_NATIONS, HOI_BY_ID, HOI_SCENARIO_ID } from '../data/hoi1936.js?v=55.6';   // v0.2.6 官方 mod
+import { renderColony } from './colony.js?v=56.7';
+import { PLANETS } from '../data/planets.js?v=56.7';
+import { HOI_NATIONS, HOI_BY_ID, HOI_SCENARIO_ID } from '../data/hoi1936.js?v=56.7';   // v0.2.6 官方 mod
 // v0.4.11 **入口整合**：战争操作（宣战 / 和平会议 / 投降）已全部收敛到「战区」页，
 //   这里只保留只读战况显示，故下列 import 随之移除（避免读者以为旧入口仍生效）：
 //     · declareWar / canForceSurrender / endWar / surrenderWar —— 均只在战区页调用
 //     · openPeaceConference —— 和平会议在战区页
 //   仍保留：activeWarsOf / warWith / addWarScore —— 本页读战况并结算跨玩家战斗结果。
-import { activeWarsOf, warWith, addWarScore } from '../core/war.js?v=55.6';
+import { activeWarsOf, warWith, addWarScore } from '../core/war.js?v=56.7';
 // v0.4.7：移除三个**未被使用的死 import**（v0.4.5 和平会议上线后旧路径已不可达，
 //   但 import 还留着 —— 既误导读者以为旧路径仍生效，也让 hoi1936.js 无法删旧实现）：
 //     · postwarOptionsFor / applyPostwarChoice —— 战后处置已由 treaty.js#signTreaty 独占
 //     · draftTreaty —— 和约已由和平会议签订
-import { canJustify, startJustify, justifyStatusOf, histWarGateFor } from '../core/hoi1936.js?v=55.6';
-import { fmtNum } from '../core/format.js?v=55.6';
+import { canJustify, startJustify, justifyStatusOf, histWarGateFor } from '../core/hoi1936.js?v=56.7';
+import { fmtNum } from '../core/format.js?v=56.7';
 // v0.4.7：el() 收敛到 ui/common.js（此前本文件自带一份；全项目共 14 份、两种不兼容签名，
 //   v0.3.2「列强区块不显示」即源于把 A 型调用写进了 B 型文件）
-import { el } from './common.js?v=55.6';
+import { el } from './common.js?v=56.7';
 
 function ascoinOf(acc) { return Math.floor(Number(acc && acc.ascoin) || 0); }
 
@@ -266,7 +266,7 @@ function renderShell(body, ctx, rerender) {
   searchInput.placeholder = '搜索玩家星球 / 指挥官 / 星球代号…';
   searchInput.addEventListener('input', () => {
     query = searchInput.value.trim().toLowerCase();
-    renderNpcGrid(npcGrid, ctx, rerender, acc, query);
+    // v0.4.16：NPC 网格迁到「军事 → 势力」，搜索只过滤本页的玩家星球
     renderPlanetGrid(planetGrid, ctx, rerender, u, acc, query);
   });
   searchWrap.appendChild(searchInput);
@@ -287,14 +287,17 @@ function renderShell(body, ctx, rerender) {
     },
   });
 
-  // ---- 3.5 电脑势力星球（v0.2.10：独立区块 + 同步渲染，不依赖云端请求，永远可见）----
+  // v0.4.16 **入口整合**：电脑势力星球（交易 / 进攻 / 结盟）已迁到
+  //   「军事 → 势力」子页。这里**只留一个指引**，不再重复提供第二个入口 ——
+  //   此前星际页与战区页同时摆着两套战斗入口，正是「多个入口里存在新旧窗口」。
+  //   仍保留 npcGrid 这个空容器：搜索栏还要在本地模式下驱动它（见下）。
   const npcSec = el('div', 'gx-section');
-  npcSec.appendChild(el('div', 'section-title', '电脑势力星球'));
-  npcSec.appendChild(el('div', 'muted', '即时交易 / 进攻 / 结盟（盟友购买价 9 折、互不侵犯）。'));
+  npcSec.appendChild(el('div', 'section-title', '电脑势力'));
+  npcSec.appendChild(el('div', 'muted',
+    '势力交易与进攻已移至「军事 → 势力」页（与战区战役同属一个入口）。'));
   npcGrid.id = 'gx-npc-grid';
   npcSec.appendChild(npcGrid);
   body.appendChild(npcSec);
-  renderNpcGrid(npcGrid, ctx, rerender, acc, '');
 
   // ---- 3.6 进行中的战争（v0.2.6）：持续过程，只有投降签约才结束 ----
   // v0.3.3：改用共享的 buildWarsSection，并打上 .gx-wars-live 标记供心跳定位重绘。
@@ -810,6 +813,46 @@ function npcGarrison(f) {
     nameCn: f.owner + '驻军 ' + (i + 1) + ' 队',
     power: per, atk: Math.round(per * 0.45), def: Math.round(per * 0.55),
   }));
+}
+
+/**
+ * 「军事 → 势力」子页：电脑势力的交易 / 进攻 / 结盟。
+ *
+ * v0.4.16 从星际页整体迁来，作为军事系统的**唯一**势力入口。
+ * 代码仍在 galaxy.js 内（避免跨模块搬移的风险），只在这里对外暴露一个可独立
+ * 挂载的面板 —— 星际页不再重复渲染这一块。
+ */
+export function renderForcesPanel(root, ctx) {
+  root.innerHTML = '';
+  const acc = currentAccount();
+  if (!acc) { root.appendChild(el('div', 'muted', '账号数据缺失。')); return; }
+
+  const sec = el('div', 'gx-section');
+  sec.appendChild(el('div', 'section-title', '电脑势力'));
+  sec.appendChild(el('div', 'muted',
+    '即时交易 / 进攻 / 结盟（盟友购买价 9 折、互不侵犯）。'
+    + '势力是「贸易站」而非领土持有者，所以进攻按一次性战役结算并掠夺金库，'
+    + '不像战区那样逐小时推进 —— 两者是不同性质的目标。'));
+
+  const grid = el('div', 'gx-grid');
+  grid.id = 'gx-forces-grid';
+
+  // 搜索：只过滤本页的势力，不牵连星际页
+  const searchWrap = el('div', 'gx-search');
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.placeholder = '搜索势力 / 驻地 / 代号…';
+  searchWrap.appendChild(input);
+  sec.appendChild(searchWrap);
+
+  sec.appendChild(grid);
+  root.appendChild(sec);
+
+  const rerender = () => renderForcesPanel(root, ctx);
+  renderNpcGrid(grid, ctx, rerender, acc, '');
+  input.addEventListener('input', () => {
+    renderNpcGrid(grid, ctx, rerender, acc, input.value.trim().toLowerCase());
+  });
 }
 
 /** 电脑势力星球网格（v0.2.10：独立同步渲染，不依赖云端） */

@@ -33,7 +33,8 @@
 // 人口变化：H > 0.5 增长、H < 0.3 下降，否则持平。
 // 各项系数都在下方常量区，改一个数就能调平衡。
 
-import { BUILDING_BY_ID } from '../data/buildings.js?v=55.6';
+import { BUILDING_BY_ID } from '../data/buildings.js?v=56.7';
+import { clamp } from './util.js?v=56.7';
 
 // ============================================================================
 // 可调常量（集中放这里，方便策划调参）
@@ -371,7 +372,6 @@ export function createPopulation(totalPopulation) {
   };
 }
 
-function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
 
 // 总人力 = floor(总人数 × 参与率)
 export function getTotalLabor(pop) {

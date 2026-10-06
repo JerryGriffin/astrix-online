@@ -75,6 +75,28 @@ export function el(tag, clsOrAttrs, textOrChildren) {
  * HTML 转义 —— 各 UI 文件里常重复写 `esc()`，这里给一份统一实现。
  * 注意：只用于**文本内容**；要输出 HTML 时请显式用 el(tag,{html}) 并自行确保安全。
  */
+/**
+ * 把一段 CSS 注入 document.head，同一 id 只注入一次。
+ *
+ * v0.4.16：此前 buildings / colony / hoi / population / power 五个模块都是
+ *   root.appendChild(el('style', { text: CSS })) —— 样式跟着面板一起被
+ *   innerHTML 清空而反复重建。带定时重绘的页面每秒要重新插入并解析一遍这整块 CSS，
+ * 而且 CSS 文本会混进容器的 textContent。统一收敛到这里。
+ *
+ * @param {string} id  幂等键，通常是 '<模块>-css'
+ * @param {string} css CSS 文本
+ */
+export function ensureStyle(id, css) {
+  // 宿主可能没有 head（Node 端自检用的极简 DOM 垫片就没有），此时静默跳过 ——
+  // 样式缺失只是掉回无样式显示，不该让整个面板渲染失败。
+  if (typeof document === 'undefined' || !document.head) return;
+  if (document.getElementById(id)) return;
+  const st = document.createElement('style');
+  st.id = id;
+  st.textContent = css;
+  document.head.appendChild(st);
+}
+
 export function esc(s) {
   return String(s == null ? '' : s)
     .replace(/&/g, '&amp;')
