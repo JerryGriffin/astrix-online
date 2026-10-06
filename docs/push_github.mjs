@@ -66,23 +66,97 @@ function api(path, opts = {}) {
   });
 }
 
-// 需要纳入版本控制的文件（与 .gitignore 对齐：排除 .workbuddy / *.log / node.exe）
-const IGNORE_DIR = new Set(['.git', 'node_modules', '.workbuddy']);
-const IGNORE_FILE = new Set(['node.exe']);
-const IGNORE_EXT = ['.log'];
+// 需要纳入版本控制的文件。
+//
+// v0.4.15 **改为真正解析 .gitignore**。此前这里是一份**硬编码**忽略表
+//（.git / node_modules / .workbuddy / node.exe / *.log），与仓库根目录的 .gitignore
+// 完全脱钩 —— 往 .gitignore 里加任何规则都**不会生效**。这就是 v0.4.10~v0.4.14
+// 之间那 66 个一次性调试文件（_probe_* / _smoke_* / *.log / 一次性迁移脚本）
+// 一路被提交进仓库的根因：以为 .gitignore 管住了，其实并没有。
+//
+// 解析范围刻意保守，只支持 gitignore 里最常用、也最容易判对的几类写法：
+//   · 空行 / # 注释          → 跳过
+//   · 目录名（含尾斜杠）      → 该目录整棵跳过
+//   · 前缀匹配（foo/）        → 仓库内 foo/ 下的东西全跳过
+//   *   *.log / *.txt         → 按后缀匹配
+//   ?   单字符通配             → 转成 . 之外的任意单字符
+//   [a-z] / [!a-z] 字符类      → 支持（含取反）
+// 其余写法（! 取反、** 跨目录）不解析 —— 但本仓库的 .gitignore 没用到，
+// 遇到未支持的行会打印一行提示，避免「以为忽略了其实没忽略」。
+const IGNORE_DIR = new Set(['.git', 'node_modules', '.workbuddy', '.ref']);
 
+function parseGitignore(text) {
+  const rules = [];
+  for (const raw of text.split('\n')) {
+    const line = raw.trim();
+    if (!line || line.startsWith('#')) continue;
+    const negate = line.startsWith('!');
+    const body = negate ? line.slice(1) : line;
+    const dirOnly = body.endsWith('/');
+    const anchored = body.includes('/') && !dirOnly && !body.startsWith('*');
+    rules.push({
+      negate,
+      dirOnly,
+      anchored,
+      re: globToRe(dirOnly ? body.slice(0, -1) : body),
+    });
+  }
+  return rules;
+}
+
+/** 把 gitignore 的 glob 转成正则。只支持上面列出的那几类写法。 */
+function globToRe(g) {
+  let re = '';
+  for (let i = 0; i < g.length; i++) {
+    const ch = g[i];
+    if (ch === '*') {
+      if (g[i + 1] === '*') { i++; re += '.*'; continue; }
+      re += '[^/]*';
+    } else if (ch === '?') re += '[^/]';
+    else if (ch === '[') {
+      let j = i + 1, neg = false;
+      if (g[j] === '!' || g[j] === '^') { neg = true; j++; }
+      let cls = '';
+      while (j < g.length && g[j] !== ']') cls += g[j++];
+      re += '[' + (neg ? '^' : '') + cls + ']';
+      i = j;
+    } else if ('.+^$()|[]\\'.includes(ch)) re += '\\' + ch;
+    else re += ch;
+  }
+  return new RegExp('^' + re + '$');
+}
+
+const GITIGNORE = existsSync(join(ROOT, '.gitignore'))
+  ? parseGitignore(readFileSync(join(ROOT, '.gitignore'), 'utf8'))
+  : [];
+
+/** 判断一个「相对仓库根的路径」是否被 .gitignore 排除。 */
+function ignored(rel) {
+  const p = rel.split(sep).join('/');
+  const segs = p.split('/');
+  let hit = false;
+  for (const r of GITIGNORE) {
+    if (r.dirOnly) {
+      // 目录规则：任意一段目录名匹配即算忽略
+      if (segs.slice(0, -1).some((sg) => r.re.test(sg))) { hit = !r.negate; continue; }
+      if (r.re.test(segs[segs.length - 1])) { hit = !r.negate; continue; }
+    } else if (r.re.test(p)) { hit = !r.negate; continue; }
+    else if (r.anchored === false && r.re.test(segs[segs.length - 1])) { hit = !r.negate; continue; }
+    else if (r.re.test(segs[segs.length - 1])) { hit = !r.negate; }
+  }
+  return hit;
+}
+
+const skipped = [];
 function collect(dir, out = []) {
   for (const name of readdirSync(dir)) {
     if (IGNORE_DIR.has(name)) continue;
     const p = join(dir, name);
+    const rel = relative(ROOT, p).split(sep).join('/');
     const st = statSync(p);
-    if (st.isDirectory()) collect(p, out);
-    else {
-      const base = name.toLowerCase();
-      if (IGNORE_FILE.has(base)) continue;
-      if (IGNORE_EXT.some((e) => base.endsWith(e))) continue;
-      out.push(p);
-    }
+    if (st.isDirectory()) { collect(p, out); continue; }
+    if (ignored(rel)) { skipped.push(rel); continue; }
+    out.push(p);
   }
   return out;
 }
@@ -126,6 +200,11 @@ console.log(DRY ? '【dry-run】只统计，不推送' : '开始推送…');
 
 const files = collect(ROOT).map((p) => relative(ROOT, p).split(sep).join('/'));
 console.log('待提交文件数: ' + files.length);
+if (skipped.length) {
+  console.log('按 .gitignore 跳过 ' + skipped.length + ' 个文件'
+    + (process.env.GITIGNORE_VERBOSE ? '' : '（设 GITIGNORE_VERBOSE=1 可列出）'));
+  if (process.env.GITIGNORE_VERBOSE) skipped.forEach((f) => console.log('    - ' + f));
+}
 
 // 1) 取远端当前 ref
 const ref = await api('/repos/' + R.owner + '/' + R.repo + '/git/ref/heads/main').catch(async (e) => {
@@ -150,6 +229,42 @@ for (const rel of files) {
   process.stdout.write('\r  blob ' + blobCount + '/' + files.length);
 }
 console.log('\n  blob 完成: ' + blobCount);
+
+// v0.4.15 **删除远端已不存在的文件**。
+//   base_tree 是增量语义：不列出的条目保持不变，所以本地删掉的文件会**留在远端**。
+//   这里把远端 tree 的 blob 路径全量拉下来，与本地列表比对，对「远端有、本地无」
+//   的追加一条 `sha: null` —— 这是 Git Trees API 约定的删除写法。
+//
+//   关于 .gitignore：**不因被忽略就跳过删除**，这是刻意的。git 的语义是
+//   .gitignore 只管「未跟踪文件要不要加入」；文件一旦被跟踪，.gitignore 对它的
+//   修改与删除**没有任何影响**。v0.4.15 第一次写这里时错误地加了 `!ignored(p)`
+//   过滤条件，结果那 55 个 docs/_probe_* 残留因为刚好命中新加的 `docs/*`
+//   规则而被判为「忽略、不删」，一个都清不掉 —— 清理反而做成了空操作。
+const remoteTree = await api('/repos/' + R.owner + '/' + R.repo + '/git/trees/'
+  + baseCommit.tree.sha + '?recursive=1');
+
+function flattenRemote(node, prefix, out) {
+  for (const e of node.tree || []) {
+    const p = prefix ? prefix + '/' + e.path : e.path;
+    if (e.type === 'tree') flattenRemote(e, p, out);
+    else if (e.type === 'blob') out.push(p);
+  }
+  return out;
+}
+
+const remoteFiles = flattenRemote(remoteTree, '', []);
+const localSet = new Set(files);
+const toRemove = remoteFiles.filter((p) => !localSet.has(p));
+if (toRemove.length) {
+  console.log('  将从远端删除 ' + toRemove.length + ' 个文件（本地已不存在）:');
+  if (toRemove.length <= 20) toRemove.forEach((p) => console.log('    - ' + p));
+  else console.log('    （' + toRemove.slice(0, 10).join(', ') + ' … 共 ' + toRemove.length + ' 个）');
+  for (const p of toRemove) {
+    treeEntries.push({ path: p, mode: '100644', type: 'blob', sha: null });
+  }
+} else {
+  console.log('  无需删除远端文件');
+}
 
 if (DRY) {
   console.log('dry-run 结束，未创建 commit。');

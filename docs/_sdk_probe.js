@@ -1,1 +1,0 @@
-{"error":"[FORBIDDEN] \"@tencent-ai/workbuddy-cloud-sdk\" is not allow to unpkg files, see https://github.com/cnpm/unpkg-white-list, white list version: 1.343.0"}

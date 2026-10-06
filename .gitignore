@@ -4,3 +4,26 @@
 probe_out.txt
 *.genie
 node_modules/
+
+# v0.4.15：docs/ 下的临时探针 / 冒烟脚本 / 运行日志不入库。
+#   历史教训：v0.4.10 ~ v0.4.14 之间陆续攒了 66 个 `_probe_*.mjs`、`_smoke_*.mjs`、
+#   `*.log`、`_tmp_*` 之类的一次性文件，全都被提交进了仓库（docs/ 一度 95 个文件、
+#   1MB，其中近半是调试残留），在网页上根本翻不到真正要用的自检脚本。
+#   规则：docs/ 里只允许保留 selfcheck_*.mjs / push_github.mjs / sync_from_github.mjs /
+#   bump_imports.mjs / *.md / *.json；其余一律以 _ 或 probe_ / smoke_ 开头。
+docs/_*
+docs/probe_*.mjs
+docs/smoke_*.mjs
+docs/*.log
+docs/*.txt
+
+# 一次性维护脚本（跑完即无意义，re-run 是空操作）
+docs/fix_*.mjs
+docs/rename_*.mjs
+docs/add_*.mjs
+docs/improve_*.mjs
+docs/make_*.mjs
+docs/cleanup_docs.mjs
+
+# 本机自带的 node 运行时，不入库
+node.exe
