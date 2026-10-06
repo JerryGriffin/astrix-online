@@ -94,7 +94,7 @@ export const SCI_MAIN_BY_ID = SCI_BY_ID;
 //   factions.js 是 UI 侧「owner id → 势力名/旗/描述/实力」的统一入口，
 //   但它不能静态 import 本文件（会与 state.js / hoi1936.js 形成加载顺序依赖），
 //   所以用「注册 + 全局缓存」的方式打通 —— 效果等价，且不引入循环依赖。
-import { registerSciFactions } from './factions.js?v=53.4';
+import { registerSciFactions } from './factions.js?v=54.5';
 registerSciFactions(SCI_NATIONS);
 
 // ---------------------------------------------------------------------------
@@ -114,7 +114,7 @@ export const SCI_BLOC_NAME = {
 //   同步轨道 / 拉格朗日 / 深空门户 / 极地轨道 / 气层防线），不含任何地球地名，
 //   因此这里**直接复用**，不重复造一套。
 // ---------------------------------------------------------------------------
-export { HOI_SEAS as SCI_SEAS } from './hoi1936.js?v=53.4';
+export { HOI_SEAS as SCI_SEAS } from './hoi1936.js?v=54.5';
 
 // 各势力开局已控制的圈层（替代 1936 的「英国控制英吉利海峡 85%」这类设定）
 export const SCI_SEA_INITIAL_CONTROL = {

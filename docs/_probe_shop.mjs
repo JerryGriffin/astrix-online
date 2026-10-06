@@ -2,10 +2,10 @@
 //   node docs/_probe_shop.mjs
 // 覆盖 R9：挂单频率/上限提高 → 挂单条数明显增多；NPC 开始卖装备（partId@材料）；
 //        装备能走 buyListing 成交；tickListings 性能无数量级恶化。
-import { ensureNpcs, tickNpcs } from '../js/core/npc.js?v=53.4';
+import { ensureNpcs, tickNpcs } from '../js/core/npc.js?v=54.5';
 import {
   npcListOnMarket, npcTakeFromMarket, tickListings, buyListing, suggestPriceOf,
-} from '../js/core/shop.js?v=53.4';
+} from '../js/core/shop.js?v=54.5';
 
 let pass = 0;
 const fails = [];
@@ -62,7 +62,7 @@ console.log('  模拟期间装备类挂单创建数=' + equipCreated + '，池�
 ok(equipCreated >= 1, `NPC 应创建至少 1 条装备类挂单，实际 ${equipCreated}`);
 ok(maxEquipInPool >= 1, `装备类挂单应曾出现在交易池（峰值），实际 ${maxEquipInPool}`);
 // 装备键合法性：partId 须存在于部件表（若池内恰有样本则校验）
-const SHIPPARTS = await import('../js/data/ship_parts.js?v=53.4');
+const SHIPPARTS = await import('../js/data/ship_parts.js?v=54.5');
 const sampleEquip = acc.shopListings.find((l) => l.mat && l.mat.indexOf('@') >= 0);
 if (sampleEquip) {
   ok(!!SHIPPARTS.PART_BY_ID[sampleEquip.mat.split('@')[0]],

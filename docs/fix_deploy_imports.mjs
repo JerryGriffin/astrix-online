@@ -16,8 +16,8 @@ if (hasBattleImp && hasTheaterImp) {
 } else {
   const imp = [
     '// v0.4.13（③）部署徽标用到的引擎 API：取进行中的战役、交战上限常量、查战区名',
-    "import { activeBattlesOf, BATTLE_MAX_HOURS } from '../core/battle.js?v=53.4';",
-    "import { regionById } from '../core/theater.js?v=53.4';",
+    "import { activeBattlesOf, BATTLE_MAX_HOURS } from '../core/battle.js?v=54.5';",
+    "import { regionById } from '../core/theater.js?v=54.5';",
     '',
     '',
   ].join('\r\n');

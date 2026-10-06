@@ -16,17 +16,17 @@
 // 与人力系统的关系：
 //   建筑提供工位 → 人力面板按建筑分组分配人 → 分配了「建筑工」才有人施工（硬门槛）。
 
-import { BUILDINGS, BUILDING_BY_ID, CATEGORIES, buildingCost } from '../data/buildings.js?v=53.4';
-import { fmtNum, fmtTime, fmtRateBody } from '../core/format.js?v=53.4';
+import { BUILDINGS, BUILDING_BY_ID, CATEGORIES, buildingCost } from '../data/buildings.js?v=54.5';
+import { fmtNum, fmtTime, fmtRateBody } from '../core/format.js?v=54.5';
 import {
   getBuildingCounts, buildingCount, costOfNext, isBuildingUnlocked,
   startBuild, cancelBuild, buildQueueOf, BUILD_QUEUE_MAX, currentAccount,
-} from '../core/state.js?v=53.4';
-import { buildingSlots, assignedToBuilding, freeSlots } from '../core/population.js?v=53.4';
-import { buildRateOf, buildBlockReason } from '../core/construction.js?v=53.4';
+} from '../core/state.js?v=54.5';
+import { buildingSlots, assignedToBuilding, freeSlots } from '../core/population.js?v=54.5';
+import { buildRateOf, buildBlockReason } from '../core/construction.js?v=54.5';
 // v0.4.7：el() 收敛到 ui/common.js（此前本文件自带一份；全项目共 14 份、两种不兼容签名，
 //   v0.3.2「列强区块不显示」即源于把 A 型调用写进了 B 型文件）
-import { el } from './common.js?v=53.4';
+import { el } from './common.js?v=54.5';
 
 const CSS = `
   .bld-panel { font-family: system-ui, sans-serif; color: #e8eef2; padding: 12px; box-sizing: border-box; }

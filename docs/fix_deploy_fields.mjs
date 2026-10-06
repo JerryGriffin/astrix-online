@@ -61,7 +61,7 @@ if (!/activeBattlesOf/.test(src2.split(ANCHOR)[0])) {
   const imp = [
     '// v0.4.13（③）部署徽标用到的引擎 API',
     "import { activeBattlesOf, BATTLE_MAX_HOURS } from '../core/battle.js?v=" + '52.3' + "';",
-    "import { regionById } from '../core/theater.js?v=53.4';",
+    "import { regionById } from '../core/theater.js?v=54.5';",
     '',
     '',
   ].join('\r\n');

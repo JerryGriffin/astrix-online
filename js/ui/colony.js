@@ -12,33 +12,33 @@
 //  - 所有数字走 js/core/format.js；文本一律用 el({text})（textContent）做 HTML 转义。
 //  - 样式内联注入，不碰 css/ 目录。
 
-import { HOI_NATIONS } from '../data/hoi1936.js?v=53.4';
-import { fociOf, startJustify, justifyStatusOf, canJustify, histWarGateFor } from '../core/hoi1936.js?v=53.4';
-import { PLANETS } from '../data/planets.js?v=53.4';
+import { HOI_NATIONS } from '../data/hoi1936.js?v=54.5';
+import { fociOf, startJustify, justifyStatusOf, canJustify, histWarGateFor } from '../core/hoi1936.js?v=54.5';
+import { PLANETS } from '../data/planets.js?v=54.5';
 import {
   STATE, getPlanetInstance, shelterRatio, ownedOf,
-} from '../core/state.js?v=53.4';
-import { fmtNum } from '../core/format.js?v=53.4';
+} from '../core/state.js?v=54.5';
+import { fmtNum } from '../core/format.js?v=54.5';
 // v0.3.3：宣战统一走 core/war.js#declareWar（此前 colony.js 是手写 acc.wars.push，
 //   绕过了战争槽位上限与历史门控，与 galaxy.js 行为不一致）
-import { declareWar } from '../core/war.js?v=53.4';
+import { declareWar } from '../core/war.js?v=54.5';
 // v0.1.2（R8）：调派人力从母星扣「可用人力」，走 population.js 既有接口，不硬改字段
-import { getAvailable } from '../core/population.js?v=53.4';
+import { getAvailable } from '../core/population.js?v=54.5';
 // v0.1.5（需求 2）：运输物资到殖民地 —— 复用 fleet.js 的运输任务（startMission + listFleets）
-import { startMission, listFleets } from '../core/fleet.js?v=53.4';
+import { startMission, listFleets } from '../core/fleet.js?v=54.5';
 // v0.0.93：商店星 Ast1（独立星球入口）+ 商店面板（舰队页复用）
-import { SHOP_PLANET } from '../core/shop.js?v=53.4';
+import { SHOP_PLANET } from '../core/shop.js?v=54.5';
 // v0.1.1：发现门禁 + 商店星拦截 + 托管说明
 import {
   capturePlanet, ensureDiscoveredDefaults, purgeShopColonies,
   modeOf, TRIBUTE_RATES, MANAGEMENT_MODES,
-} from '../core/planetgen.js?v=53.4';
-import { renderShop } from './fleet.js?v=53.4';
+} from '../core/planetgen.js?v=54.5';
+import { renderShop } from './fleet.js?v=54.5';
 // v0.2.1：殖民地报告内联化 —— 每颗星球行内直接显示最新报告（不再弹右下角提示条）
-import { reportTextOf } from './reports.js?v=53.4';
+import { reportTextOf } from './reports.js?v=54.5';
 // v0.4.7：el() 收敛到 ui/common.js（此前本文件自带一份；全项目共 14 份、两种不兼容签名，
 //   v0.3.2「列强区块不显示」即源于把 A 型调用写进了 B 型文件）
-import { el } from './common.js?v=53.4';
+import { el } from './common.js?v=54.5';
 
 const CSS = `
   .col-panel { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; color: #e8eef2; padding: 12px; box-sizing: border-box; max-width: 960px; margin: 0 auto; }

@@ -10,10 +10,10 @@
 // 现在：版本号只在这里定义一次，任何地方要显示都从这里取；
 // index.html 的入口脚本带 ?v= 查询串（与 VERSION 同步），改版本号即自动击穿缓存。
 
-export const VERSION = 'v0.4.13';
+export const VERSION = 'v0.4.14';
 
 // 版本号数字形式（用于存档迁移判断）
-export const VERSION_NUM = 53;   // v0.4.10 → 50（十位进位，见 selfcheck_v005 的版本号一致性断言）
+export const VERSION_NUM = 54;   // v0.4.10 → 50（十位进位，见 selfcheck_v005 的版本号一致性断言）
 
 export const VERSION_DATE = '2026-10-06';
 
@@ -26,12 +26,31 @@ export const VERSION_DATE = '2026-10-06';
 //   VERSION     —— 玩家看到的版本（设计者说不变就不变）
 //   REVISION    —— 只要改了 css/ 或 js/，这里就 +1
 //   CACHE_TAG   —— 实际写进 index.html 的 ?v= 串
-export const REVISION = 4;
+export const REVISION = 5;
 // index.html 里所有 css 链接与 js/main.js 入口都用它；改代码后记得 +1
 export const CACHE_TAG = VERSION_NUM + '.' + REVISION;
 
 // 更新日志：从新到旧。每项 [版本号, 日期, [条目...]]
 export const VERSIONS = [
+  ['v0.4.14', '2026-10-06', [
+    '**推送令牌换成 fine-grained PAT 并写回 `.git/config`** —— 原来的那枚是'
+      + '40 位十六进制的早期令牌（`x-access-token` 用户名格式），GitHub 早已停用，'
+      + 'Basic / Bearer / token 三种认证方式一律 401。现改为 '
+      + '`github_pat_…` fine-grained 令牌（仅授权 `astrix-online` 一个仓库、'
+      + '仅 Contents: Read and write），实测登录为 JerryGriffin 且具备 push 权限',
+    '因本机**没有 git CLI**，无法 `git remote set-url`，故直接改写 `.git/config` 里的 '
+      + 'remote URL；现在不设任何环境变量也能推送（已验证 `.git/config` 回退路径可用）',
+    '`docs/push_github.mjs` **推送前先实测令牌**：无效就在开头退出并打印三条出路，'
+      + '不再等传完上百个 blob 才报错、还被进度刷走；'
+      + '原来那句「可能已失效」的提示也去掉了（它只是猜测，不是实测结论）',
+    '`docs/push_github.mjs` **零变化短路**：tree 与远端一致时直接判为无需推送。'
+      + '此前内容没变也会照样建一个内容相同的空提交，白白推进历史、'
+      + '让「刚才推了什么」难以分辨',
+    'v0.4.10 ~ v0.4.14 已全部推送至 JerryGriffin/astrix-online；'
+      + '本地与远端版本一致',
+    '全量回归：materials / render / battle 100 / theater 99 / fixes 59 / v005 1388 / '
+      + 'v006 258 / v045 83 / v046 73 / v047 23，全部绿',
+  ]],
   ['v0.4.13', '2026-10-06', [
     '**修一个真实的运行期缺陷**：`ui/army.js` 的补员按钮调用 `getPlanetInstance`，'
       + '但该文件**从未 import 过它** —— 点「补员」在浏览器里直接抛 ReferenceError，'
