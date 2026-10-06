@@ -10,10 +10,10 @@
 // 现在：版本号只在这里定义一次，任何地方要显示都从这里取；
 // index.html 的入口脚本带 ?v= 查询串（与 VERSION 同步），改版本号即自动击穿缓存。
 
-export const VERSION = 'v0.4.17';
+export const VERSION = 'v0.4.18';
 
 // 版本号数字形式（用于存档迁移判断）
-export const VERSION_NUM = 57;   // v0.4.10 → 50（十位进位，见 selfcheck_v005 的版本号一致性断言）
+export const VERSION_NUM = 58;   // v0.4.10 → 50（十位进位，见 selfcheck_v005 的版本号一致性断言）
 
 export const VERSION_DATE = '2026-10-06';
 
@@ -26,12 +26,44 @@ export const VERSION_DATE = '2026-10-06';
 //   VERSION     —— 玩家看到的版本（设计者说不变就不变）
 //   REVISION    —— 只要改了 css/ 或 js/，这里就 +1
 //   CACHE_TAG   —— 实际写进 index.html 的 ?v= 串
-export const REVISION = 8;
+export const REVISION = 9;
 // index.html 里所有 css 链接与 js/main.js 入口都用它；改代码后记得 +1
 export const CACHE_TAG = VERSION_NUM + '.' + REVISION;
 
 // 更新日志：从新到旧。每项 [版本号, 日期, [条目...]]
 export const VERSIONS = [
+  ['v0.4.18', '2026-10-06', [
+    '**二战审计：正常模式文件里的 WWII 硬命中从 6 个文件降到 0 个**，'
+      + '现在仅冻结 mod（js/data/hoi1936.js、js/core/hoi1936.js）内保留。'
+      + '新增 `docs/find_ww2_exact.mjs` 与 `docs/audit_ww2.mjs` 两个审计脚本，'
+      + '按「有效代码」逐行定位（注释里保留历史说明是合理的，不算残留）',
+    '**修一个会崩的活 bug**：`ui/galaxy.js` 的势力卡在正常模式下会渲染出一个'
+      + '「正当化战争」按钮 —— `npcFactionsOf()` 不会给势力对象挂 `.hoi`，'
+      + '于是走到 else 分支；点击时执行 `startJustify(acc, f.hoi.id)`，'
+      + '**f.hoi 是 undefined，直接抛 TypeError**。'
+      + '即：正常模式的星际页上摆着一个必然崩溃的二战按钮。已整段删除，'
+      + '改为与战况分支一致的「请到战区页操作」指引',
+    '**删掉 `ui/colony.js` 的 `renderGreatPowers` 整个函数**（约 100 行）：'
+      + '开头就是 `if (acc.scenario !== \'hoi1936\') return;`，'
+      + '1936 已隐藏 → 永远早退的纯死代码，却把「列强 / 正当化 / 轴心国 / 1936 年」'
+      + '整套 WWII 措辞带进了正常模式文件',
+    '用词层面：battle.js「师团」→「建制」、scenario_sci.js「赤铁矿装甲师」→「装甲旅」、'
+      + 'army_parts.js「步兵」→「地面军」、state.js「德国附庸」标签→「剧本附庸」',
+    '随之清理 8 个新产生的死 import（colony.js 5 个 / galaxy.js 3 个）',
+    '**未做：彻底删除 mod 本体。** 实测发现 `js/core/hoi1936.js`（1285 行）'
+      + '**不是纯 WWII 数据，而是通用剧本引擎** —— state.js 从它引入的 25 个符号里'
+      + '有 11 个仍在科幻（普通）模式的活跃路径上被调用'
+      + '（sciAdapterOf / setupArmies / setupLines / setupBloc / setupFactories / '
+      + 'staffBuildings / ensureFocus / tickFocus / ensureSeas / '
+      + 'repairScenarioEstates / backgroundOf）。删掉它 = 普通模式直接崩。'
+      + '同时 `data/scenario_sci.js` 第 117 行 `export { HOI_SEAS as SCI_SEAS }` '
+      + '说明**普通模式的轨道圈层表是直接复用 1936 的**（已太空化，但 id 仍是 '
+      + 'north_sea/baltic/atlantic 等地球海名，注释里自称「历史遗留的内部标识」）。'
+      + '真要删干净需先把轨道表内联进 scenario_sci.js 并把 id 改成中性命名，'
+      + '还要为已有存档写 id 迁移 —— 属独立一轮改造，本轮未冒险执行',
+    'selfcheck_fixes 新增 23 条断言（97 → 120）锁住「二战词不得渗入正常模式」；'
+      + '12 套自检全绿',
+  ]],
   ['v0.4.17', '2026-10-06', [
     '**`selfcheck_v048` / `selfcheck_v049` 终于能跑了** —— 这两套浏览器端自检从 v0.4.8 '
       + '起就一直是「装了却跑不了」的状态，本轮补齐：'

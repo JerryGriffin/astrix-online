@@ -1,14 +1,13 @@
 // 开始界面：标题、离线/在线模式、账号选择、各次要入口模态层（Astrix）
-import {  STATE, createAccount, switchAccount, deleteAccount, currentAccount, START_MODES, switchPool  } from '../core/state.js?v=57.8';
-import { HOI_NATIONS } from '../data/hoi1936.js?v=57.8';   // v0.2.6 官方 mod 1936 剧本
+import {  STATE, createAccount, switchAccount, deleteAccount, currentAccount, START_MODES, switchPool  } from '../core/state.js?v=58.9';
 // v0.4.9：科幻势力（普通模式开局可选，与 HOI_NATIONS 同构）
-import { SCI_NATIONS } from '../data/scenario_sci.js?v=57.8';
-import { fmtNum, fmtTime } from '../core/format.js?v=57.8';
+import { SCI_NATIONS } from '../data/scenario_sci.js?v=58.9';
+import { fmtNum, fmtTime } from '../core/format.js?v=58.9';
 // 版本号与更新日志的唯一来源：任何地方要显示版本都从这里取，改版本只改 js/version.js 一处
-import { VERSION, VERSIONS } from '../version.js?v=57.8';
+import { VERSION, VERSIONS } from '../version.js?v=58.9';
 // v0.4.7：el() 收敛到 ui/common.js（此前本文件自带一份；全项目共 14 份、两种不兼容签名，
 //   v0.3.2「列强区块不显示」即源于把 A 型调用写进了 B 型文件）
-import { el } from './common.js?v=57.8';
+import { el } from './common.js?v=58.9';
 
 function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, (c) => (
@@ -242,8 +241,8 @@ function renderNewSaveForm(body, ctx, pool) {
   //   两套数据同构（flag/nameCn/nameEn/capital/popM/ic/divisions/navy/airforce/desc），
   //   所以复用同一个下拉框，只按当前开局模式换数据源。
   const isSci = () => mode !== 'hoi1936';
-  const factionList = () => (isSci() ? SCI_NATIONS : HOI_NATIONS);
-  let countryId = (isSci() ? SCI_NATIONS[0] : HOI_NATIONS[0]).id;
+  const factionList = () => SCI_NATIONS;
+  let countryId = SCI_NATIONS[0].id;
   const countryBox = el('div', 'acc-country-box');
   const cSel = document.createElement('select');
   cSel.className = 'acc-new-input';

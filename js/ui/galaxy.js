@@ -16,30 +16,29 @@ import {
   ensureReady, cloudStatus, cloudUser,
   loginWithName, registerWithName, signOutCloud,
   listPublicPlanets, publishMyPlanet, postIncident, fetchInbox, markIncidentResolved,
-} from '../core/cloud.js?v=57.8';
-import { currentAccount, getPlanetInstance, ownedOf, spendOwned } from '../core/state.js?v=57.8';
-import { ensureEntry } from '../core/production.js?v=57.8';
-import { listFleets, fleetPowerOf, defenseBonusOf } from '../core/fleet.js?v=57.8';
-import { totalArmyPowerOf, listArmies, disbandArmy, resolveBattle, armyToUnit, armyPowerOfInstance } from '../core/army.js?v=57.8';
+} from '../core/cloud.js?v=58.9';
+import { currentAccount, getPlanetInstance, ownedOf, spendOwned } from '../core/state.js?v=58.9';
+import { ensureEntry } from '../core/production.js?v=58.9';
+import { listFleets, fleetPowerOf, defenseBonusOf } from '../core/fleet.js?v=58.9';
+import { totalArmyPowerOf, listArmies, disbandArmy, resolveBattle, armyToUnit, armyPowerOfInstance } from '../core/army.js?v=58.9';
 // v0.2.1：内嵌殖民地管理（含内联报告），取代在线模式独立的「星球选择」tab
-import { renderColony } from './colony.js?v=57.8';
-import { PLANETS } from '../data/planets.js?v=57.8';
-import { HOI_NATIONS, HOI_BY_ID, HOI_SCENARIO_ID } from '../data/hoi1936.js?v=57.8';   // v0.2.6 官方 mod
+import { renderColony } from './colony.js?v=58.9';
+import { PLANETS } from '../data/planets.js?v=58.9';
+import { HOI_NATIONS, HOI_BY_ID, HOI_SCENARIO_ID } from '../data/hoi1936.js?v=58.9';   // v0.2.6 官方 mod
 // v0.4.11 **入口整合**：战争操作（宣战 / 和平会议 / 投降）已全部收敛到「战区」页，
 //   这里只保留只读战况显示，故下列 import 随之移除（避免读者以为旧入口仍生效）：
 //     · declareWar / canForceSurrender / endWar / surrenderWar —— 均只在战区页调用
 //     · openPeaceConference —— 和平会议在战区页
 //   仍保留：activeWarsOf / warWith / addWarScore —— 本页读战况并结算跨玩家战斗结果。
-import { activeWarsOf, warWith, addWarScore } from '../core/war.js?v=57.8';
+import { activeWarsOf, warWith, addWarScore } from '../core/war.js?v=58.9';
 // v0.4.7：移除三个**未被使用的死 import**（v0.4.5 和平会议上线后旧路径已不可达，
 //   但 import 还留着 —— 既误导读者以为旧路径仍生效，也让 hoi1936.js 无法删旧实现）：
 //     · postwarOptionsFor / applyPostwarChoice —— 战后处置已由 treaty.js#signTreaty 独占
 //     · draftTreaty —— 和约已由和平会议签订
-import { canJustify, startJustify, justifyStatusOf, histWarGateFor } from '../core/hoi1936.js?v=57.8';
-import { fmtNum } from '../core/format.js?v=57.8';
+import { fmtNum } from '../core/format.js?v=58.9';
 // v0.4.7：el() 收敛到 ui/common.js（此前本文件自带一份；全项目共 14 份、两种不兼容签名，
 //   v0.3.2「列强区块不显示」即源于把 A 型调用写进了 B 型文件）
-import { el } from './common.js?v=57.8';
+import { el } from './common.js?v=58.9';
 
 function ascoinOf(acc) { return Math.floor(Number(acc && acc.ascoin) || 0); }
 
@@ -1104,35 +1103,16 @@ function buildNpcCard(f, ctx, rerender, acc) {
     tip.style.fontSize = '11px';
     act.appendChild(tip);
   } else if (!allied) {
-    // v0.3.0：宣战需先「正当化」（60 游戏天）—— 轴心国可正当化任意国家
-    const j = f.hoi ? justifyStatusOf(acc, f.hoi.id) : null;
-    if (j && !j.ready) {
-      const tag = el('span', 'muted', '⏳ 正当化中 ' + Math.ceil(j.daysLeft) + '/' + j.daysNeed + ' 天');
-      tag.style.fontSize = '12px';
-      act.appendChild(tag);
-    } else if (j && j.ready) {
-      // 只在「战区」页宣战 —— 这里不再提供第二个入口
-      const tip = el('span', 'muted', '可宣战 · 请到「战区」页的「敌对势力」中操作');
+      // v0.4.18：这里原本是 1936 的「正当化」宣战分支，现已**删除**。
+      //   正常模式下 npcFactionsOf() 不会给势力对象挂 .hoi，于是 j === null，
+      //   代码会走到 else 分支渲染出一个「正当化战争」按钮；点击时执行
+      //   startJustify(acc, f.hoi.id) —— f.hoi 为 undefined，**直接抛 TypeError**。
+      //   即：正常模式的星际页上有一个必然崩溃的二战按钮。
+      //   宣战本就已在 v0.4.12 收敛到「战区」页，这里与战况分支一样只给指引。
+      const tip = el('span', 'muted', '宣战请到「战区」页的「敌对势力」中操作');
       tip.style.fontSize = '11px';
       act.appendChild(tip);
-    } else {
-      const warBtn = el('button', 'btn btn-sm btn-danger', '正当化战争');
-      warBtn.addEventListener('click', () => {
-        // v0.3.3：先过历史门控 —— 否则玩家会对「此时不该开战」的国家白等 60 天正当化
-        const gate = f.hoi ? histWarGateFor(acc, f.hoi.id) : { ok: true };
-        if (!gate.ok) { alert(gate.reason); return; }
-        const chk = f.hoi ? canJustify(acc, f.hoi.id) : { ok: true };
-        if (!chk.ok) { alert(chk.reason); return; }
-        const r = startJustify(acc, f.hoi.id);
-        if (!r.ok) { alert(r.reason || '无法正当化'); return; }
-        alert((gate.eventName ? '【' + gate.eventName + '】' : '')
-          + '已开始对「' + f.nameCn + '」的战争正当化：需 ' + r.daysNeed + ' 天（剧本 1 秒 = 1 天）。'
-          + '完成后即可正式宣战。');
-        refresh();
-      });
-      act.appendChild(warBtn);
     }
-  }
   card.appendChild(act);
   return card;
 }

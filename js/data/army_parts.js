@@ -149,7 +149,7 @@ export const ARMY_BLUEPRINTS = [
   {
     // v0.2.1：军队在「基础军用装备 t_m1」即解锁，游骑兵用纯 t_m1 部件，研究完 M1 立即可造。
     id: 'ab_ranger', nameCn: '游骑兵·轻型突击队', tech: 't_m1',
-    desc: '轻型框架 + 突击步枪：单兵武器阶段即可列装的基础步兵，廉价、机动，适合侦察与维稳。',
+    desc: '轻型框架 + 突击步枪：单兵武器阶段即可列装的基础地面军，廉价、机动，适合侦察与维稳。',
     buildWork: 3000,
     parts: [
       { id: 'ap_frame_light', count: 3, material: '铁' },
@@ -158,7 +158,7 @@ export const ARMY_BLUEPRINTS = [
   },
   {
     // v0.2.1：铁壁随「高级军用装备 t_m2」解锁（部件含 t_m2 重机枪/复合装甲，需相应科技后才齐料）。
-    id: 'ab_ironwall', nameCn: '铁壁·重装步兵班', tech: 't_m2',
+    id: 'ab_ironwall', nameCn: '铁壁·重装地面班', tech: 't_m2',
     desc: '重型框架 + 履带 + 重机枪 + 复合装甲：慢、贵、极高装甲，正面推进的中坚。',
     buildWork: 16000,
     parts: [

@@ -16,6 +16,14 @@ import { fileURLToPath } from 'url';
 
 const srcOf = (rel) => readFileSync(join(ROOT, rel), 'utf8');
 
+// v0.4.18：剥掉注释与行尾注释，只留「有效代码」。
+//   二战残留审计必须这么查 —— 注释里保留历史说明是合理的（记录改名来由），
+//   把它们当成残留会逼着人删掉有用的历史记录。
+const codeOf = (f) => srcOf(f).split('\n')
+  .filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l))
+  .map((l) => l.replace(/\/\/.*$/, ''))
+  .join('\n');
+
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const { CACHE_TAG } = await import(pathToFileURL(join(ROOT, 'js/version.js')));
 const U = (p) => pathToFileURL(join(ROOT, p)) + `?v=${CACHE_TAG}`;
@@ -310,6 +318,46 @@ console.log('\n#13 电解池不消耗碳');
       ok(!/^function clamp\(v, lo, hi\)/m.test(s), f + ' 不再自带 clamp()（统一用 core/util.js）');
       ok(/from '\.\/util\.js/.test(s), f + ' 已从 core/util.js 引入');
     }
+  }
+
+  // ---------------------------------------------------------------------------
+  console.log('\n#v0.4.18 二战残留清零');
+  {
+    // codeOf 定义在模块作用域（见文件上方）
+
+    // ① 二战 / 地球专有词，只允许出现在冻结的 mod 文件里
+    const BANNED = ['德国', '纳粹', '轴心国', '同盟国', '第三帝国', '大日本',
+      '德意志', '日本帝国', '柏林', '巴黎', '东京', '莫斯科', '普鲁士', '莱茵',
+      '正当化', '巴巴罗萨', '师团', '旅团', '方面军', '装甲师', '步兵师', '摩托化师',
+      '步兵', '欧洲', '亚洲'];
+    const MOD_OK = new Set(['js/data/hoi1936.js', 'js/core/hoi1936.js']);
+    for (const f of ['js/core/state.js', 'js/core/battle.js', 'js/core/theater.js',
+                    'js/core/treaty.js', 'js/core/army.js', 'js/data/scenario_sci.js',
+                    'js/data/army_parts.js', 'js/data/buildings.js', 'js/data/factions.js',
+                    'js/ui/army.js', 'js/ui/hoi.js', 'js/ui/galaxy.js', 'js/ui/colony.js',
+                    'js/ui/start.js', 'js/ui/planet.js']) {
+      const code = codeOf(f);
+      const hits = BANNED.filter((t) => code.includes(t));
+      ok(hits.length === 0, f + ' 无二战/地球专有词', hits.join('、'));
+    }
+  }
+  {
+    // ② 1936 专属的 UI 分支不得留在正常模式文件里
+    const colony = srcOf('js/ui/colony.js');
+    ok(!/renderGreatPowers/.test(colony), 'colony.js 不再有 1936 的「列强」区块（死代码）');
+    ok(!/HOI_NATIONS/.test(colony), 'colony.js 不再 import 1936 国家表');
+    const galaxy = srcOf('js/ui/galaxy.js');
+    ok(!/正当化战争/.test(codeOf('js/ui/galaxy.js')), 'galaxy.js 不再有「正当化战争」按钮（注释除外）');
+    // ③ 那个按钮在正常模式下必然崩：npcFactionsOf 不给势力挂 .hoi，
+    //    点击时却执行 startJustify(acc, f.hoi.id) —— f.hoi 为 undefined
+    ok(!/startJustify\(/.test(codeOf('js/ui/galaxy.js')), 'galaxy.js 不再调用 startJustify（曾必然 TypeError）');
+  }
+  {
+    // ④ 用词层面
+    ok(!/步兵/.test(codeOf('js/data/army_parts.js')), '军队部件不再用「步兵」（注释除外）');
+    ok(!/装甲师/.test(srcOf('js/data/scenario_sci.js')), '科幻势力不再用「装甲师」');
+    ok(!/师团/.test(srcOf('js/core/battle.js')), '战役日志不再用「师团」');
+    ok(!/德国/.test(codeOf('js/core/state.js')), 'state.js 不再有「德国」字样');
   }
 
 console.log('\n通过 ' + pass + ' / 失败 ' + fail);
