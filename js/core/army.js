@@ -12,8 +12,8 @@
 
 import {
   ARMY_BP_BY_ID, ARMY_PART_BY_ID, ARMY_SLOT_BY_CAT, armyBpPartNeeds,
-} from '../data/army_parts.js?v=49.2';
-import { materialMul, materialOptionsFor } from './shipyard.js?v=49.2';   // 无循环：shipyard 不依赖本模块
+} from '../data/army_parts.js?v=53.4';
+import { materialMul, materialOptionsFor } from './shipyard.js?v=53.4';   // 无循环：shipyard 不依赖本模块
 
 // ============================================================================
 // 一、账号军队列表（迁移 + 查询）
@@ -673,4 +673,156 @@ export function cancelTraining(inst, armyId) {
   refundParts(inst, inst.trainingTasks[i].parts);
   inst.trainingTasks.splice(i, 1);
   return true;
+}
+
+// ============================================================================
+// v0.4.9 需求「军队系统无法补员，请修复」—— 兵员恢复搬进战斗层
+// ============================================================================
+//
+// 【原症状与根因】
+//   补员只有一条路径：hoi1936.js#reinforceArmy，由「军队」页一个按钮触发，
+//   而且它要求 `getAvailable(inst.pop) > 0`（必须还有**未分配**人力）。
+//   玩家的兵力几乎总是被产线与岗位占满 → 一键补员永远返回「可用人力不足」，
+//   看起来就是**按钮完全无效**。更糟的是：
+//     · 军队成军时 `men = ARMY_MEN_MAX`（满编），按钮要等打输掉兵员才出现；
+//     · 没有任何**自动**恢复，一个师被打残后要玩家手动一次一次点；
+//     · 实现放在 hoi1936.js 这个剧本适配层里，而补员是通用军事机制。
+//
+// 【v0.4.9 的做法】
+//   1. **自动整补**（recoverArmies）：不在交战的师按时间自动回兵，
+//      速率受**可用人力**与**装备**约束 —— 真正缺料就真的补不回来（不再是死按钮）。
+//   2. **手动紧急补员**（reinforceArmy）：一次性投入装备加速补员，
+//      保留为「玩家想快点满编」的可选项，并如实报告缺了多少。
+//   3. 两者共用同一份人力预算，**不会凭空造人**。
+// ============================================================================
+
+/** 满编兵员（军队未记录 menMax 时的兜底） */
+export const ARMY_MEN_FALLBACK = 500;
+export function menMaxOf(army) {
+  const m = Number(army && army.menMax);
+  return m > 0 ? m : ARMY_MEN_FALLBACK;
+}
+
+/** 某师是否正在某场战役中（自动整补必须排除，否则边打边回） */
+function isInBattle(acc, armyId) {
+  for (const b of (Array.isArray(acc.battles) ? acc.battles : [])) {
+    if (!b || b.status !== 'active') continue;
+    if ((b.mine || []).some((d) => d && d.armyId === armyId)) return true;
+  }
+  return false;
+}
+
+/** 星球上军事装备的总量（补员消耗它） */
+function gearCountOf(inst) {
+  let n = 0;
+  const eq = inst && inst.equipment;
+  if (eq && typeof eq === 'object') {
+    for (const k in eq) {
+      const e = eq[k];
+      if (e && Number(e.count) > 0) n += Number(e.count) || 0;
+    }
+  }
+  return n;
+}
+
+/** 从星球装备里扣 n 件 */
+function takeGear(inst, n) {
+  let left = Math.max(0, Math.floor(Number(n) || 0));
+  let taken = 0;
+  const eq = inst && inst.equipment;
+  if (!eq || typeof eq !== 'object' || !(left > 0)) return 0;
+  for (const k in eq) {
+    if (left <= 0) break;
+    const e = eq[k];
+    if (!e || !(Number(e.count) > 0)) continue;
+    const take = Math.min(Number(e.count), left);
+    e.count = Number(e.count) - take;
+    left -= take; taken += take;
+  }
+  return taken;
+}
+
+/**
+ * 自动整补（由 state.js 每 tick 接线）。
+ * @param env { freeLabor: () => number } —— 可用人力口径由调用方注入，
+ *             避免本模块反向依赖 state.js / population.js
+ */
+export function recoverArmies(acc, inst, dtSec, env) {
+  const dt = Number(dtSec) || 0;
+  if (!(dt > 0)) return { recovered: 0, skipped: 0 };
+  const armies = listArmies(acc);
+  if (!armies.length) return { recovered: 0, skipped: 0 };
+
+  const PER_DAY_PER_ARMY = 60;          // 每游戏天：满编师回 60 人
+  let labor = Infinity;
+  try {
+    if (env && typeof env.freeLabor === 'function') {
+      const v = Number(env.freeLabor());
+      labor = Number.isFinite(v) ? Math.max(0, v) : 0;
+    }
+  } catch (e) { labor = 0; }
+
+  let gear = gearCountOf(inst);
+  let recovered = 0, skipped = 0;
+  // 先补最残的师（HOI4 的整补逻辑：优先恢复快被打垮的部队）
+  const need = armies
+    .map((a) => ({ a, max: menMaxOf(a), men: Number(a.men) || 0 }))
+    .filter((x) => x.men < x.max && Number(x.a.men) > 0)
+    .map((x) => ({ ...x, gap: x.max - x.men }))
+    .sort((a, b) => (b.gap / b.max) - (a.gap / a.max));
+
+  for (const x of need) {
+    if (isInBattle(acc, x.a.id)) { skipped++; continue; }
+    if (!(labor > 0) || !(gear > 0)) { skipped++; continue; }
+    let want = Math.min(PER_DAY_PER_ARMY * dt, x.gap);
+    want = Math.min(want, Math.floor(labor));
+    const needGear = Math.ceil(want / 10);
+    if (gear < needGear) {
+      want = gear * 10;                     // 装备是硬约束
+      if (!(want > 0)) { skipped++; continue; }
+    }
+    want = Math.min(want, x.gap);
+    if (!(want >= 1)) { skipped++; continue; }
+    const g = takeGear(inst, Math.ceil(want / 10));
+    x.a.men = Math.min(x.max, x.men + want);
+    labor -= want;
+    gear -= g;
+    recovered += want;
+  }
+  return { recovered, skipped };
+}
+
+/**
+ * 手动紧急补员（一次性）。取代旧 hoi1936.js#reinforceArmy。
+ * 缺料时**如实回报**而不是悄悄缩水（旧的 35% 凭空下限等于凭空造人）。
+ */
+export function reinforceArmy(acc, inst, armyId, days) {
+  const a = (Array.isArray(acc && acc.armies) ? acc.armies : []).find((x) => x && x.id === armyId);
+  if (!a) return { ok: false, reason: '找不到该军队' };
+  const max = menMaxOf(a);
+  if (!(Number(a.men) > 0)) a.men = Math.floor(max * 0.3);
+  if (a.men >= max) return { ok: false, reason: '该师已满编（' + Math.round(a.men) + '/' + max + '）' };
+
+  const gap = max - Number(a.men);
+  const want = Math.min(gap, Math.round(200 * Math.max(1, Number(days) || 1)));
+  const gearHave = gearCountOf(inst);
+  // 装备不足 → 只能补到装备支持的上限
+  const added = Math.floor(Math.min(want, gearHave * 10));
+  if (!(added >= 1)) {
+    return { ok: false, reason: '装备不足：补员需要军事装备（每 10 人 1 件），当前一件也没有。' };
+  }
+  const gearUsed = takeGear(inst, Math.ceil(added / 10));
+
+  a.men = Math.min(max, Number(a.men) + added);
+  a.reinforcing = a.men < max;
+
+  const gearNeed = Math.ceil(want / 10);
+  const gearShort = gearUsed < gearNeed;
+  return {
+    ok: true, added, men: a.men, menMax: max,
+    gearUsed, gearNeed, gearShort,
+    note: (gearShort
+      ? '装备只够补 ' + added + ' / ' + want + ' 人（还缺 ' + (gearNeed - gearUsed) + ' 件装备）'
+      : '已补 ' + added + ' 人'),
+  };
 }

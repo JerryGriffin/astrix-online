@@ -23,11 +23,28 @@ const DRY = process.argv.includes('--dry');
 const API = 'https://api.github.com';
 
 // 从 .git/config 提取 owner/repo 与令牌（不打印）
+//
+// v0.4.10：**令牌优先取环境变量** GITHUB_TOKEN / GH_TOKEN。
+//   起因：.git/config 里内嵌的那枚令牌已失效（GitHub 返回 Bad credentials），
+//   而这台机器没有 git CLI，没法用 `git remote set-url` 换掉它。
+//   现在只要在 PowerShell 里设一个环境变量就能推送，不必再去改 .git/config：
+//       $env:GITHUB_TOKEN = 'ghp_xxx'
+//       node docs\push_github.mjs
+//   注意：仓库是**公开**的，所以 `docs/sync_from_github.mjs`（拉取）不需要任何凭据，
+//   只有推送需要。
 function readRemote() {
+  const envToken = process.env.GITHUB_TOKEN || process.env.GH_TOKEN || '';
   const cfg = readFileSync(join(ROOT, '.git/config'), 'utf8');
+  // 令牌里可能含 base64 风格的 '='，故用宽松匹配
   const m = cfg.match(/url\s*=\s*https:\/\/([^:@\/]+):([^@\/]+)@github\.com\/([^\/\s]+)\/([^\/\s]+?)(?:\.git)?\s*$/m);
   if (!m) return null;
-  return { user: m[1], token: m[2], owner: m[3], repo: m[4] };
+  return {
+    user: m[1],
+    token: envToken || m[2],
+    owner: m[3],
+    repo: m[4],
+    tokenSource: envToken ? '环境变量 GITHUB_TOKEN/GH_TOKEN' : '.git/config 内嵌（可能已失效）',
+  };
 }
 
 function api(path, opts = {}) {
@@ -76,7 +93,13 @@ if (!R) {
   process.exit(2);
 }
 
-console.log('目标仓库: ' + R.owner + '/' + R.repo + '   (令牌已就位，不会打印)');
+console.log('目标仓库: ' + R.owner + '/' + R.repo + '   (令牌来源: ' + R.tokenSource + '，不会打印)');
+  if (!R.token) {
+    console.error('没有可用令牌。请设置环境变量后重试：');
+    console.error('  $env:GITHUB_TOKEN = \'ghp_你的令牌\'');
+    console.error('  node docs\\push_github.mjs');
+    process.exit(1);
+  }
 console.log(DRY ? '【dry-run】只统计，不推送' : '开始推送…');
 
 const files = collect(ROOT).map((p) => relative(ROOT, p).split(sep).join('/'));

@@ -12,16 +12,16 @@
 //
 // 约定：不修改 state.js（账号对象由调用方传入）；互 import 仅限函数体内使用（无 TDZ 风险）。
 
-import { PLANETS } from '../data/planets.js?v=49.2';
+import { PLANETS } from '../data/planets.js?v=53.4';
 import {
   generateRandomPlanet, capturePlanet, captureDefaultPlanet, uncapturedDefaults,
-} from './planetgen.js?v=49.2';
-import { ownedOf, spendOwned, getPlanetInstance } from './state.js?v=49.2';
-import { shipArmyOf } from './army.js?v=49.2';   // v0.2.10 军队/舰队飞船互斥（army 不 import 本文件，无环）
-import { CELL_VOLUME, cellsForEquipmentKey } from './footprint.js?v=49.2';   // 纯聚合工具，state.js 不 import 本文件，无环
-import { resolveBlueprint, totalMass, blueprintOfShip } from './shipyard.js?v=49.2';          // 只读导出：蓝图部件 / 蓝图质量
-import { ensureEntry } from './production.js?v=49.2';                        // 装卸货 / 奖励入包（生产模块不 import 本文件，无环）
-import { fmtNum } from './format.js?v=49.2';
+} from './planetgen.js?v=53.4';
+import { ownedOf, spendOwned, getPlanetInstance } from './state.js?v=53.4';
+import { shipArmyOf } from './army.js?v=53.4';   // v0.2.10 军队/舰队飞船互斥（army 不 import 本文件，无环）
+import { CELL_VOLUME, cellsForEquipmentKey } from './footprint.js?v=53.4';   // 纯聚合工具，state.js 不 import 本文件，无环
+import { resolveBlueprint, totalMass, blueprintOfShip } from './shipyard.js?v=53.4';          // 只读导出：蓝图部件 / 蓝图质量
+import { ensureEntry } from './production.js?v=53.4';                        // 装卸货 / 奖励入包（生产模块不 import 本文件，无环）
+import { fmtNum } from './format.js?v=53.4';
 
 // ============================================================================
 // 编队
@@ -245,15 +245,33 @@ export function fleetSpeedOf(acc, fleetId) {
   return Number.isFinite(slow) ? slow : 0;
 }
 
-/** 编队战斗力 = 各船强度之和（用于巡航遭遇与遇袭结算） */
+/**
+ * 编队战斗力 = 各船强度之和（用于巡航遭遇与遇袭结算）
+ *
+ * v0.4.9 修：第二参数**同时接受编队对象与编队 id**。
+ *   旧签名只收对象，而 ui/hoi.js 有三处按 `fleetPowerOf(acc, fl.id)` 传了字符串，
+ *   于是 `fleet.shipIds` 在字符串上是 undefined → 抛「fleet.shipIds is not iterable」；
+ *   那三处又各自包了 try/catch 把异常吞掉，结果**舰队战力永远显示 0 且零报错**。
+ *   这里做归一化，调用方不再需要 try/catch，这类错误不可能再静默发生。
+ */
 export function fleetPowerOf(acc, fleet) {
-  if (!fleet) return 0;
+  const f = resolveFleetRef(acc, fleet);
+  if (!f) return 0;
   let sum = 0;
-  for (const id of fleet.shipIds) {
+  for (const id of (f.shipIds || [])) {
     const s = shipById(acc, id);
     sum += Number(s && s.strength) || 0;
   }
   return sum;
+}
+
+/** 归一化：编队对象 / 编队 id / 都不合法 → null */
+export function resolveFleetRef(acc, fleet) {
+  if (!fleet) return null;
+  if (typeof fleet === 'object') return Array.isArray(fleet.shipIds) ? fleet : null;
+  const id = String(fleet);
+  const list = (acc && Array.isArray(acc.fleets)) ? acc.fleets : [];
+  return list.find((f) => f && f.id === id) || null;
 }
 
 /**
@@ -669,7 +687,7 @@ function cmdPatrol(acc, fleet, ctx) {
 
 /** 登陆：军队系统未完成 */
 function cmdLand(acc, fleet, ctx) {
-  return { ok: false, cmd: 'land', reason: '军队系统开发中，登陆需要陆军部队（后续版本开放）' };
+  return { ok: false, cmd: 'land', reason: '地面投送尚未开放（后续版本）' };
 }
 
 /**

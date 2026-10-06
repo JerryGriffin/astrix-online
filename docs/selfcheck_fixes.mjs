@@ -103,28 +103,79 @@ console.log('\n#7 同一兵种多条生产线');
 }
 
 // #8 补员不再无效 ---------------------------------------------------
-console.log('\n#8 补员按钮无效');
+// v0.4.9 更新契约（补员已从 hoi1936.js 搬进 core/army.js）：
+//   旧行为是「无装备也硬补 35%」（凭空的 35% 下限，等于凭空造人），且要求星球仍有
+//   未分配人力（兵力几乎总被产线占满 → 永远「可用人力不足」＝按钮完全无效）。
+//   新行为：**诚实失败**（一件装备都没有就拒绝并说明原因）；装备不足时按装备上限补并
+//   如实回报缺口；同时兵员**常态自动恢复**（recoverArmies）。
+console.log('\n#8 补员按钮无效（v0.4.9 重做）');
 {
   const acc = S.currentAccount();
   const inst = S.getPlanetInstance(acc.homePlanetCode);
   inst.equipment = {};                    // 一件装备都没有
-  const menMax = H.ARMY_MEN_MAX || 500;
+  const menMax = ARMY.menMaxOf({ menMax: 500 });
   acc.armies = [{
     id: 'a1', nameCn: '测试师', blueprintId: 'ab_ranger', men: 100, menMax: menMax,
     exp: 0, bonusAtk: 0, bonusDef: 0, stats: { atk: 10, def: 10 }, power: 20,
   }];
-  const r = H.reinforceArmy(acc, inst, 'a1', 1);
-  ok(r.ok, '无装备时补员仍然成功', r.reason || '');
-  ok(r.added >= 5, '一次至少补回若干人（旧代码只补 1 人，等于无效）', 'added=' + r.added);
-  ok(r.gearShort === true, '如实报告装备不足', 'gearShort=' + r.gearShort);
-  ok(typeof r.note === 'string' && r.note.length > 0, '返回可显示的说明', String(r.note));
+  // 一件装备都没有 → 诚实失败，不再凭空补 35%
+  const r0 = ARMY.reinforceArmy(acc, inst, 'a1', 1);
+  ok(r0.ok === false, '无装备时补员**明确失败**而不是凭空补人');
+  ok(/装备/.test(r0.reason || ''), '失败原因点明是装备不足', r0.reason || '');
+  ok(acc.armies[0].men === 100, '失败时不改动兵员', String(acc.armies[0].men));
+
+  // 装备充足 → 正常补员
+  inst.equipment = { e1: { partId: 'ap_wpn_rifle', count: 50 } };
+  const r = ARMY.reinforceArmy(acc, inst, 'a1', 1);
+  ok(r.ok, '有装备时补员成功', r.reason || '');
+  ok(r.added >= 50, '一次补回一个像样的量（旧代码只补 1 人 = 无效）', 'added=' + r.added);
+  ok(r.gearShort === false, '装备充足时不报告短缺');
   ok(r.men > 100, '兵员确实增加', '100 → ' + r.men);
-  // 有装备时补更多
-  inst.equipment = { e1: { partId: 'ap_rifle', count: 50 } };
+  ok(r.menMax === menMax, '返回满编数（UI 不再写死 500）', String(r.menMax));
+  ok(typeof r.note === 'string' && r.note.length > 0, '返回可显示的说明', String(r.note));
+
+  // 装备只够补一部分 → 按装备上限补，且如实回报
   acc.armies[0].men = 100;
-  const r2 = H.reinforceArmy(acc, inst, 'a1', 1);
-  ok(r2.ok && r2.added > r.added, '装备充足时补得更多', r.added + ' → ' + r2.added);
-  ok(r2.gearShort === false, '装备充足时不报告短缺');
+  inst.equipment = { e1: { partId: 'ap_wpn_rifle', count: 2 } };   // 2 件 → 最多 20 人
+  const r3 = ARMY.reinforceArmy(acc, inst, 'a1', 1);
+  ok(r3.ok, '装备不足一部分时仍能补一点', r3.reason || '');
+  ok(r3.gearShort === true, '如实报告装备不足', 'gearShort=' + r3.gearShort);
+  ok(r3.added <= 20, '补员量不超过装备支持的上限（20 人）', 'added=' + r3.added);
+
+  // 满编 → 拒绝
+  acc.armies[0].men = menMax;
+  const r4 = ARMY.reinforceArmy(acc, inst, 'a1', 1);
+  ok(r4.ok === false && /满编/.test(r4.reason || ''), '已满编时拒绝补员', r4.reason || '');
+
+  // ---- 自动整补 ----
+  ok(typeof ARMY.recoverArmies === 'function', '存在自动整补 recoverArmies');
+  acc.armies = [{
+    id: 'a2', nameCn: '自动师', blueprintId: 'ab_ranger', men: 200, menMax: 500,
+    exp: 0, bonusAtk: 0, bonusDef: 0, stats: { atk: 10, def: 10 }, power: 20,
+  }];
+  acc.battles = [];
+  inst.equipment = { e1: { partId: 'ap_wpn_rifle', count: 100 } };
+  const rec = ARMY.recoverArmies(acc, inst, 10, { freeLabor: () => 10000 });
+  ok(rec.recovered > 0, '自动整补真的回兵了', String(rec.recovered));
+  ok(acc.armies[0].men > 200, '兵员上升', '200 → ' + acc.armies[0].men);
+
+  acc.armies[0].men = 200;
+  inst.equipment = {};
+  const rec2 = ARMY.recoverArmies(acc, inst, 10, { freeLabor: () => 10000 });
+  ok(rec2.recovered === 0, '没有装备时自动整补也不回兵（不凭空造人）', String(rec2.recovered));
+
+  inst.equipment = { e1: { partId: 'ap_wpn_rifle', count: 100 } };
+  const rec3 = ARMY.recoverArmies(acc, inst, 10, { freeLabor: () => 0 });
+  ok(rec3.recovered === 0, '没有人力时自动整补也不回兵', String(rec3.recovered));
+
+  acc.armies[0].men = 200;
+  acc.battles = [{ id: 'bx', status: 'active', mine: [{ armyId: 'a2' }] }];
+  const rec4 = ARMY.recoverArmies(acc, inst, 10, { freeLabor: () => 10000 });
+  ok(rec4.recovered === 0 && rec4.skipped > 0, '交战中的师不自动整补', JSON.stringify(rec4));
+
+  // 旧实现已从剧本层移除
+  ok(typeof H.reinforceArmy === 'undefined', '旧 hoi1936.js#reinforceArmy 已删除');
+  ok(typeof H.ARMY_MEN_MAX !== 'undefined', 'ARMY_MEN_MAX 保留为只读兼容别名');
 }
 
 // #10 军营不应出现在人力面板的生产线 -------------------------------
@@ -156,6 +207,46 @@ console.log('\n#13 电解池不消耗碳');
 }
 
 // ---------------------------------------------------------------------------
+  // ---------------------------------------------------------------------------
+  // v0.4.13 入口整合 / GUI 补齐的回归锁
+  //   锁的是「不该再退化」的几件事：死按钮不能回来、并行入口不能复活、
+  //   部署徽标必须走引擎的真实 API（而不是照字段名猜）。
+  console.log('\n#v0.4.13 入口整合 / GUI');
+  {
+    const fleet = srcOf('js/ui/fleet.js');
+    // ① 舰队「地面投送」是死按钮（core/fleet.js 一律返回「尚未开放」），不能回来
+    ok(!/land:\s*'地面投送/.test(fleet), '舰队指令里没有死按钮 land');
+    ok(!/transport',\s*'land'/.test(fleet), '舰队指令按钮循环不含 land');
+    // 只查「有效代码」里的字样：注释里允许解释 land 为何被删
+    const fleetCode = fleet.split('\n').filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l)).join('\n');
+    ok(!/地面投送/.test(fleetCode), 'ui/fleet.js 的有效代码里不再出现「地面投送」');
+    // ② 战争操作只在战区页：galaxy.js 不该再有宣战 / 和平会议 / 投降的执行路径
+    const galaxy = srcOf('js/ui/galaxy.js');
+    ok(!/declareWar\(/.test(galaxy), 'galaxy.js 不再调用 declareWar（宣战归战区页）');
+    ok(!/openPeaceConference\(/.test(galaxy), 'galaxy.js 不再打开和平会议（归战区页）');
+    ok(!/surrenderWar\(/.test(galaxy), 'galaxy.js 不再执行 surrenderWar（归战区页）');
+    ok(!galaxy.includes('* 0.35'), 'galaxy.js 不再按 35% 收投降赔款');
+    ok(/\* 0\.15/.test(srcOf('js/ui/hoi.js')), '投降赔款 15% 仍保留在战区页（没被误删）');
+  }
+  {
+    const army = srcOf('js/ui/army.js');
+    // ③ 补员按钮此前调用 getPlanetInstance 却从未 import → 浏览器里直接 ReferenceError
+    ok(/import \{[^}]*getPlanetInstance[^}]*\} from '\.\.\/core\/state\.js/.test(army),
+      'army.js 已 import getPlanetInstance（否则补员按钮运行期报错）');
+    ok(!/步兵/.test(army), '军队页不再出现二战术语「步兵」');
+    // ④ 部署徽标必须走引擎真实 API，不能照字段名猜
+    //    原始 battle 对象上没有 maxHours，只有 battleView() 的视图才补该字段
+    ok(/function findDeployment\(/.test(army), 'army.js 有 findDeployment 辅助函数');
+    ok(/activeBattlesOf\(acc\)/.test(army), 'findDeployment 走 battle.js#activeBattlesOf');
+    ok(/regionById\(t, b\.regionId\)/.test(army), 'findDeployment 走 theater.js#regionById 取战区名');
+    ok(/maxHours:\s*BATTLE_MAX_HOURS/.test(army), '交战上限取导出常量 BATTLE_MAX_HOURS 而非硬编码');
+    ok(/rg\.nameCn \|\| rg\.id/.test(army), '战区名有 id 兜底（未必每个战区都有名字）');
+    ok(/army-deploy/.test(army), '军队行渲染 .army-deploy 徽标');
+    const css = srcOf('css/planet.css');
+    ok(/\.army-deploy\s*\{/.test(css), '.army-deploy 有样式（否则徽标是裸文本）');
+    ok(/\.army-deploy-tag\s*\{/.test(css), '.army-deploy-tag 有样式');
+  }
+
 console.log('\n通过 ' + pass + ' / 失败 ' + fail);
 if (fail) {
   console.log('\n失败项：');

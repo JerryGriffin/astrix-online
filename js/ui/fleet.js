@@ -3,34 +3,34 @@
 // 更新：v0.1.1 五指令改为持续任务（startMission，任务行显示倒计时），
 //       新增船载仓库面板；编队 / 五指令区块挂船坞门禁；交易池区 2s 心跳局部刷新。
 
-import { fmtNum, fmtRate, fmtTime } from '../core/format.js?v=49.2';
+import { fmtNum, fmtRate, fmtTime } from '../core/format.js?v=53.4';
 import {
   listFleets, createFleet, disbandFleet, addShipToFleet, removeShipFromFleet,
   fleetSpeedOf, fleetPowerOf, executeCommand,
   startMission, cancelMission, fleetMissionLabel, defenseBonusOf,
   shipCargoOf, loadShipCargo, unloadShipCargo,
   shipCargoMassOf, shipCargoCellsOf, shipCargoCellsMax, effectiveSpeedOf,
-} from '../core/fleet.js?v=49.2';
-import { equipmentList } from '../core/shipyard.js?v=49.2';
+} from '../core/fleet.js?v=53.4';
+import { equipmentList } from '../core/shipyard.js?v=53.4';
 import {
   MANAGEMENT_MODES, MANAGEMENT_BY_ID, modeOf, setManagement,
   TERRITORY_ASSIMILATE_SEC, TERRITORY_HAPPY_THRESHOLD,
-} from '../core/planetgen.js?v=49.2';
+} from '../core/planetgen.js?v=53.4';
 import {
   SHOP_PLANET, shopPrices, sell, pendingOrders, deliverOrder, ascoinBalance,
   shopStateOf, applySharedPrice,
   marketBuy, marketSell, warehouseOf, ensureShopWarehouse,
-} from '../core/shop.js?v=49.2';
+} from '../core/shop.js?v=53.4';
 import {
   createAuction, placeBid, activeAuctions, auctionLog,
   myAuctionableResources, myAuctionableEquipment, myAuctionableShips, ensureAuctions,
-} from '../core/auction.js?v=49.2';
-import { getPlanetInstance, currentAccount, ownedOf, STATE } from '../core/state.js?v=49.2';
-import { cloudUser, fetchSharedWarehouse, upsertSharedWarehouseRow, upsertSharedPriceRow } from '../core/cloud.js?v=49.2';
-import { MATERIALS } from '../data/materials.js?v=49.2';
+} from '../core/auction.js?v=53.4';
+import { getPlanetInstance, currentAccount, ownedOf, STATE } from '../core/state.js?v=53.4';
+import { cloudUser, fetchSharedWarehouse, upsertSharedWarehouseRow, upsertSharedPriceRow } from '../core/cloud.js?v=53.4';
+import { MATERIALS } from '../data/materials.js?v=53.4';
 // v0.4.7：el() 收敛到 ui/common.js（此前本文件自带一份；全项目共 14 份、两种不兼容签名，
 //   v0.3.2「列强区块不显示」即源于把 A 型调用写进了 B 型文件）
-import { el } from './common.js?v=49.2';
+import { el } from './common.js?v=53.4';
 
 // HTML 转义（防 XSS，与其它面板一致）
 function esc(s) {
@@ -44,15 +44,19 @@ function btn(text, cls) {
   return b;
 }
 
+// v0.4.13 入口整合：**`land`（地面投送）已从指令列表移除。**
+//   它此前是**死 UI**：按钮照常渲染，但 core/fleet.js#startMission 一律返回
+//   「地面投送尚未开放」—— 一个必然失败的按钮比没有更糟，玩家只会以为
+//   整个舰队系统坏了。战区进攻由「战区」页直接调派军队完成
+//   （选出发战区 → 目标 → 挑师），所以删掉它**不丢任何可用功能**。
 const CMD_LABEL = {
-  explore: '探索', defense: '低空防卫', patrol: '巡航', transport: '运输', land: '登陆',
+  explore: '探索', defense: '低空防卫', patrol: '巡航', transport: '运输',
 };
 const CMD_TIP = {
   explore: '派出舰队探索未知星域，任务完成后结算：大概率发现星球（小概率是随机星球），也可能遇袭或一无所获',
   defense: '舰队驻留母星空域执行低空防卫，立即生效；手动取消任务才结束',
   patrol: '派出舰队巡航，任务完成后结算：可能探测到其它编队并交战',
   transport: '把物资运到目的地星球，抵达后自动卸货。**任何有货舱的船都能带货**，不强制运输船（运输船货舱更大、更划算）',
-  land: '军队系统开发中，暂时不可用',
 };
 
 // ============================================================================
@@ -647,7 +651,7 @@ export function renderFleet(container, ctx) {
   const fSec = el('section', 'fac-group fleet-page-root');
   fSec.appendChild(el('div', 'res-section-title', '编队'));
   fSec.appendChild(el('p', 'muted',
-    '把飞船编成舰队后派出持续任务：探索 / 低空防卫 / 巡航 / 运输（登陆待军队系统开放）。任务按时长推进，完成自动结算。'));
+    '把飞船编成舰队后派出持续任务：探索 / 低空防卫 / 巡航 / 运输（进攻请到「战区」页调派军队）。任务按时长推进，完成自动结算。'));
 
   const fleets = listFleets(account);
   if (!fleets.length) fSec.appendChild(el('p', 'muted', '还没有编队。先造几艘船，再点下面新建编队。'));
@@ -733,7 +737,8 @@ export function renderFleet(container, ctx) {
 
     // 五个指令（改为发起持续任务；任务中按钮禁用）
     const cmdBox = el('div', 'fleet-cmds');
-    for (const cmd of ['explore', 'defense', 'patrol', 'transport', 'land']) {
+    // v0.4.13：不再列出 `land`（死按钮，见 CMD_LABEL 上方说明）
+  for (const cmd of ['explore', 'defense', 'patrol', 'transport']) {
       const b = btn(CMD_LABEL[cmd], cmd === 'explore' ? 'btn-primary' : '');
       b.title = CMD_TIP[cmd];
       b.disabled = fleet.shipIds.length === 0 || !!fleet.mission;

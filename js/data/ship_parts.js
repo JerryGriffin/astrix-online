@@ -244,7 +244,7 @@ export const FACILITIES = expand('facility', [
     desc: '大型货物舱。占 120 m³ 船体容量，能装 60 m³ 货物（装货效率是小型货舱的 5 倍），是运输船的核心。' },
   { id: 'fac_hangar', nameCn: '机库', nameEn: 'Hangar Bay',
     materialSlot: null, footprint: 200, mass: 45, hangarSlots: 2,
-    desc: '容纳小型飞行器的机库。每座可停放 2 架，让母舰不必亲自登陆。占地极大，只有大型以上外壳装得下。' },
+    desc: '容纳小型飞行器的机库。每座可停放 2 架，让母舰不必亲自降轨。占地极大，只有大型以上外壳装得下。' },
   { id: 'fac_armor', nameCn: '装甲', nameEn: 'Armor Plating',
     materialSlot: 'armor', footprint: 15, mass: 12, structAdd: 8,
     desc: '外挂装甲板。占地小、质量大，直接给船体加结构强度。'

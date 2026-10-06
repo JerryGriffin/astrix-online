@@ -596,3 +596,25 @@
   border-radius: var(--radius-sm);
 }
 .hoi-event-box .li { font-size: 11px; color: var(--muted); line-height: 1.5; }
+
+/* ============================================================================
+   v0.4.9：战争终局行（和平会议 / 我方投降）
+   ============================================================================
+   这两个操作此前只在「星际页」的国家卡片上，仗却在战区地图上打 ——
+   现在放到战役面板顶部，玩家打完仗就地就能结束战争。 */
+.hoi-warend {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  border: 1px solid rgba(240, 149, 149, 0.4);
+  background: rgba(240, 149, 149, 0.07);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  margin-bottom: 8px;
+}
+.hoi-warend .hoi-note { flex: 1 1 240px; font-size: 12px; }
+.hoi-warend button { min-height: 40px; }
+.hoi-warend button[disabled] { opacity: 0.45; cursor: not-allowed; }
+
+@media (max-width: 560px) {
+  .hoi-warend .hoi-note { flex: 1 1 100%; }
+  .hoi-warend button { flex: 1 1 100%; }
+}

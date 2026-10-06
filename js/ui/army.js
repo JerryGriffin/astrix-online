@@ -1,4 +1,4 @@
-﻿// 军队页（Astrix v0.2.4）
+// 军队页（Astrix v0.2.4）
 // 「单兵武器 t_m1」研究前军队 tab 也会显示（v0.2.4：按钮常驻，页内提示需解锁的科技）：
 //   * 子导航「我的军队 | 设计与建造」（UI 与舰队页同构，fleet-subnav 样式复用）；
 //   * 三张默认蓝图（游骑兵 / 铁壁 / 雷霆）随军事科技逐级解锁；「设计与建造」可像
@@ -10,27 +10,32 @@
 //   * 每支军队人数在 100 人上下（由框架数决定），列内展示。
 // 本页由 planet.js 的 showPanel 动态接入，异常只影响本 tab。
 
-import { reinforceArmy } from '../core/hoi1936.js?v=49.2';
 import {
   ARMY_BLUEPRINTS, ARMY_PART_BY_ID, ARMY_SLOT_BY_CAT, ARMY_PART_COST,
   armyCapOf, armyBpPartNeeds, armyBpMaterialNeeds,
-} from '../data/army_parts.js?v=49.2';
+} from '../data/army_parts.js?v=53.4';
 import {
   armyStatsOfBp, armyPowerOf, armyPowerOfInstance, armyBuildCheck, listArmies, disbandArmy,
   getArmyBp, armyEffStats, armyPartMaterialOptions, trainArmy, cancelTraining, ARMY_LABOR_PER_BARRACKS,
   attachShipToArmy, detachShipFromArmy, shipEligibleForArmy, shipArmyOf, ARMY_SHIP_TECH,
-} from '../core/army.js?v=49.2';
-import { addLine, removeLine, freeLaborOf } from '../core/production.js?v=49.2';
-import { fmtNum, fmtTime } from '../core/format.js?v=49.2';
+  // v0.4.9：补员搬进 core/army.js（自动整补 + 手动紧急补员），不再从剧本层 hoi1936.js 取
+  reinforceArmy, menMaxOf,
+} from '../core/army.js?v=53.4';
+import { addLine, removeLine, freeLaborOf } from '../core/production.js?v=53.4';
+import { fmtNum, fmtTime } from '../core/format.js?v=53.4';
 // v0.4.6：从 core/shipyard.js 取材料合并表（**不从 production.js 取**——
 //   后者与 state.js 循环引用，直接 import 会在模块求值顺序不对时抛
 //   「Cannot access '_getInst' before initialization」）。
-import { materialMul, materialLookupFor } from '../core/shipyard.js?v=49.2';
-import { currentAccount, getBuildingCounts } from '../core/state.js?v=49.2';
-import { TECH_BY_ID } from '../data/techs.js?v=49.2';
+import { materialMul, materialLookupFor } from '../core/shipyard.js?v=53.4';
+// v0.4.13 修真实缺陷：`getPlanetInstance` 在 buildArmyRow（补员按钮）里被调用，
+//   但此前**从未 import** —— 点「补员」在浏览器里直接抛 ReferenceError，
+//   按钮等于废的。静态检查抓不到（未声明标识符要到运行期才炸），
+//   是这次给部署徽标做渲染验证时顺带撞出来的。
+import { currentAccount, getBuildingCounts, getPlanetInstance } from '../core/state.js?v=53.4';
+import { TECH_BY_ID } from '../data/techs.js?v=53.4';
 // v0.4.7：el() 收敛到 ui/common.js（此前本文件自带一份；全项目共 14 份、两种不兼容签名，
 //   v0.3.2「列强区块不显示」即源于把 A 型调用写进了 B 型文件）
-import { el } from './common.js?v=49.2';
+import { el } from './common.js?v=53.4';
 
 const ARMY_TECH = 't_m1';
 const ARMY_CATS = ['frame', 'mobility', 'weapon', 'armor', 'support'];
@@ -72,6 +77,41 @@ function customBuildWork(parts) {
   return Math.round(sum * 1.25) + 500;
 }
 
+// v0.4.13（③）：查某支军队当前是否在某个进行中的战役里，以及它在哪个战区。
+//   刻意走 battle.js#activeBattlesOf 与 theater.js#regionById 这两个现成 API ——
+//   acc.battles 的字段（mine[].armyId / .state / hours / regionId）是引擎内部结构，
+//   直接读它一旦引擎改字段就会静默出错（v0.4.13 首次实现就踩了这个坑：
+//   原始 battle 对象上并没有 maxHours，只有 battleView() 的视图才补该字段）。
+//   交战上限取导出的 BATTLE_MAX_HOURS 常量，同样避免硬编码。
+function findDeployment(acc, armyId) {
+  const t = acc && acc.theater;
+  const battles = activeBattlesOf(acc);
+  for (const b of battles) {
+    const d = (b.mine || []).find((x) => x && x.armyId === armyId);
+    if (!d) continue;
+    const rg = b.regionId ? regionById(t, b.regionId) : null;
+    const stateCn = (
+      d.state === 'front' ? '接战中'
+      : d.state === 'reserve' ? '预备队'
+      : d.state === 'routed' ? '溃退整补中'
+      : d.state === 'done' ? '已撤出成建制'
+      : '待命');
+    return {
+      battleId: b.id, regionId: b.regionId || null,
+      regionName: (rg && (rg.nameCn || rg.id)) || '未知战区',
+      hours: Number(b.hours) || 0,
+      maxHours: BATTLE_MAX_HOURS,
+      state: d.state, stateCn,
+    };
+  }
+  return null;
+}
+
+
+// v0.4.13（③）部署徽标用到的引擎 API：取进行中的战役、交战上限常量、查战区名
+import { activeBattlesOf, BATTLE_MAX_HOURS } from '../core/battle.js?v=53.4';
+import { regionById } from '../core/theater.js?v=53.4';
+
 export function renderArmyPage(root, ctx) {
   ctx = ctx || {};
   const acc = ctx.account || currentAccount();
@@ -85,7 +125,7 @@ export function renderArmyPage(root, ctx) {
   if (!techSet.has(ARMY_TECH)) {
     const tip = el('div', 'muted');
     tip.style.padding = '14px 4px';
-    tip.textContent = '军队系统尚未解锁：在科研「设施」分类研究「基础军用装备 M1」（前置：已建成军营）即可列装基础步兵'
+    tip.textContent = '军队系统尚未解锁：在科研「设施」分类研究「基础军用装备 M1」（前置：已建成军营）即可列装基础地面军'
       + '（军事部件在制造车间按生产线生产，进装备栏；后续研究 高级军用装备 M2 / 超级军用装备 M3 解锁更重型的兵种与部件，'
       + 'M3 还可将飞船编入军队、大幅提升部队数值）。';
     root.appendChild(tip);
@@ -413,6 +453,19 @@ function buildArmyRow(a, root, ctx, trainingCount) {
   }
   row.appendChild(info);
 
+  // v0.4.13（③）：显示该师当前的部署状态。军队投入战役后 `committableArmies`
+  //   会把它排除，界面上就变成「这支师不见了」；本页此前完全不显示它去了哪个战区。
+  const inBattle = findDeployment(acc, a.id);
+  if (inBattle) {
+    const dep = el('div', 'army-deploy');
+    dep.appendChild(el('span', 'army-deploy-tag', '⚔ 交战中'));
+    dep.appendChild(el('span', 'army-deploy-txt',
+      inBattle.regionName + ' · ' + inBattle.hours + '/' + inBattle.maxHours + ' 小时'
+      + '　' + inBattle.stateCn));
+    dep.title = '该师正在战区作战，结束后回到待命列表';
+    row.appendChild(dep);
+  }
+
   // v0.2.6：训练中显示进度条 + 取消；否则显示训练按钮（需训练场）
   const task = (inst.trainingTasks || []).find((t) => t.armyId === a.id);
   if (task) {
@@ -447,21 +500,42 @@ function buildArmyRow(a, root, ctx, trainingCount) {
     row.appendChild(trainBtn);
   }
 
-  // v0.2.6 rev9：补员（需时间 / 人力 / 装备）
+  // v0.4.9：补员。
+  //   · 兵员**常态自动恢复**（core/army.js#recoverArmies，由 state.js 每 tick 接线，
+  //     受可用人力与装备约束）—— 所以这个按钮是「加速满编」的选项，不是唯一途径；
+  //   · 没有装备时按钮**直接禁用并说明原因**，而不是点了才弹「可用人力不足」。
   const menNow = Number(a.men) || 0;
-  const menMax = Number(a.menMax) || 500;      // 不再写死 500，跟随实际满编数
-  if (menNow > 0 && menNow < menMax) {
-    const reBtn = el('button', 'btn btn-sm', '补员 ' + Math.round(menNow) + '/' + menMax);
-    reBtn.title = '消耗可用人力与军事装备补充兵员（每次点击 = 1 天额度）';
+  const menMax = menMaxOf(a);
+  if (menNow > 0) {
+    const inst = getPlanetInstance(ctx.planetCode || acc.homePlanetCode);
+    let gear = 0;
+    if (inst && inst.equipment) {
+      for (const k in inst.equipment) {
+        const e = inst.equipment[k];
+        if (e && Number(e.count) > 0) gear += Number(e.count) || 0;
+      }
+    }
+    const gap = Math.max(0, menMax - menNow);
+    const reBtn = el('button', 'btn btn-sm',
+      gap > 0 ? ('紧急补员 ' + Math.round(menNow) + '/' + menMax) : '已满编');
+    if (gap > 0) {
+      if (gear <= 0) {
+        reBtn.disabled = true;
+        reBtn.title = '没有军事装备可用于补员（每 10 人 1 件）—— 先在制造车间生产军械。'
+          + '装备充足时兵员也会自动恢复。';
+      } else {
+        reBtn.title = '一次性投入装备加速补员（每 10 人消耗 1 件装备）。'
+          + '平时兵员也会随时间自动恢复。';
+      }
+    } else {
+      reBtn.disabled = true;
+      reBtn.title = '该师已满编';
+    }
     reBtn.addEventListener('click', () => {
-      const inst = getPlanetInstance(ctx.planetCode || acc.homePlanetCode);
       const r = reinforceArmy(acc, inst, a.id, 1);
       if (!r.ok) { alert(r.reason); return; }
-      // v0.4.4（需求 8）：用 core 返回的 note 如实说明装备缺口。
-      //   旧写法只报一个数，玩家看到「补充 1 人」却不知道为什么（根因是装备被折算没了）。
-      alert((r.note || ('本日补充 ' + r.added + ' 人'))
-        + '（消耗装备 ' + r.gearUsed + '/' + r.gearNeed + ' 件），当前兵力 '
-        + r.men + '/' + menMax);
+      alert((r.note || ('已补 ' + r.added + ' 人'))
+        + '（消耗装备 ' + r.gearUsed + ' 件），当前兵力 ' + r.men + '/' + r.menMax);
       renderArmyPage(root, ctx);
     });
     row.appendChild(reBtn);

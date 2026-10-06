@@ -28,17 +28,17 @@
 // 约定：不 import state.js（账号对象由调用方传入），与 army.js 同构。
 // ============================================================================
 
-import { armyById, armyEffStats, armyPowerOf } from './army.js?v=49.2';
-import { fleetPowerOf } from './fleet.js?v=49.2';   // v0.4.0：空间舰队实力 → 轨道控制
-import { HOI_BY_ID } from '../data/hoi1936.js?v=49.2';
+import { armyById, armyEffStats, armyPowerOf } from './army.js?v=53.4';
+import { fleetPowerOf } from './fleet.js?v=53.4';   // v0.4.0：空间舰队实力 → 轨道控制
+import { HOI_BY_ID } from '../data/hoi1936.js?v=53.4';
 // v0.4.1：行星战区地图 —— 战斗「在哪打」、打赢后归谁、补给通不通
 import {
   ensureTheater, regionById, regionSupplyOf, refreshSupply, captureRegion,
   applyColonyProgress, decayStrikePressure, GARRISON_MAX,
   frontInfoOf, canOpenFront, REGION_MAX_FRONTS, SIEGE_REQUIRED,
-} from './theater.js?v=49.2';
+} from './theater.js?v=53.4';
 // 迫降线（与 core/war.js 同源常量；此处只读，避免反向依赖 war.js）
-import { WAR_FORCE_SURRENDER_SCORE } from './war.js?v=49.2';
+import { WAR_FORCE_SURRENDER_SCORE } from './war.js?v=53.4';
 // 注意：**不 import core/hoi1936.js** —— 它要 import 本模块来驱动敌方进攻，
 //   这里再反向 import 就成了循环依赖。战役时钟用本文件自己的 BATTLE_HOURS_PER_SEC。
 
@@ -140,7 +140,7 @@ export function terrainList() {
 //   （软攻极高、防御与装甲极低 —— 一次性消耗品，正好契合太空战争的资源逻辑）。
 export const DIV_TEMPLATES = {
   infantry: {
-    nameCn: '登陆兵', full: '登陆兵师', soft: 1.00, hard: 0.18, brk: 0.60, dfn: 1.00, armor: 0.15, pierce: 0.05,
+    nameCn: '轨道伞兵', full: '轨道伞兵师', soft: 1.00, hard: 0.18, brk: 0.60, dfn: 1.00, armor: 0.15, pierce: 0.05,
     desc: '通用地面部队，靠数量与软攻取胜；对装甲目标几乎无效。',
   },
   mech: {
@@ -227,7 +227,7 @@ export function orbitalControlOf(acc, targetId) {
 // v0.4.7：确定性随机与 clamp 已收敛到 core/util.js（唯一实现）。
 // 本文件继续 re-export，外部调用方（自检脚本等）无需改动。
 // 实测 hash32 / mulberry32 与原实现逐位一致，收敛零回归。
-import { mulberry32, hash32, clamp } from './util.js?v=49.2';
+import { mulberry32, hash32, clamp } from './util.js?v=53.4';
 let _seq = 0;
 function newId() {
   _seq = (_seq + 1) % 1000000;
@@ -1559,7 +1559,7 @@ function divView(d, isMine) {
     kind: d.kind || 'infantry',
     // v0.4.7：兜底名改 '登陆兵' —— v0.4.0 已把「步兵师」太空化为「登陆兵」，
     //   沿用二战术语会与展示层不一致。
-    kindCn: d.kindCn || '登陆兵',
+    kindCn: d.kindCn || '轨道伞兵',
     org: Math.round(d.org),
     orgMax: d.orgMax || ORG_MAX,
     str: Math.round(d.str),

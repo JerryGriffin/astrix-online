@@ -29,7 +29,7 @@ if (typeof globalThis.S === 'undefined') {
 
 import {
   tickManagedColonies, colonyReportsOf, COLONY_REPORT_INTERVAL_SEC,
-} from '../js/core/planetgen.js?v=49.2';
+} from '../js/core/planetgen.js?v=53.4';
 
 let pass = 0, fail = 0;
 function assert(name, cond, extra) {

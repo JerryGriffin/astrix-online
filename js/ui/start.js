@@ -1,14 +1,14 @@
 // 开始界面：标题、离线/在线模式、账号选择、各次要入口模态层（Astrix）
-import {  STATE, createAccount, switchAccount, deleteAccount, currentAccount, START_MODES, switchPool  } from '../core/state.js?v=49.2';
-import { HOI_NATIONS } from '../data/hoi1936.js?v=49.2';   // v0.2.6 官方 mod 1936 剧本
+import {  STATE, createAccount, switchAccount, deleteAccount, currentAccount, START_MODES, switchPool  } from '../core/state.js?v=53.4';
+import { HOI_NATIONS } from '../data/hoi1936.js?v=53.4';   // v0.2.6 官方 mod 1936 剧本
 // v0.4.9：科幻势力（普通模式开局可选，与 HOI_NATIONS 同构）
-import { SCI_NATIONS } from '../data/scenario_sci.js?v=49.2';
-import { fmtNum, fmtTime } from '../core/format.js?v=49.2';
+import { SCI_NATIONS } from '../data/scenario_sci.js?v=53.4';
+import { fmtNum, fmtTime } from '../core/format.js?v=53.4';
 // 版本号与更新日志的唯一来源：任何地方要显示版本都从这里取，改版本只改 js/version.js 一处
-import { VERSION, VERSIONS } from '../version.js?v=49.2';
+import { VERSION, VERSIONS } from '../version.js?v=53.4';
 // v0.4.7：el() 收敛到 ui/common.js（此前本文件自带一份；全项目共 14 份、两种不兼容签名，
 //   v0.3.2「列强区块不显示」即源于把 A 型调用写进了 B 型文件）
-import { el } from './common.js?v=49.2';
+import { el } from './common.js?v=53.4';
 
 function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, (c) => (
@@ -184,13 +184,27 @@ function renderNewSaveForm(body, ctx, pool) {
   const modeRow = el('div', 'acc-mode-row');
   const modeTip = el('p', 'acc-new-tip muted', '');
   let mode = 'fresh';
-  // v0.2.6 rev4：在线池的开局模式门禁 ——
-  //   在线（非开发者）只能用「初登星球」；「漫溯深空」与「1936 剧本」仅离线模式或开发者模式可用
+  // v0.4.10：**1936 剧本冻结为 mod，默认不再出现在开局菜单里。**
+  //   起因：设计者要求「以后更新只针对普通模式」，而「风暴前夜」是一整套
+  //   二战地球语境（真实国家名、制海权/海军/陆军、1936 年历法）的内容 ——
+  //   它与「完全回归太空游戏」的目标直接冲突，且它自己占着「战争/国策/战区」
+  //   这几个最重的系统入口。
+  //
+  //   处理方式：**从菜单隐藏，但不删代码**。
+  //     · 代码与数据保留（js/data/hoi1936.js + js/core/hoi1936.js 的 1936 分支），
+  //       老存档仍能正常读取，不会因为隐藏而无法进入或崩溃；
+  //     · 它依赖的机制（战区地图、战役、国策树、阵营、和平会议）已经由
+  //       科幻势力层 scenario_sci.js 在**普通模式**接管，功能不丢；
+  //     · 只有开启开发者模式才会再次看到它，方便回溯与调试。
+  const FROZEN_MOD_MODES = new Set(['hoi1936']);
   const devOn = devModeOn();
+  const visibleModes = START_MODES.filter((m) => devOn || !FROZEN_MOD_MODES.has(m.id));
+  // v0.2.6 rev4：在线池的开局模式门禁 ——
+  //   在线（非开发者）只能用「初登星球」；「漫溯深空」仅离线模式或开发者模式可用
   const onlineAllows = (mid) => !isOnline || devOn || mid === 'fresh';
-  const lockedNames = START_MODES.filter((m) => !onlineAllows(m.id)).map((m) => m.nameCn);
+  const lockedNames = visibleModes.filter((m) => !onlineAllows(m.id)).map((m) => m.nameCn);
   const modeBtns = {};
-  for (const m of START_MODES) {
+  for (const m of visibleModes) {
     const allowed = onlineAllows(m.id);
     const b = el('button', 'btn acc-mode-btn' + (m.id === mode ? ' active' : '') + (allowed ? '' : ' locked'), m.nameCn);
     b.type = 'button';
@@ -211,12 +225,15 @@ function renderNewSaveForm(body, ctx, pool) {
     modeRow.appendChild(b);
   }
   if (isOnline && devOn) {
-    modeTip.textContent = START_MODES[0].desc + '（开发者模式：在线已解锁全部开局模式，含 1936 剧本）';
+    modeTip.textContent = visibleModes[0].desc + '（开发者模式：已解锁全部开局模式，含已冻结的 1936 mod）';
   } else if (isOnline) {
     modeTip.textContent = '在线模式仅支持「初登星球」开局；'
       + (lockedNames.length ? '「' + lockedNames.join('」「') + '」需在设置中开启开发者模式（密码 astrix）后才可用。' : '');
+  } else if (devOn) {
+    modeTip.textContent = visibleModes[0].desc
+      + '（开发者模式：额外显示已冻结的 1936 剧本 mod —— 它是二战地球语境，官方不再更新）';
   } else {
-    modeTip.textContent = START_MODES[0].desc;
+    modeTip.textContent = visibleModes[0].desc;
   }
 
   // 开局势力/国家选择。
@@ -255,7 +272,7 @@ function renderNewSaveForm(body, ctx, pool) {
     cInfo.textContent = (isSci() ? '首府 ' : '首都 ') + n.capital
       + ' · 人口 ' + n.popM + ' 百万 · 工业 ' + n.ic
       + ' · 陆军 ' + n.divisions + ' 师 · 海军 ' + n.navy + ' 舰'
-      + ' · ' + (isSci() ? '轨道火力 ' : '空军 ') + n.airforce + '\n'
+      + ' · 轨道火力 ' + n.airforce + '\n'
       + colonyLine + '\n' + (n.desc || '');
     cInfo.style.whiteSpace = 'pre-line';
   };
@@ -343,7 +360,7 @@ function openTips(ctx) {
     '<b>星际股市</b>　商店星每种资源随时买卖，价格随成交**买涨卖跌**并自然回归；原矿类极度贬值，精加工品才值钱——低级货建议先加工再卖。',
     '<b>拍卖行</b>　出售资产（资源 / 装备 / 飞船）的唯一途径：15 秒竞价，价高者得，流拍原样退还。离线由「星际买家」NPC 兜底出价；电脑势力也会实时挂单，记得去捡漏。',
     '<b>在线模式</b>　邮箱验证码登录，存档按邮箱分开、登录一次永久免登；星系无迷雾：所有玩家与电脑势力星球全部可见，可贸易、进攻或**结盟**（互不侵犯 + 盟友购买价 9 折）。GitHub 版与正式版同属一个星系；**商店星仓库全服共用**，所有人的买卖实时增减同一个池子。',
-    '<b>1936 剧本（官方 mod）</b>　新建存档选「风暴前夜」（**在线模式下仅开发者可用**）→ 从 12 国中选一个开局（真实 1936 数据：人口 / 工业 / 陆军师 / 海军 / 空军），**本土 + 属地两颗星球**起步，其他国家是模拟国家星球（可贸易 / 结盟 / 宣战）。',
+    '<b>科幻势力（默认）</b>　新建存档在「初登星球 / 漫溯深空」里选一个**星际势力**（地球联邦 / 火星矿业公社 / 外环拓殖联合 / 月面采矿同盟 / 谷神星开发署 / 木卫二冰洋城邦 / 土卫六浮空舰队 / 游离者同盟）开局：势力数据同构于原 1936 剧本（人口 / 工业 / 地面军 / 空间舰队 / 轨道火力），其余机制（战区地图、战役、国策树、阵营、和平会议）完全一致。',
     '<b>战争</b>　在模拟国家星球卡上「宣战」即进入**持续战争**（跨会话保留，不会自动结束）；进攻获胜积累战争分数，**分数 ≥ 60 可迫降签约**（拿赔款），也可「我方投降」付赔款结束 —— 只有投降签约才能终止战争。',
     '<b>离线结算</b>　关屏也在推进，回来一次性结算；收益上限 12 小时，长挂不如定时收一次。',
   ];
@@ -382,12 +399,14 @@ function openMod(ctx) {
   const body = document.createElement('div');
   // v0.2.6：官方 mod 列表
   const box = el('div', 'fac-group');
-  box.appendChild(el('div', 'res-section-title', '官方 mod'));
+  box.appendChild(el('div', 'res-section-title', '官方 mod（已冻结）'));
   const item = el('div', 'pop-card');
-  item.appendChild(el('b', null, '🎖 风暴前夜（1936 剧本）'));
-  const d = el('p', 'muted', '参考《钢铁雄心 4》1936 开局的星际模拟：先选择国家（12 国，真实 1936 数据：'
-    + '人口 / 工业 / 陆军师 / 海军 / 空军），获取「本土星球 + 属地星球」两颗星球与一支国家军队，'
-    + '与其他模拟国家贸易、结盟、宣战——战争是持续过程，只有投降签约才能结束。');
+  item.appendChild(el('b', null, '🎖 风暴前夜（1936 剧本 · 已冻结）'));
+  const d = el('p', 'muted', '参考《钢铁雄心 4》1936 开局的星际模拟：从 12 个真实国家里选一个开局。'
+    + '**该 mod 含完整二战地球语境（真实国家名 / 战列舰 / 制海权 / 1936 年历法），'
+    + '与「完全回归太空游戏」的方向冲突，故已从开局菜单隐藏、官方不再更新。**'
+    + '它依赖的机制（战区地图 / 战役 / 国策树 / 阵营 / 和平会议）'
+    + '已由科幻势力层在**普通模式**接管，功能不丢；这里仅供回溯与调试（需开启开发者模式）。');
   d.style.cssText = 'font-size:12px;line-height:1.8;margin:6px 0;';
   item.appendChild(d);
   item.appendChild(el('p', 'muted', '启用方式：新建存档 → 开局模式选「风暴前夜」→ 选择国家。'

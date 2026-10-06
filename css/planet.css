@@ -517,6 +517,26 @@
 .army-unit-info .muted { font-size: 0.82rem; }
 
 /* ============================================================================
+   v0.4.13（③）军队「部署中」徽标
+      该师投入战役后 committableArmies 会把它排除，此前界面上就凭空消失；
+      这里明确标出它在哪条战线、打了多久、处于接战还是溃退整补。
+   ========================================================================= */
+.army-deploy {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+  padding: 7px 10px;
+  border: 1px solid rgba(255, 196, 107, 0.35);
+  border-radius: 6px;
+  background: rgba(255, 196, 107, 0.08);
+  font-size: 0.82rem;
+}
+.army-deploy-tag { color: #ffc46b; font-weight: 700; white-space: nowrap; }
+.army-deploy-txt { color: var(--muted); line-height: 1.6; }
+
+/* ============================================================================
    v0.2.0：星际页（云服务：状态栏 / 表单 / 收件箱 / 星系列表）
    ========================================================================= */
 .galaxy-status {

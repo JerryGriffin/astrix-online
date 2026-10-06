@@ -25,10 +25,10 @@
 // 不 import state.js（账号对象由调用方传入），与 war.js 同构。
 // ============================================================================
 
-import { HOI_BY_ID } from '../data/hoi1936.js?v=49.2';
+import { HOI_BY_ID } from '../data/hoi1936.js?v=53.4';
 import {
   regionsOf, applyTreatyToTheater, treatyOutputMulOf,
-} from './theater.js?v=49.2';
+} from './theater.js?v=53.4';
 
 // --- 和约选项 -------------------------------------------------------------
 export const TREATY_OPTIONS = [
@@ -97,7 +97,7 @@ export const REPARATION_RATE = 0.45;             // 赔款 = 对方财富的百�
 import {
   TREATY_COLONY_OUTPUT_MUL as COLONIZATION_OUTPUT_MUL,
   TREATY_COLONY_GARRISON_MUL as COLONIZATION_GARRISON_MUL,
-} from './theater.js?v=49.2';
+} from './theater.js?v=53.4';
 export { COLONIZATION_OUTPUT_MUL, COLONIZATION_GARRISON_MUL };
 
 // v0.4.7：上贡/科研积分 → Ascoin / 研究点 的换算汇率。

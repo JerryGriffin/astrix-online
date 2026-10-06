@@ -10,18 +10,18 @@
 // 全部公式集中在这里，方便策划调参
 // ============================================================================
 
-import { MATERIALS } from '../data/materials.js?v=49.2';
+import { MATERIALS } from '../data/materials.js?v=53.4';
 import {
   PART_BY_ID, HULLS, ENGINES, WEAPONS, FACILITIES, MARKS,
   MATERIAL_SLOTS, DEFAULT_MATERIAL, PART_CATEGORIES,
   craftableParts, isPartUnlocked,
-} from '../data/ship_parts.js?v=49.2';
+} from '../data/ship_parts.js?v=53.4';
 // 军用部件（ap_*）与舰船部件共用 inst.equipment 库存（key=partId@材料），
 // 装备清单/拍卖行列装备时必须两类都能解析出中文名（v0.2.8 修复：军用装备露出英文 id）
-import { ARMY_PART_BY_ID } from '../data/army_parts.js?v=49.2';
-import { POWER_FACILITY_BY_ID } from '../data/facilities.js?v=49.2';
-import { FUEL_BY_NAME } from '../data/fuels.js?v=49.2';
-import { PLANETS } from '../data/planets.js?v=49.2';
+import { ARMY_PART_BY_ID } from '../data/army_parts.js?v=53.4';
+import { POWER_FACILITY_BY_ID } from '../data/facilities.js?v=53.4';
+import { FUEL_BY_NAME } from '../data/fuels.js?v=53.4';
+import { PLANETS } from '../data/planets.js?v=53.4';
 
 // 自建材料中文名索引（materials.js 只导出 MATERIALS 数组）
 const MAT_BY_NAME = Object.fromEntries(MATERIALS.map((m) => [m.nameCn, m]));
@@ -999,7 +999,7 @@ export function defaultBlueprints() {
       ],
     }),
     mk({
-      kind: 'cruiser', nameCn: '巡洋舰 MKI「游隼」',
+      kind: 'cruiser', nameCn: '巡弋舰 MK-I「游隼」',
       hullId: 'hull_l_mk1', hullMaterial: DEFAULT_MATERIAL.hull,
       engines: [
         { id: 'engine_heavy_mk1', material: DEFAULT_MATERIAL.engine },

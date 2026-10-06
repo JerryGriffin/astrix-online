@@ -15,65 +15,68 @@
 //    开局自带 1 座建筑工厂（设计者：「开局有一个建筑工厂」）。
 // 5. 施工队列由 tick 推进：速度 = 建筑工有效人力（受建筑工厂工位限制），无人则为 0。
 
-import { PLANETS } from '../data/planets.js?v=49.2';
-import { HOI_NATIONS, HOI_BY_ID, HOI_SCENARIO_ID } from '../data/hoi1936.js?v=49.2';   // v0.2.6 官方 mod 1936 剧本
+import { PLANETS } from '../data/planets.js?v=53.4';
+import { HOI_NATIONS, HOI_BY_ID, HOI_SCENARIO_ID } from '../data/hoi1936.js?v=53.4';   // v0.2.6 官方 mod 1936 剧本
 import {
   setHoiDeps, popOf, setupArmies, setupNavy, setupLines, setupBloc, setupFactories, setupColony, ensureShipNames, backgroundOf, repairScenarioEstates, setupGermanPuppets, tickWarsHoi4, tickJustify, tickDiploAI, staffBuildings, applyInfiniteReserve,
   ensureFocus, tickFocus, ensureSeas, scenarioDateOf, gameDaysOf,
   // v0.4.9：科幻剧本（普通模式）—— 只需适配器与人口换算，其余铺设复用同一批 setup* 函数
   sciAdapterOf,
-} from './hoi1936.js?v=49.2';
-import { SCI_SCENARIO_ID, SCI_BY_ID, SCI_NATIONS, sciPopOf } from '../data/scenario_sci.js?v=49.2';
-import { BUILDING_BY_ID, buildingCost } from '../data/buildings.js?v=49.2';
-import { TECH_BY_ID, canResearch, missingPrereqs, missingBuilding } from '../data/techs.js?v=49.2';
-import { UPGRADES, upgradeCost } from '../data/upgrades.js?v=49.2';
+  // v0.4.9 修：`blocNameOf` 在下面第 1600 行拼「科幻开局简报」时用到，却**从未 import**，
+  //   抛 ReferenceError 被 softFail 吞掉 —— 开局简报里的阵营一行永远出不来。
+  blocNameOf,
+} from './hoi1936.js?v=53.4';
+import { SCI_SCENARIO_ID, SCI_BY_ID, SCI_NATIONS, sciPopOf } from '../data/scenario_sci.js?v=53.4';
+import { BUILDING_BY_ID, buildingCost } from '../data/buildings.js?v=53.4';
+import { TECH_BY_ID, canResearch, missingPrereqs, missingBuilding } from '../data/techs.js?v=53.4';
+import { UPGRADES, upgradeCost } from '../data/upgrades.js?v=53.4';
 import {
   createPopulation, tickPopulation, getAvailable, gatherLaborByLayer, jobsOfBuilding, getIntensity,
   consumptionPerSec, jobOutput,
   JOBS, freeSlots,
-} from './population.js?v=49.2';
-import { buildRateOf, buildBlockReason } from './construction.js?v=49.2';
-import { tickShip, defaultBlueprints, createShip, shipBuildTick } from './shipyard.js?v=49.2';
+} from './population.js?v=53.4';
+import { buildRateOf, buildBlockReason } from './construction.js?v=53.4';
+import { tickShip, defaultBlueprints, createShip, shipBuildTick } from './shipyard.js?v=53.4';
 // v0.0.6：电力系统与配方生产。
 // 注意这两个模块**不反向 import 本文件**（否则形成循环依赖），
 // 它们只从传入的 inst 上读 buildings / pop / inventory / recipes。
-import { energyOf, computePower, tickPower } from './power.js?v=49.2';
+import { energyOf, computePower, tickPower } from './power.js?v=53.4';
 // v0.0.91：efficiencyBonus 由 production.js 导出（建筑总座数效率乘数），
 //   这里沿用既有的 state→production 单向边引入，不反向让 production import state，避免循环依赖。
-import { tickProduction, productionRates, ensureLines, lineWorkersTotal, efficiencyBonus, ensureEntry, addLine as addProductionLine, lineSlotInfo, freeLaborOf } from './production.js?v=49.2';
+import { tickProduction, productionRates, ensureLines, lineWorkersTotal, efficiencyBonus, ensureEntry, addLine as addProductionLine, lineSlotInfo, freeLaborOf } from './production.js?v=53.4';
 // v0.0.92：星际航行与殖民（管理模式 / 独立倾向 / 随机星球）
-import { tickIndependence, outputMulOf, happinessDeltaOf, ensureDiscoveredDefaults, discoverPlanet, capturePlanet, purgeShopColonies, tickManagedColonies, SHOP_PLANET_CODE } from './planetgen.js?v=49.2';
+import { tickIndependence, outputMulOf, happinessDeltaOf, ensureDiscoveredDefaults, discoverPlanet, capturePlanet, purgeShopColonies, tickManagedColonies, SHOP_PLANET_CODE } from './planetgen.js?v=53.4';
 // v0.1.2（需求 18/19）：永久升级的「效果」改乘方，唯一实现在 data/upgrades.js#upgradeMul
 // （UI 的 research.js 也用它，别在别处再写一套公式）。
 // 此前 upg_collect/refine/power/labor/research/build 六项付了钱却没有任何效果。
-import { upgradeMul } from '../data/upgrades.js?v=49.2';
+import { upgradeMul } from '../data/upgrades.js?v=53.4';
 // v0.4.7：softFail —— 心跳里被吞掉的异常改为「可观测」（同 tag+message 只报一次，
 //   避免每 tick 抛错把控制台刷爆）。此前 40 处空 catch 无一日志，
 //   是「界面不显示 / 功能没反应」类问题反复无法定位的共同根因。
-import { softFail } from './util.js?v=49.2';
-import { tickFleetMissions, ensureFleets } from './fleet.js?v=49.2';
+import { softFail } from './util.js?v=53.4';
+import { tickFleetMissions, ensureFleets } from './fleet.js?v=53.4';
 // v0.4.7：healArmyLineLabor —— 自愈「零人力」的军队组装线（见 advanceArmyLines 注释）
-import { ensureArmies, armyBuildTick, advanceTraining, ARMY_LABOR_PER_BARRACKS, healArmyLineLabor } from './army.js?v=49.2';   // v0.2.0 军队
+import { ensureArmies, armyBuildTick, advanceTraining, ARMY_LABOR_PER_BARRACKS, healArmyLineLabor, recoverArmies } from './army.js?v=53.4';   // v0.2.0 军队
 // v0.3.4：战役系统（HOI4 式持续交战）。必须在 ensureArmies **之后**接线 ——
 //   战役结算要从真实 acc.armies 取师（兵员/攻防），否则打的是空数组。
-import { tickBattles, ensureBattles, orbitalControlOf, startBattle, BATTLE_MAX_PER_WAR, unshiftWarLog } from './battle.js?v=49.2';
+import { tickBattles, ensureBattles, orbitalControlOf, startBattle, BATTLE_MAX_PER_WAR, unshiftWarLog } from './battle.js?v=53.4';
 // v0.4.1：行星战区地图（战区归属 / 补给网络 / 战略打击 / 敌方 AI 战略层）
 import {
   ensureTheater, refreshSupply, decayStrikePressure, tickTheaterAI,
   tickRegions, regionYieldOf, colonySupportOf,
   regionsOf, treatyOutputMulOf, STRUCTURE_OUTPUT_MUL,
-} from './theater.js?v=49.2';
+} from './theater.js?v=53.4';
 // v0.4.7：附庸上贡的换算汇率也来自 treaty.js（此前这里是写死的 *1000）
-import { tickVassals, VASSAL_ASCOIN_RATE, VASSAL_RESEARCH_RATE } from './treaty.js?v=49.2';
+import { tickVassals, VASSAL_ASCOIN_RATE, VASSAL_RESEARCH_RATE } from './treaty.js?v=53.4';
 // 注：ensureEntry 已在上面从 ./production.js 一并导入，勿重复 import。
 // v0.1.0：电脑账号（离线存档里的 NPC 势力）与其交易池联动。
 //   注意 npc.js 是叶子模块（只 import 数据表），shop.js 与 state.js 互为函数级引用、无顶层副作用。
-import { ensureNpcs, tickNpcs } from './npc.js?v=49.2';
+import { ensureNpcs, tickNpcs } from './npc.js?v=53.4';
 import {
   priceOf as shopPriceOf, suggestPriceOf as shopSuggestPriceOf,
   tickShop as shopTick,
-} from './shop.js?v=49.2';
-import { tickAuctions, tickNpcAuctionSpawner } from './auction.js?v=49.2';   // v0.2.6 拍卖行；v0.2.10 NPC 挂单
+} from './shop.js?v=53.4';
+import { tickAuctions, tickNpcAuctionSpawner } from './auction.js?v=53.4';   // v0.2.6 拍卖行；v0.2.10 NPC 挂单
 
 const SAVE_PREFIX = 'astrix.save.';
 const INDEX_KEY = SAVE_PREFIX + 'index';
@@ -1284,6 +1287,17 @@ export function tick(dt = 1) {
     try { ensureArmies(acc); } catch (e) { softFail('军队自愈', e); }
     // v0.3.4 战役：持续交战（师级接敌 / 组织度 / 补给 / 工事），战果回写 acc.armies
     try { ensureBattles(acc); tickBattles(acc, dt); } catch (e) { softFail('单场战役异常不拖垮心跳', e); }
+  // v0.4.9 兵员自动整补：不在交战的师按时间回兵，速率受**可用人力与装备**约束。
+  //   此前补员只有一个按钮，且要求仍有未分配人力 —— 兵力几乎总被产线占满，
+  //   于是「可用人力不足」，看起来就是按钮完全无效。现在改为常态自动恢复。
+  try {
+    const _home = getPlanetInstance(acc.homePlanetCode);
+    recoverArmies(acc, _home, dt, {
+      // ⚠️ 必须用 freeLaborOf（= 未分配人力 − 生产线占用）这个权威口径。
+      //   若直接用 getAvailable，就会把已派给产线的人力也算成可用，整补会**凭空造人**。
+      freeLabor: () => freeLaborOf(_home),
+    });
+  } catch (e) { softFail('兵员自动整补', e); }
     // v0.4.1/4.2 行星战区地图：战区易手、补给网络、驻防/围城推进、敌方 AI 战略层
     try {
       ensureTheater(acc);
@@ -1537,7 +1551,14 @@ export function settleOffline() {
 export const START_MODES = [
   { id: 'fresh', nameCn: '初登星球', desc: '标准开局：一座建筑工厂 + 少量物资，从零开始。' },
   { id: 'deep',  nameCn: '漫溯深空', desc: '中期开局：已解锁到船坞科技，建筑成规模、物资充足，并随机获得 10 艘飞船。' },
-  { id: 'hoi1936', nameCn: '风暴前夜', desc: '官方 mod：选择 1936 年的国家开局（真实历史数据），本土 + 属地两颗星球，与其他模拟国家贸易 / 结盟 / 开战。' },
+  // v0.4.10：**已冻结为 mod，默认不再显示在开局菜单**（需开发者模式才可见）。
+   //   它是一整套二战地球语境的内容（真实国家名、制海权/海军/陆军、1936 年历法），
+   //   与「完全回归太空游戏」的目标冲突，故官方不再更新；其依赖的机制
+   //   （战区地图 / 战役 / 国策树 / 阵营 / 和平会议）已由 scenario_sci.js
+   //   在普通模式接管。代码与数据保留，老存档仍可正常读取。
+   { id: 'hoi1936', nameCn: '风暴前夜（mod·已冻结）',
+     desc: '官方 mod（已冻结，不再更新）：1936 年真实国家开局，二战地球语境。'
+       + '其机制已移植到普通模式（科幻势力），此处仅供回溯与调试 —— 需开启开发者模式。' },
 ];
 
 // ============================================================================
@@ -1596,7 +1617,7 @@ function applySciStart(acc, inst, factionId) {
       const bg = backgroundOf(acc);
       if (bg) acc.warLog.unshift({ at: Date.now(), text: '【开局 · 局势】' + bg });
       acc.warLog.unshift({ at: Date.now(), text: '【所属】' + n.nameCn + ' · 首府 ' + n.capital
-        + ' · 陆军 ' + n.divisions + ' 师 · 海军 ' + n.navy + ' 舰 · 轨道火力 ' + n.airforce
+        + ' · 地面军 ' + n.divisions + ' 师 · 空间舰队 ' + n.navy + ' 舰 · 轨道火力 ' + n.airforce
         + '　|　阵营：' + (blocNameOf(acc) || '无所属') });
       acc.warLog.unshift({ at: Date.now(), text: '【提示】在「战区」页选择国策推进势力发展；'
         + '地图上的敌对势力可直接宣战，占领其战区与殖民地。' });

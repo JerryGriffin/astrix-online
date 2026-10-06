@@ -506,7 +506,9 @@ console.log('\nT20 地貌灾害（陨石 / 地陷 / 毒气 / 尘暴）');
 console.log('\nT21 兵种命名太空化');
 {
   const names = Object.keys(B.DIV_TEMPLATES).map((k) => B.DIV_TEMPLATES[k].nameCn);
-  ok(names.indexOf('登陆兵') >= 0, '有「登陆兵」而非「步兵」', names.join(','));
+  // v0.4.10：「登陆兵」也是 amphibious 二战词，已改为「轨道伞兵」
+  ok(names.indexOf('轨道伞兵') >= 0, '有「轨道伞兵」而非「步兵 / 登陆兵」', names.join(','));
+  ok(names.indexOf('登陆兵') < 0 && names.indexOf('步兵') < 0, '兵种名里不再有「登陆兵 / 步兵」', names.join(','));
   ok(names.indexOf('磁轨装甲') >= 0, '有「磁轨装甲」而非「装甲师」', names.join(','));
   ok(names.indexOf('外骨骼') >= 0, '有「外骨骼」而非「机械化」', names.join(','));
   ok(names.indexOf('无人机群') >= 0, '新增太空专属编制「无人机群」');
