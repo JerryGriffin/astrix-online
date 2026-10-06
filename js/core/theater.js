@@ -32,10 +32,10 @@
 // v0.4.8：HOI_MAIN_NATIONS 只在「风暴前夜」剧本用作势力源；
 //   其余剧本改用 data/factions.js 的通用势力表（见 generateTheater 内的说明）。
 //   HOI_BY_ID 仍保留 —— UI 要靠它把 owner id 解析成国家名/旗帜。
-import { HOI_BY_ID, HOI_MAIN_NATIONS } from '../data/hoi1936.js?v=56.7';
-import { GENERIC_FACTIONS } from '../data/factions.js?v=56.7';
+import { HOI_BY_ID, HOI_MAIN_NATIONS } from '../data/hoi1936.js?v=57.8';
+import { GENERIC_FACTIONS } from '../data/factions.js?v=57.8';
 // v0.4.9：科幻剧本势力表（普通开局用；8 个完整势力，含 popM/ic/divisions 可按实力分领土）
-import { SCI_NATIONS } from '../data/scenario_sci.js?v=56.7';
+import { SCI_NATIONS } from '../data/scenario_sci.js?v=57.8';
 
 export const THEATER_COLS = 6;
 export const THEATER_ROWS = 6;
@@ -122,7 +122,7 @@ const TERRAIN_WORDS = {
 // ---------------------------------------------------------------------------
 // v0.4.7：hash32 / clamp 已收敛到 core/util.js（与 battle.js 共用唯一实现）。
 // 实测与原实现逐位一致，收敛零回归。
-import { hash32, clamp } from './util.js?v=56.7';
+import { hash32, clamp } from './util.js?v=57.8';
 function smooth(t) { return t * t * (3 - 2 * t); }
 /** 二维值噪声（格点 hash + 双线性平滑） */
 function noise2(seed, x, y) {

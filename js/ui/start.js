@@ -1,14 +1,14 @@
 // 开始界面：标题、离线/在线模式、账号选择、各次要入口模态层（Astrix）
-import {  STATE, createAccount, switchAccount, deleteAccount, currentAccount, START_MODES, switchPool  } from '../core/state.js?v=56.7';
-import { HOI_NATIONS } from '../data/hoi1936.js?v=56.7';   // v0.2.6 官方 mod 1936 剧本
+import {  STATE, createAccount, switchAccount, deleteAccount, currentAccount, START_MODES, switchPool  } from '../core/state.js?v=57.8';
+import { HOI_NATIONS } from '../data/hoi1936.js?v=57.8';   // v0.2.6 官方 mod 1936 剧本
 // v0.4.9：科幻势力（普通模式开局可选，与 HOI_NATIONS 同构）
-import { SCI_NATIONS } from '../data/scenario_sci.js?v=56.7';
-import { fmtNum, fmtTime } from '../core/format.js?v=56.7';
+import { SCI_NATIONS } from '../data/scenario_sci.js?v=57.8';
+import { fmtNum, fmtTime } from '../core/format.js?v=57.8';
 // 版本号与更新日志的唯一来源：任何地方要显示版本都从这里取，改版本只改 js/version.js 一处
-import { VERSION, VERSIONS } from '../version.js?v=56.7';
+import { VERSION, VERSIONS } from '../version.js?v=57.8';
 // v0.4.7：el() 收敛到 ui/common.js（此前本文件自带一份；全项目共 14 份、两种不兼容签名，
 //   v0.3.2「列强区块不显示」即源于把 A 型调用写进了 B 型文件）
-import { el } from './common.js?v=56.7';
+import { el } from './common.js?v=57.8';
 
 function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, (c) => (

@@ -68,7 +68,9 @@ section('Bug A：renderArmyDesigner 里的 inst 必须有声明（不能是自�
   // 运行时：真实调用一次，不应抛 ReferenceError
   const { chromium } = await import('node:module').then(async (m) => {
     const { createRequire } = m;
-    const require = createRequire('C:/Users/11603/.workbuddy/binaries/node/workspace/package.json');
+    // v0.4.17：原先硬编码原开发机的 package.json 路径，本机不存在 → 必然加载失败。
+  // 改成以脚本自身为基准，Node 会逐级向上找 node_modules。
+  const require = createRequire(import.meta.url);
     return require('playwright-core');
   });
   // 用 Node 的 DOM 桩不现实（army.js 依赖大量 DOM API），改为在浏览器里跑

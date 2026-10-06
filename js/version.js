@@ -10,10 +10,10 @@
 // 现在：版本号只在这里定义一次，任何地方要显示都从这里取；
 // index.html 的入口脚本带 ?v= 查询串（与 VERSION 同步），改版本号即自动击穿缓存。
 
-export const VERSION = 'v0.4.16';
+export const VERSION = 'v0.4.17';
 
 // 版本号数字形式（用于存档迁移判断）
-export const VERSION_NUM = 56;   // v0.4.10 → 50（十位进位，见 selfcheck_v005 的版本号一致性断言）
+export const VERSION_NUM = 57;   // v0.4.10 → 50（十位进位，见 selfcheck_v005 的版本号一致性断言）
 
 export const VERSION_DATE = '2026-10-06';
 
@@ -26,12 +26,35 @@ export const VERSION_DATE = '2026-10-06';
 //   VERSION     —— 玩家看到的版本（设计者说不变就不变）
 //   REVISION    —— 只要改了 css/ 或 js/，这里就 +1
 //   CACHE_TAG   —— 实际写进 index.html 的 ?v= 串
-export const REVISION = 7;
+export const REVISION = 8;
 // index.html 里所有 css 链接与 js/main.js 入口都用它；改代码后记得 +1
 export const CACHE_TAG = VERSION_NUM + '.' + REVISION;
 
 // 更新日志：从新到旧。每项 [版本号, 日期, [条目...]]
 export const VERSIONS = [
+  ['v0.4.17', '2026-10-06', [
+    '**`selfcheck_v048` / `selfcheck_v049` 终于能跑了** —— 这两套浏览器端自检从 v0.4.8 '
+      + '起就一直是「装了却跑不了」的状态，本轮补齐：'
+      + '① 手工安装 `playwright-core`（本机无 npm，从 registry 直接下 tarball 解包；'
+      + '该包零运行时依赖），② **修掉真正的病根** —— 两个脚本都硬编码了原开发机的'
+      + '模块解析基准 `C:/Users/11603/.workbuddy/binaries/node/workspace/package.json`，'
+      + '该路径在本机不存在，`require(\'playwright-core\')` 必然失败；'
+      + '改为以脚本自身（`import.meta.url`）为基准，Node 逐级向上找 node_modules。'
+      + '浏览器沿用本机已装的 Edge，未额外下载 Chromium',
+    '`selfcheck_v049` 的 ③ 组断言适配 v0.4.16 入口整合：'
+      + '失败项「planet.js 无条件 push 战区页签」**不是代码回归**，而是断言编码了旧结构 —— '
+      + '战区已从顶层 tab 变成「军事」入口下的子页。改的是断言不是代码：'
+      + '改为校验战区子页无条件存在且同样不被 `scenario === \'hoi1936\'` 门禁挡住，'
+      + '断言意图（所有剧本都能进战区）不变',
+    '**回归套件从 10 套扩到 12 套，全部通过**：'
+      + 'materials / render / battle 100 / theater 99 / fixes 97 / v005 1388 / v006 258 / '
+      + 'v045 83 / v046 73 / v047 23 / v048 23 / v049 35',
+    '新增的浏览器端覆盖（v048/v049 实际验证了本轮改动）：'
+      + '军队页设计与建造可加载无异常、零人力组装线自愈（0 → 81 工人、进度 0 → 0.27）、'
+      + '非 1936 存档战区地图可见且能对 sci_* 势力宣战、宣战后地图与战线仍在、'
+      + '1936 剧本国策树/轨道圈层/真实列强无回归',
+    '`node_modules/` 已在 .gitignore 中，playwright-core 不会被提交进仓库',
+  ]],
   ['v0.4.16', '2026-10-06', [
     '**② 军事系统合并为单一入口**：顶层不再有「舰队」「军队」「战区」三个平级页签，'
       + '只剩一个「军事」，内部子页 = 战区 / 军队 / 舰队 / 势力。'

@@ -10,18 +10,18 @@
 // 全部公式集中在这里，方便策划调参
 // ============================================================================
 
-import { MATERIALS } from '../data/materials.js?v=56.7';
+import { MATERIALS } from '../data/materials.js?v=57.8';
 import {
   PART_BY_ID, HULLS, ENGINES, WEAPONS, FACILITIES, MARKS,
   MATERIAL_SLOTS, DEFAULT_MATERIAL, PART_CATEGORIES,
   craftableParts, isPartUnlocked,
-} from '../data/ship_parts.js?v=56.7';
+} from '../data/ship_parts.js?v=57.8';
 // 军用部件（ap_*）与舰船部件共用 inst.equipment 库存（key=partId@材料），
 // 装备清单/拍卖行列装备时必须两类都能解析出中文名（v0.2.8 修复：军用装备露出英文 id）
-import { ARMY_PART_BY_ID } from '../data/army_parts.js?v=56.7';
-import { POWER_FACILITY_BY_ID } from '../data/facilities.js?v=56.7';
-import { FUEL_BY_NAME } from '../data/fuels.js?v=56.7';
-import { PLANETS } from '../data/planets.js?v=56.7';
+import { ARMY_PART_BY_ID } from '../data/army_parts.js?v=57.8';
+import { POWER_FACILITY_BY_ID } from '../data/facilities.js?v=57.8';
+import { FUEL_BY_NAME } from '../data/fuels.js?v=57.8';
+import { PLANETS } from '../data/planets.js?v=57.8';
 
 // 自建材料中文名索引（materials.js 只导出 MATERIALS 数组）
 const MAT_BY_NAME = Object.fromEntries(MATERIALS.map((m) => [m.nameCn, m]));

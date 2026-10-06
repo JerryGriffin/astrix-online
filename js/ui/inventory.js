@@ -24,14 +24,14 @@
 // 所有数字显示一律走 format.js 的 fmtNum / fmtRate / fmtRateBody / fmtSci。
 // 样式集中在 css/planet.css。
 
-import { MATERIALS } from '../data/materials.js?v=56.7';
-import { fmtNum, fmtRate, fmtSci } from '../core/format.js?v=56.7';
-import { getPlanetInstance, tick, currentAccount, atmosphereOf, ownedOf} from '../core/state.js?v=56.7';
-import { computePower } from '../core/power.js?v=56.7';
-import { equipmentList } from '../core/shipyard.js?v=56.7';
-import { materialLabel, productionRates } from '../core/production.js?v=56.7';
-import { BUILDING_BY_ID } from '../data/buildings.js?v=56.7';
-import { NUTRIENT_NAMES, METABOLITE_NAMES, consumptionPerSec, metabolitePerSec } from '../core/population.js?v=56.7';
+import { MATERIALS } from '../data/materials.js?v=57.8';
+import { fmtNum, fmtRate, fmtSci } from '../core/format.js?v=57.8';
+import { getPlanetInstance, tick, currentAccount, atmosphereOf, ownedOf} from '../core/state.js?v=57.8';
+import { computePower } from '../core/power.js?v=57.8';
+import { equipmentList } from '../core/shipyard.js?v=57.8';
+import { materialLabel, productionRates } from '../core/production.js?v=57.8';
+import { BUILDING_BY_ID } from '../data/buildings.js?v=57.8';
+import { NUTRIENT_NAMES, METABOLITE_NAMES, consumptionPerSec, metabolitePerSec } from '../core/population.js?v=57.8';
 
 // 分组顺序与中文标题
 // v0.0.91：同事把星球数据拆成 surface(地表) / underground(浅层) / deep(深层) / core(地核) / gas(气体) 五层。

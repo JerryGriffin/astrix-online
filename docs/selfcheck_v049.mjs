@@ -36,7 +36,9 @@ const server = http.createServer((req, res) => {
 });
 await new Promise((r) => server.listen(8797, '127.0.0.1', r));
 
-const require = createRequire('C:/Users/11603/.workbuddy/binaries/node/workspace/package.json');
+// v0.4.17：原先硬编码原开发机的 package.json 路径，本机不存在 → 必然加载失败。
+  // 改成以脚本自身为基准，Node 会逐级向上找 node_modules。
+  const require = createRequire(import.meta.url);
 const { chromium } = require('playwright-core');
 const browser = await chromium.launch({
   executablePath: 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe',
@@ -160,13 +162,19 @@ const tabRes = await page.evaluate(async (ct) => {
   const S = await import('/js/core/state.js?v=' + ct);
   S.STATE.adapter = { get: () => null, set: () => {}, del: () => {} };
   const src = await (await fetch('/js/ui/planet.js?v=' + ct)).text();
-  out.noScenarioGate = !/account\.scenario === 'hoi1936'[\s\S]{0,80}tabs\.push\(\{ key: 'hoi'/.test(src);
-  out.hasWarTab = /tabs\.push\(\{ key: 'hoi', label: '战区' \}\)/.test(src);
-  out.noOldGuoCeLabel = !/key: 'hoi', label: '国策'/.test(src);
-  return out;
-}, CT);
-ok(tabRes.hasWarTab, 'planet.js 无条件 push「战区」页签');
-ok(tabRes.noScenarioGate, '该页签不再被 scenario === hoi1936 门禁');
+    // v0.4.17：v0.4.16 入口整合后「战区」不再是顶层 tab，而是「军事」入口下的子页 ——
+    //   tabs.push({ key: 'hoi', ... }) 已被移除。这里改为校验**战区子页无条件存在**
+    //   （同样不许被 scenario === 'hoi1936' 门禁挡住）。
+    //   断言的意图（所有剧本都能进战区）依然成立，只是入口路径换了。
+    out.noScenarioGate = !/account\.scenario === 'hoi1936'[\s\S]{0,80}key: 'hoi'/.test(src);
+    out.hasWarTab = /key: 'hoi', label: '战区'/.test(src);
+    out.warIsSubPage = /key: 'mil', label: '军事'/.test(src);
+    out.noOldGuoCeLabel = !/key: 'hoi', label: '国策'/.test(src);
+    return out;
+  }, CT);
+  ok(tabRes.hasWarTab, '「战区」无条件存在（所有剧本都能进）');
+  ok(tabRes.warIsSubPage, '「战区」挂在单一「军事」入口下（v0.4.16 入口整合）');
+  ok(tabRes.noScenarioGate, '该页不再被 scenario === hoi1936 门禁');
 ok(tabRes.noOldGuoCeLabel, '旧「国策」标签名已移除');
 
 // ============================================================================

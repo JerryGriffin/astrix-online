@@ -15,15 +15,15 @@
 // ============================================================================
 
 import { treatyOptions, treatyAvailability, treatyOutcome, allyCountOf, partitionShares, signTreaty }
-  from '../core/treaty.js?v=56.7';
+  from '../core/treaty.js?v=57.8';
 // v0.4.7：殖民化加成与迫降线改引核心常量（此前 UI 里写死 1.6 / 35% / 60，
 //   与 theater.js、war.js 各存一份，改平衡要同时改三处）
-import { regionsOf, applyTreatyToTheater, TREATY_COLONY_OUTPUT_MUL, TREATY_COLONY_GARRISON_MUL } from '../core/theater.js?v=56.7';
-import { endWar, WAR_FORCE_SURRENDER_SCORE } from '../core/war.js?v=56.7';
-import { fmtNum } from '../core/format.js?v=56.7';
+import { regionsOf, applyTreatyToTheater, TREATY_COLONY_OUTPUT_MUL, TREATY_COLONY_GARRISON_MUL } from '../core/theater.js?v=57.8';
+import { endWar, WAR_FORCE_SURRENDER_SCORE } from '../core/war.js?v=57.8';
+import { fmtNum } from '../core/format.js?v=57.8';
 // v0.4.7：el() 收敛到 ui/common.js（此前本文件自带一份；全项目共 14 份、两种不兼容签名，
 //   v0.3.2「列强区块不显示」即源于把 A 型调用写进了 B 型文件）
-import { el } from './common.js?v=56.7';
+import { el } from './common.js?v=57.8';
 
 // ---------------------------------------------------------------------------
 // 和平会议主入口
