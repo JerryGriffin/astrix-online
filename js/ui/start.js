@@ -1,18 +1,12 @@
 // 开始界面：标题、离线/在线模式、账号选择、各次要入口模态层（Astrix）
-import {  STATE, createAccount, switchAccount, deleteAccount, currentAccount, START_MODES, switchPool  } from '../core/state.js?v=59.10';
+import {  STATE, createAccount, switchAccount, deleteAccount, currentAccount, START_MODES, switchPool  } from '../core/state.js?v=60.11';
 // v0.4.19：不再需要科幻势力表 —— 开局势力下拉框已整段移除（见下方 buildNewAccountForm）
-import { fmtNum, fmtTime } from '../core/format.js?v=59.10';
+import { fmtNum, fmtTime } from '../core/format.js?v=60.11';
 // 版本号与更新日志的唯一来源：任何地方要显示版本都从这里取，改版本只改 js/version.js 一处
-import { VERSION, VERSIONS } from '../version.js?v=59.10';
+import { VERSION, VERSIONS } from '../version.js?v=60.11';
 // v0.4.7：el() 收敛到 ui/common.js（此前本文件自带一份；全项目共 14 份、两种不兼容签名，
 //   v0.3.2「列强区块不显示」即源于把 A 型调用写进了 B 型文件）
-import { el } from './common.js?v=59.10';
-
-function escapeHtml(s) {
-  return String(s).replace(/[&<>"']/g, (c) => (
-    { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
-  ));
-}
+import { el, esc } from './common.js?v=60.11';
 
 // 自定义二次确认弹层
 function confirmModal(ctx, title, msg, onYes) {
@@ -122,8 +116,8 @@ function renderAccountList(body, ctx, pool) {
     const row = el('div', 'acc-row');
     const info = el('div', 'acc-info');
     info.innerHTML =
-      `<div class="acc-name">${escapeHtml(acc.name)}</div>` +
-      `<div class="acc-meta muted">母星 ${escapeHtml(acc.homePlanetCode)}1 · ${acc.planetsOwned.length} 个殖民地</div>`;
+      `<div class="acc-name">${esc(acc.name)}</div>` +
+      `<div class="acc-meta muted">母星 ${esc(acc.homePlanetCode)}1 · ${acc.planetsOwned.length} 个殖民地</div>`;
     const actions = el('div', 'acc-actions');
     const isCurrent = acc.id === STATE.currentAccountId;
     // 当前存档显示「进入」（续玩）；其它存档显示「切换」后进入
@@ -240,8 +234,8 @@ function renderNewSaveForm(body, ctx, pool) {
   //   ① 让玩家出生在一颗被改名成「地球同步轨道港 / 奥林帕斯穹顶」的星球上
   //      —— applySciStart 会拿势力首府给母星实例改名（state.js: inst.nameCn = n.capital）；
   //   ② 它其实一直是坏的：factionList() 恒返回 SCI_NATIONS，1936 模式下选出的
-  //      sci_* id 传进 apply1936Start 会 HOI_BY_ID 查不到 → 静默回落到德意志国
-  //      （state.js: HOI_BY_ID[countryId] || HOI_NATIONS[0]），等于摆了个假控件。
+  //      sci_* id 传进 apply1936Start 会 HOI_BY_ID 查不到 → 静默回落到该 mod 的首个国家，
+  //      等于摆了个假控件。
   //   现在建档一律走默认势力（SCI_NATIONS[0] 地球联邦，首府＝希尔瓦），
   //   母星恒为 syl，玩家不再需要也不应该选星球。
 

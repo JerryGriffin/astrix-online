@@ -470,11 +470,6 @@ export const CATEGORIES = {
   dock: '航天',
 };
 
-// 某建筑每栋提供的庇护量（没有 shelter 字段的建筑视为 0）
-export function shelterOf(building) {
-  return Number(building && building.shelter) || 0;
-}
-
 // 第 n+1 座建筑的价格：baseCost 每项 × growth^n（向上取整）
 export function buildingCost(building, ownedCount = 0) {
   const mul = Math.pow(building.growth, Math.max(0, ownedCount));
@@ -485,7 +480,3 @@ export function buildingCost(building, ownedCount = 0) {
   return out;
 }
 
-// 该建筑在拥有 ownedCount 座时，第 ownedCount+1 座的价格倍数（用于 UI 展示）
-export function costMultiplier(building, ownedCount = 0) {
-  return Math.pow(building.growth, Math.max(0, ownedCount));
-}

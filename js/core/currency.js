@@ -6,7 +6,7 @@
 //      只单独计数，用于特殊/稀有交易。因此本模块不提供 eridium -> ascoin / 金 的换算函数。
 //   4. 玩家的「金」是物品栏里的金材料，Ascoin 是独立的计数项。
 
-import { fmtNum } from './format.js?v=59.10';
+import { fmtNum } from './format.js?v=60.11';
 
 export const ASCOIN_PER_GOLD = 1048576;
 
@@ -18,21 +18,6 @@ export function goldToAscoin(gold) {
 // Ascoin -> 金
 export function ascoinToGold(ascoin) {
   return ascoin / ASCOIN_PER_GOLD;
-}
-
-// 格式化 Ascoin（半角空格 + " Ascoin"）
-export function fmtAscoin(n) {
-  return fmtNum(n) + ' Ascoin';
-}
-
-// 格式化镒（半角空格 + " 镒"）
-export function fmtEridium(n) {
-  return fmtNum(n) + ' 镒';
-}
-
-// 创建空钱包
-export function createWallet() {
-  return { ascoin: 0, eridium: 0 };
 }
 
 // 镒是否可兑换：恒为 false。

@@ -12,10 +12,10 @@
 //   3. 建筑工超过建筑工厂提供的工位总数时，多出来的人不产生施工速度。
 // 结论：人 → 建筑工厂工位 → 施工速度（人·秒/秒）。
 
-import { BUILDING_BY_ID } from '../data/buildings.js?v=59.10';
-import { getJobCount, jobOutput } from './population.js?v=59.10';
+import { BUILDING_BY_ID } from '../data/buildings.js?v=60.11';
+import { getJobCount, jobOutput } from './population.js?v=60.11';
 // v0.1.2（需求 18/19）：永久升级「建筑施工」的乘方效果，唯一实现在 data/upgrades.js#upgradeMul
-import { upgradeMul } from '../data/upgrades.js?v=59.10';
+import { upgradeMul } from '../data/upgrades.js?v=60.11';
 
 export const BUILDER_JOB_ID = 'builder';
 export const BUILD_FACTORY_ID = 'workshop';
@@ -46,11 +46,6 @@ export function buildRateOf(pop, counts = {}, acc = null) {
   return Math.min(output, slots) * WORK_PER_SEC * speedMul;
 }
 
-// 能否施工（UI 用它决定按钮是否可点）
-export function canBuild(pop, counts = {}) {
-  return buildRateOf(pop, counts) > 0;
-}
-
 // 给一个「为什么不能施工」的原因，直接喂给 UI
 export function buildBlockReason(pop, counts = {}) {
   if (buildFactorySlots(counts) <= 0) {
@@ -62,15 +57,3 @@ export function buildBlockReason(pop, counts = {}) {
   return null;
 }
 
-// 某项工程（工作量 work 人·秒）在给定施工速度下要多久
-export function buildTimeSec(work, rate) {
-  if (!(rate > 0)) return Infinity;
-  return work / rate;
-}
-
-// 某建筑的第 ownedCount+1 座，在该施工速度下要多久（秒）
-export function buildTimeForBuilding(buildingId, ownedCount, rate) {
-  const b = BUILDING_BY_ID[buildingId];
-  if (!b) return Infinity;
-  return buildTimeSec(b.work, rate);
-}

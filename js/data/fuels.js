@@ -101,15 +101,6 @@ export const FUELS = [
 ];
 
 export const FUEL_BY_NAME = Object.fromEntries(FUELS.map(f => [f.nameCn, f]));
-export const FUEL_NAMES = FUELS.map(f => f.nameCn);
-
-// 在 intensity 燃烧强度下烧完 amountMol（mol）需要多少秒
-export function burnDuration(fuelName, amountMol, intensity) {
-  const f = FUEL_BY_NAME[fuelName];
-  if (!f) return NaN;
-  return amountMol / (f.burnRate * intensity);
-}
-
 // amountMol 该燃料的总能量 = amountMol * heatValue
 export function totalEnergy(fuelName, amountMol) {
   const f = FUEL_BY_NAME[fuelName];

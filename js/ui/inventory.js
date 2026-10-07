@@ -24,14 +24,15 @@
 // 所有数字显示一律走 format.js 的 fmtNum / fmtRate / fmtRateBody / fmtSci。
 // 样式集中在 css/planet.css。
 
-import { MATERIALS } from '../data/materials.js?v=59.10';
-import { fmtNum, fmtRate, fmtSci } from '../core/format.js?v=59.10';
-import { getPlanetInstance, tick, currentAccount, atmosphereOf, ownedOf} from '../core/state.js?v=59.10';
-import { computePower } from '../core/power.js?v=59.10';
-import { equipmentList } from '../core/shipyard.js?v=59.10';
-import { materialLabel, productionRates } from '../core/production.js?v=59.10';
-import { BUILDING_BY_ID } from '../data/buildings.js?v=59.10';
-import { NUTRIENT_NAMES, METABOLITE_NAMES, consumptionPerSec, metabolitePerSec } from '../core/population.js?v=59.10';
+import { MATERIALS } from '../data/materials.js?v=60.11';
+import { fmtNum, fmtRate, fmtSci } from '../core/format.js?v=60.11';
+import { getPlanetInstance, tick, currentAccount, atmosphereOf, ownedOf} from '../core/state.js?v=60.11';
+import { computePower } from '../core/power.js?v=60.11';
+import { equipmentList } from '../core/shipyard.js?v=60.11';
+import { materialLabel, productionRates } from '../core/production.js?v=60.11';
+import { BUILDING_BY_ID } from '../data/buildings.js?v=60.11';
+import { NUTRIENT_NAMES, METABOLITE_NAMES, consumptionPerSec, metabolitePerSec } from '../core/population.js?v=60.11';
+import { esc } from './common.js?v=60.11';
 
 // 分组顺序与中文标题
 // v0.0.91：同事把星球数据拆成 surface(地表) / underground(浅层) / deep(深层) / core(地核) / gas(气体) 五层。
@@ -70,13 +71,6 @@ let invRefreshTimer = null;
 function fmtAbundance(a) {
   if (a < 0.01) return fmtSci(a);
   return Number.isInteger(a) ? String(a) : parseFloat(a.toFixed(2)).toString();
-}
-
-// 防 XSS 的 HTML 转义
-function escapeHtml(s) {
-  return String(s).replace(/[&<>"']/g, (c) => (
-    { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
-  ));
 }
 
 // 剩余储量：优先用 remaining（v0.0.5），旧存档回退到 reserve - owned
@@ -447,8 +441,8 @@ function buildMaterialFlow(planet, mat) {
 function flowRowHtml(label, rate) {
   const v = Number(rate) || 0;
   const color = v > 0 ? NET_POS : v < 0 ? NET_NEG : NET_ZERO;
-  return '<tr><td class="dt-key muted">' + escapeHtml(label) + '</td>'
-    + '<td class="dt-val" style="color:' + color + '">' + escapeHtml(fmtRate(v)) + '</td></tr>';
+  return '<tr><td class="dt-key muted">' + esc(label) + '</td>'
+    + '<td class="dt-val" style="color:' + color + '">' + esc(fmtRate(v)) + '</td></tr>';
 }
 
 // 点击某行：弹出详情层（材料属性 + 本星球数据），复用主应用 openModal
@@ -463,7 +457,7 @@ function openDetail(mat, layer, planet, openModal, inv) {
   // 介绍：查不到材料显示「暂无资料，等待补充」
   let html = '<div class="detail-section">';
   html += '<h4 class="detail-h">介绍</h4>';
-  html += '<p class="detail-desc">' + escapeHtml(material ? (material.description || '暂无资料，等待补充') : '暂无资料，等待补充') + '</p>';
+  html += '<p class="detail-desc">' + esc(material ? (material.description || '暂无资料，等待补充') : '暂无资料，等待补充') + '</p>';
   html += '</div>';
 
   // 属性表：查不到的字段显示 —
@@ -479,8 +473,8 @@ function openDetail(mat, layer, planet, openModal, inv) {
   html += '<div class="detail-section"><h4 class="detail-h">属性</h4>';
   html += '<table class="detail-table">';
   for (const [k, v] of attrs) {
-    html += '<tr><td class="dt-key muted">' + escapeHtml(k) + '</td><td class="dt-val">' +
-      escapeHtml(v == null ? '—' : String(v)) + '</td></tr>';
+    html += '<tr><td class="dt-key muted">' + esc(k) + '</td><td class="dt-val">' +
+      esc(v == null ? '—' : String(v)) + '</td></tr>';
   }
   html += '</table></div>';
 
@@ -488,7 +482,7 @@ function openDetail(mat, layer, planet, openModal, inv) {
   if (material && Array.isArray(material.derivedFrom) && material.derivedFrom.length) {
     const src = material.derivedFrom.map((p) => materialLabel(planet, p.mat) + ' ×' + fmtNum(p.amt)).join('、');
     html += '<div class="detail-section"><h4 class="detail-h">合成来源</h4>';
-    html += '<p class="detail-desc">' + escapeHtml(src) + '</p></div>';
+    html += '<p class="detail-desc">' + esc(src) + '</p></div>';
   }
 
   // 本星球数据
@@ -527,8 +521,8 @@ function openDetail(mat, layer, planet, openModal, inv) {
   html += '<div class="detail-section"><h4 class="detail-h">本星球数据</h4>';
   html += '<table class="detail-table">';
   for (const [k, v] of rows) {
-    html += '<tr><td class="dt-key muted">' + escapeHtml(k) + '</td><td class="dt-val">' +
-      escapeHtml(String(v)) + '</td></tr>';
+    html += '<tr><td class="dt-key muted">' + esc(k) + '</td><td class="dt-val">' +
+      esc(String(v)) + '</td></tr>';
   }
   html += '</table></div>';
 

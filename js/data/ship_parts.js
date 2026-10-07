@@ -266,11 +266,6 @@ export const PART_CATEGORIES = {
   facility: '船上设施',
 };
 
-export function partsOf(category, mark) {
-  const list = ALL_PARTS.filter((p) => p.category === category);
-  return mark ? list.filter((p) => p.mark === mark) : list;
-}
-
 // 舰船部件的解锁条件。
 // v0.0.61：由原来的「四条支线科技 + MK2/MK3」统一改为**船坞**。
 // 设计者原话：「科研里面的 abcd 也去掉，一些基础船上设施的研究前置为船坞」。

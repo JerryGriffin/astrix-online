@@ -10,18 +10,18 @@
 // 全部公式集中在这里，方便策划调参
 // ============================================================================
 
-import { MATERIALS } from '../data/materials.js?v=59.10';
+import { MATERIALS } from '../data/materials.js?v=60.11';
 import {
   PART_BY_ID, HULLS, ENGINES, WEAPONS, FACILITIES, MARKS,
   MATERIAL_SLOTS, DEFAULT_MATERIAL, PART_CATEGORIES,
   craftableParts, isPartUnlocked,
-} from '../data/ship_parts.js?v=59.10';
+} from '../data/ship_parts.js?v=60.11';
 // 军用部件（ap_*）与舰船部件共用 inst.equipment 库存（key=partId@材料），
 // 装备清单/拍卖行列装备时必须两类都能解析出中文名（v0.2.8 修复：军用装备露出英文 id）
-import { ARMY_PART_BY_ID } from '../data/army_parts.js?v=59.10';
-import { POWER_FACILITY_BY_ID } from '../data/facilities.js?v=59.10';
-import { FUEL_BY_NAME } from '../data/fuels.js?v=59.10';
-import { PLANETS } from '../data/planets.js?v=59.10';
+import { ARMY_PART_BY_ID } from '../data/army_parts.js?v=60.11';
+import { POWER_FACILITY_BY_ID } from '../data/facilities.js?v=60.11';
+import { FUEL_BY_NAME } from '../data/fuels.js?v=60.11';
+import { PLANETS } from '../data/planets.js?v=60.11';
 
 // 自建材料中文名索引（materials.js 只导出 MATERIALS 数组）
 const MAT_BY_NAME = Object.fromEntries(MATERIALS.map((m) => [m.nameCn, m]));
@@ -226,8 +226,6 @@ let ACTIVE_LOOKUP = null;
 export function setActiveMaterialLookup(table) {
   ACTIVE_LOOKUP = (table && typeof table === 'object' && Object.keys(table).length) ? table : null;
 }
-export function getActiveMaterialLookup() { return ACTIVE_LOOKUP || MAT_BY_NAME; }
-
 /**
  * 材料倍率。lookup 可选（= 内置 + 自定义合金的合并表）。
  * v0.4.6：必须先查 lookup，否则自定义合金会被当成「查不到」而**静默返回 ×1.00**。
@@ -614,8 +612,6 @@ export function evaluateBlueprint(bp, ctx = {}) {
 // 安全 / 致命温度区间（开尔文）。乘员仓提供生命维持，会把区间向两端放宽。
 export const SAFE_TEMP = { min: 273, max: 313 };    // 0 ~ 40 ℃
 export const LETHAL_TEMP = { min: 253, max: 333 };  // 超出即开始死人
-export const COMFORT_TEMP = 293;
-
 export function safeTempBand(bonus = 0) {
   const b = Math.max(0, bonus);
   return { min: SAFE_TEMP.min - b, max: SAFE_TEMP.max + b };
@@ -1028,27 +1024,6 @@ export function ensureBlueprints(acc) {
     acc.blueprint = acc.blueprints[0] || null;
   }
   return acc.blueprints;
-}
-
-// ============================================================================
-// 十二、部件强度（v0.0.7，设计者任务 C）
-// ============================================================================
-// 材料自选 → 材料影响强度。复用 resolvePart 的现有材料换算（不再另写一套）：
-//   hull          → 实装结构强度 struct（= structBase × 材料 structMul）
-//   装甲设施       → 实装结构加成 structAdd
-//   引擎/武器/无结构设施 → 没有结构字段，返回材料强度倍率（钢=1，作为相对强度）
-// 材料查不到时回退 DEFAULT_MATERIAL（无槽位则传 null）。
-export function partStrengthOf(partId, materialName) {
-  const base = PART_BY_ID[partId];
-  if (!base) return 0;
-  const slot = base.materialSlot;
-  let mat = materialName;
-  if (!mat || !MAT_BY_NAME[mat]) mat = slot ? DEFAULT_MATERIAL[slot] : null;
-  const r = resolvePart(partId, mat);
-  if (!r) return 0;
-  if (r.category === 'hull') return r.struct;
-  if (r.structAdd) return r.structAdd;
-  return +(r.structMul != null ? r.structMul : 1).toFixed(3);
 }
 
 // ============================================================================

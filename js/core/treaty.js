@@ -25,10 +25,10 @@
 // 不 import state.js（账号对象由调用方传入），与 war.js 同构。
 // ============================================================================
 
-import { HOI_BY_ID } from '../data/hoi1936.js?v=59.10';
+import { HOI_BY_ID } from '../data/hoi1936.js?v=60.11';
 import {
   regionsOf, applyTreatyToTheater, treatyOutputMulOf,
-} from './theater.js?v=59.10';
+} from './theater.js?v=60.11';
 
 // --- 和约选项 -------------------------------------------------------------
 export const TREATY_OPTIONS = [
@@ -97,7 +97,7 @@ export const REPARATION_RATE = 0.45;             // 赔款 = 对方财富的百�
 import {
   TREATY_COLONY_OUTPUT_MUL as COLONIZATION_OUTPUT_MUL,
   TREATY_COLONY_GARRISON_MUL as COLONIZATION_GARRISON_MUL,
-} from './theater.js?v=59.10';
+} from './theater.js?v=60.11';
 export { COLONIZATION_OUTPUT_MUL, COLONIZATION_GARRISON_MUL };
 
 // v0.4.7：上贡/科研积分 → Ascoin / 研究点 的换算汇率。
@@ -309,8 +309,3 @@ export function buildTreatySummary(opt, out, map, vassal) {
   return p.join('，') + '。';
 }
 
-/** 某个国家是否已是我的附庸/合作政府（外交层判断用） */
-export function isVassalOf(acc, nationId) {
-  if (!acc || !Array.isArray(acc.vassals)) return null;
-  return acc.vassals.find((v) => v && v.nationId === String(nationId)) || null;
-}

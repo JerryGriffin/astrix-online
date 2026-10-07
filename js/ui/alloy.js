@@ -13,13 +13,13 @@
 //     否则玩家会误以为「多掺材料」是白赚的
 // ============================================================================
 
-import { fmtNum } from '../core/format.js?v=59.10';
-import * as PR from '../core/production.js?v=59.10';
-import { materialOptionsFor, materialLookupFor } from '../core/shipyard.js?v=59.10';
-import { getBuildingCounts, ownedOf } from '../core/state.js?v=59.10';
+import { fmtNum } from '../core/format.js?v=60.11';
+import * as PR from '../core/production.js?v=60.11';
+import { materialOptionsFor, materialLookupFor } from '../core/shipyard.js?v=60.11';
+import { getBuildingCounts, ownedOf } from '../core/state.js?v=60.11';
 // v0.4.7：el() 收敛到 ui/common.js（此前本文件自带一份；全项目共 14 份、两种不兼容签名，
 //   v0.3.2「列强区块不显示」即源于把 A 型调用写进了 B 型文件）
-import { el } from './common.js?v=59.10';
+import { el } from './common.js?v=60.11';
 
 // ---------------------------------------------------------------------------
 // 主入口。返回 null 表示该星球没有自定义化工厂，调用方不要渲染。
@@ -247,4 +247,3 @@ export function renderAlloyForge(planet, rerender) {
   box.appendChild(form);
   return box;
 }
-

@@ -72,10 +72,6 @@ export function el(tag, clsOrAttrs, textOrChildren) {
 }
 
 /**
- * HTML 转义 —— 各 UI 文件里常重复写 `esc()`，这里给一份统一实现。
- * 注意：只用于**文本内容**；要输出 HTML 时请显式用 el(tag,{html}) 并自行确保安全。
- */
-/**
  * 把一段 CSS 注入 document.head，同一 id 只注入一次。
  *
  * v0.4.16：此前 buildings / colony / hoi / population / power 五个模块都是
@@ -97,12 +93,26 @@ export function ensureStyle(id, css) {
   document.head.appendChild(st);
 }
 
+/**
+ * HTML 转义 —— **全项目唯一实现**。
+ *
+ * v0.4.20 收敛：此前 `esc` / `escapeHtml` 在各 UI 文件里各有一份副本
+ *   （design / fleet / galaxy / research / shipyard 各一份 `esc`，
+ *     inventory / planet / start 各一份 `escapeHtml`，共 8 份），
+ *   而本文件这一份是其中**唯一漏掉单引号**的：副本都转 `'` → `&#39;`，它不转。
+ *   直接合并会丢掉单引号转义（值若落在单引号引起来的属性里就能注入），
+ *   所以这里先把它补成**完整超集**（转义 & < > " ' 五个字符 + null 兜底），
+ *   再让其余 8 处统统一 import 使用。
+ *
+ * `s == null` 兜底：副本里的 `String(s)` 会把 null/undefined 渲染成 "null" 字样。
+ */
 export function esc(s) {
   return String(s == null ? '' : s)
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
 /** 按钮：与各 UI 文件里重复的 btn() 一致 */
@@ -110,5 +120,38 @@ export function btn(text, cls) {
   const b = document.createElement('button');
   b.className = 'btn' + (cls ? ' ' + cls : '');
   b.textContent = text;
+  return b;
+}
+
+// ---------------------------------------------------------------------------
+// v0.4.20：以下 3 个 DOM 辅助函数此前在 ui/design.js 与 ui/shipyard.js 里
+//   各抄一份（逐字节相同），收敛到这里。
+//   注意 makeMaterialSelect / facOptionLabel 两边**已经不一致**（真实分叉），
+//   没有合并 —— 那种情况要先定谁的行为是对的，否则就是在改玩法。
+// ---------------------------------------------------------------------------
+
+export function makeSelect(options, value, onChange) {
+  const sel = document.createElement('select');
+  sel.className = 'bp-select';
+  for (const [v, label] of options) {
+    const o = document.createElement('option');
+    o.value = v;
+    o.textContent = label;
+    sel.appendChild(o);
+  }
+  sel.value = value;
+  sel.addEventListener('change', () => onChange(sel.value));
+  return sel;
+}
+
+export function addButton(label, onClick) {
+  const b = el('button', 'btn btn-sm bp-add', label);
+  b.onclick = onClick;
+  return b;
+}
+
+export function removeButton(onClick) {
+  const b = el('button', 'btn btn-sm btn-danger bp-remove', '移除');
+  b.onclick = onClick;
   return b;
 }

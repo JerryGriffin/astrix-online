@@ -19,44 +19,24 @@
 import {
   HULLS, ENGINES, WEAPONS, FACILITIES,
   DEFAULT_MATERIAL,
-} from '../data/ship_parts.js?v=59.10';
+} from '../data/ship_parts.js?v=60.11';
 import {
   evaluateBlueprint, materialMul, materialOptionsFor,
   ensureBlueprints, genBlueprintId, kindOfHull, HULL_RP_COST,
   equipmentList, emptyBlueprint, shipBuildCheck,
-} from '../core/shipyard.js?v=59.10';
-import { getPlanetInstance, ownedOf, getBuildingCounts, spendOwned } from '../core/state.js?v=59.10';
-import { lineSlotInfo, freeLaborOf, materialLookup } from '../core/production.js?v=59.10';
-import { fmtNum } from '../core/format.js?v=59.10';
+} from '../core/shipyard.js?v=60.11';
+import { getPlanetInstance, ownedOf, getBuildingCounts, spendOwned } from '../core/state.js?v=60.11';
+import { lineSlotInfo, freeLaborOf, materialLookup } from '../core/production.js?v=60.11';
+import { fmtNum } from '../core/format.js?v=60.11';
 // v0.4.7：el() 收敛到 ui/common.js（此前本文件自带一份；全项目共 14 份、两种不兼容签名，
 //   v0.3.2「列强区块不显示」即源于把 A 型调用写进了 B 型文件）
-import { el } from './common.js?v=59.10';
+import { el, esc, makeSelect, addButton, removeButton } from './common.js?v=60.11';
 // R4：蓝图编辑器（含「建造」开 dock 线）从 shipyard.js 的舰船分支迁到「设计」分支。
 //   这里只复用函数，编辑器本体仍定义在 shipyard.js（其天然的归属），按其渲染。
 import {
   buildBlueprintEditor, shipBuildBlockReason,
   materialBuildBlockReason, createDockLine, blueprintMaterialNeeds,
-} from './shipyard.js?v=59.10';
-
-function esc(s) {
-  return String(s).replace(/[&<>"']/g, (c) => (
-    { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
-  ));
-}
-
-function makeSelect(options, value, onChange) {
-  const sel = document.createElement('select');
-  sel.className = 'bp-select';
-  for (const [v, label] of options) {
-    const o = document.createElement('option');
-    o.value = v;
-    o.textContent = label;
-    sel.appendChild(o);
-  }
-  sel.value = value;
-  sel.addEventListener('change', () => onChange(sel.value));
-  return sel;
-}
+} from './shipyard.js?v=60.11';
 
 // v0.1.0：ownedMat 是 renderDesign 内的局部集合，必须由调用方传进来（此前直接引用外层变量 → 未定义报错）
 // v0.4.6 需求 11：候选材料改为**全材料**（含自定义化工厂造出来的合金），
@@ -81,17 +61,6 @@ function makeMaterialSelect(slot, value, onChange, ownedMat, inst) {
   return makeSelect(rows, value || def, onChange);
 }
 
-function addButton(label, onClick) {
-  const b = el('button', 'btn btn-sm bp-add', label);
-  b.onclick = onClick;
-  return b;
-}
-
-function removeButton(onClick) {
-  const b = el('button', 'btn btn-sm btn-danger bp-remove', '移除');
-  b.onclick = onClick;
-  return b;
-}
 
 // 设施下拉项文案（只列 4 种船上设施，不含 12 项电力设施）
 function facOptionLabel(f) {

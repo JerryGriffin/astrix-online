@@ -10,7 +10,7 @@
 // 数据落在账号上：acc.npcs = [{ id, nameCn, power, friendliness, ascoin, inventory, lastTick }]
 // 事件：acc.npcEvents = [{ id, npcId, kind, message, at }]（只记录，供 UI 展示）
 
-import { MATERIALS } from '../data/materials.js?v=59.10';
+import { MATERIALS } from '../data/materials.js?v=60.11';
 
 // 4 个电脑账号：3 个普通 + Royal（大后期但友好）
 const NPC_DEFS = [
@@ -44,24 +44,6 @@ export function ensureNpcs(acc) {
   }
   if (!Array.isArray(acc.npcEvents)) acc.npcEvents = [];
   return acc.npcs;
-}
-
-export function listNpcs(acc) {
-  return ensureNpcs(acc);
-}
-
-export function npcEventsOf(acc) {
-  if (!acc) return [];
-  if (!Array.isArray(acc.npcEvents)) acc.npcEvents = [];
-  return acc.npcEvents;
-}
-
-export function clearNpcEvent(acc, eventId) {
-  if (!acc || !Array.isArray(acc.npcEvents)) return false;
-  const i = acc.npcEvents.findIndex((e) => e && e.id === eventId);
-  if (i < 0) return false;
-  acc.npcEvents.splice(i, 1);
-  return true;
 }
 
 let _seq = 0;
@@ -211,18 +193,3 @@ export function tickNpcs(acc, dt, env) {
   }
 }
 
-/** 电脑账号总览（UI 用） */
-export function npcSummary(acc) {
-  return ensureNpcs(acc).map((n) => ({
-    id: n.id, nameCn: n.nameCn, desc: n.desc,
-    power: Math.round((Number(n.power) || 0) * 100),
-    friendliness: Math.round((Number(n.friendliness) || 0) * 100),
-    ascoin: Math.floor(Number(n.ascoin) || 0),
-    mats: Object.keys(n.inventory || {}).filter((m) => Number(n.inventory[m]) >= 1).length,
-  }));
-}
-
-/** 材料表里是否存在（供估值兜底判断） */
-export function isKnownMaterial(matName) {
-  return MATERIALS.some((m) => m.nameCn === matName);
-}

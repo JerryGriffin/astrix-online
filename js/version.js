@@ -10,10 +10,10 @@
 // 现在：版本号只在这里定义一次，任何地方要显示都从这里取；
 // index.html 的入口脚本带 ?v= 查询串（与 VERSION 同步），改版本号即自动击穿缓存。
 
-export const VERSION = 'v0.4.19';
+export const VERSION = 'v0.4.20';
 
 // 版本号数字形式（用于存档迁移判断）
-export const VERSION_NUM = 59;   // v0.4.10 → 50（十位进位，见 selfcheck_v005 的版本号一致性断言）
+export const VERSION_NUM = 60;   // v0.4.10 → 50（十位进位，见 selfcheck_v005 的版本号一致性断言）
 
 export const VERSION_DATE = '2026-10-07';
 
@@ -26,12 +26,51 @@ export const VERSION_DATE = '2026-10-07';
 //   VERSION     —— 玩家看到的版本（设计者说不变就不变）
 //   REVISION    —— 只要改了 css/ 或 js/，这里就 +1
 //   CACHE_TAG   —— 实际写进 index.html 的 ?v= 串
-export const REVISION = 10;
+export const REVISION = 11;
 // index.html 里所有 css 链接与 js/main.js 入口都用它；改代码后记得 +1
 export const CACHE_TAG = VERSION_NUM + '.' + REVISION;
 
 // 更新日志：从新到旧。每项 [版本号, 日期, [条目...]]
 export const VERSIONS = [
+  ['v0.4.20', '2026-10-07', [
+    '**仓库被「兜底推送脚本」污染了行尾 —— 已定位并修复。** '
+      + '`docs/push_github.mjs` 走 GitHub Git Data API，**绕过了 git 自身的 clean 过滤器**：'
+      + '它直接把**工作区文件**（本机 `core.autocrlf=true` → CRLF）当 blob 上传，'
+      + '而对象库里存的一直是 LF。实测 110 个受控文件里有 **76 个**已经变成 CRLF 存储'
+      + '（js/、css/、docs/、index.html 全中招）。后果是这些文件此后只要走一次正常的 '
+      + '`git add`，git 就会按 clean 规则把它改判成 LF、整篇 diff —— '
+      + '「同一文件在 CRLF / LF 之间反复翻面」，diff 永远收敛不了。'
+      + '修复：脚本按 `core.autocrlf` 的语义做归一化（文本 CRLF→LF，二进制按 NUL 字节识别后一个字节不动）',
+    '新增 **`.gitattributes`**（`* text=auto` + jpg/png/woff 等显式 binary）—— '
+      + '仓库级声明，任何克隆者、任何本机 git 配置下都生效，'
+      + '也是上面那支脚本判定「要不要归一化」的权威依据（本机 `autocrlf` 其实来自 '
+      + 'PortableGit 的**系统级** gitconfig，脚本原先只读仓库 `.git/config`，读不到）',
+    '**删除 57 个零引用死代码**（约 350 行）。判定口径：该符号在**整个仓库**里'
+      + '（`js/` + `docs/` 自检 + `index.html` / `cloud-bridge.html` 两个入口）'
+      + '只出现在自己的声明那一处 —— 连所在文件内部都不再用它。'
+      + '典型：`currency.js` 的 createWallet / goldToAscoin / ascoinToGold、'
+      + '`npc.js` 的 4 个、`shop.js` 的 3 个、'
+      + '`population.js` 里 5 个「兼容 v0.0.2 旧名字」的常量（BASE_O2 / BASE_ORGANIC / '
+      + 'GROWTH_THRESHOLD / DECLINE_THRESHOLD / NUTRI_DEFICIT_PENALTY）、'
+      + '`data/index.js` 7 处导出里的 6 处。'
+      + '⚠️ **冻结 mod 的 6 个（hoiAdapterOf 等）刻意保留** —— 1936 剧本按设计原样留着给老存档，'
+      + '删它们要先拆整个 mod，属另一轮改造',
+    '**HTML 转义从 8 份副本收敛成 1 份。** `esc` 在 design / fleet / galaxy / research / '
+      + 'shipyard 各写一遍，`escapeHtml` 在 inventory / planet / start 各写一遍 —— '
+      + '而 `ui/common.js` 那一份是其中**唯一漏掉单引号转义**的（副本都转 `\'`，它不转），'
+      + '所以不能直接「留一份删其余」：先把它补成完整超集'
+      + '（转义 `& < > " \'` 五个字符 + `null` 兜底，副本里的 `String(s)` 会把 null 渲染成 "null"），'
+      + '再让 8 个文件统一 import（约 90 个调用点）',
+    '**makeSelect / addButton / removeButton** 从 `ui/design.js` 与 `ui/shipyard.js` '
+      + '收敛到 `ui/common.js` —— 这三者两边**逐字节相同**。'
+      + '另把 `core/army.js` 自己的 mulberry32 换成 `core/util.js#mulberry32`：'
+      + '实测 2000 个种子 × 40 次采样 = 80000 个数**逐位一致**（战斗结果可复现性不受影响）',
+    '**刻意不合并**（属真实分叉，硬合会改行为）：`makeMaterialSelect` 与 `facOptionLabel` '
+      + '在 design / shipyard 两边实现已经不同；`production.js#clamp01` 与 `util.js#clamp01` '
+      + '在 NaN / Infinity 上语义不同（util 那份**有意**传播 NaN），合并等于悄悄改数值边界',
+    '清理 `ui/start.js` 里一句 WWII 用词（audit_ww2 的外部残留归零）；'
+      + '12 套自检全绿（含 v049 的整轮页面无未捕获异常）',
+  ]],
   ['v0.4.19', '2026-10-07', [
     '**开局钢（以及铝、铜）一直自己涨——根因是战区把「精炼品」当矿藏直接产出。** '
       + '旧产出表里陨石坑产「钢 0.7 / 铝 0.5」、峡谷产「钢 0.9」、熔岩产「钢 0.8 / 铜 0.6」、'

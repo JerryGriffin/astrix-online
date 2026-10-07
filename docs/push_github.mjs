@@ -167,6 +167,72 @@ if (!R) {
   process.exit(2);
 }
 
+// ---------------------------------------------------------------------------
+// v0.4.20：行尾归一化（clean 过滤器）
+// ---------------------------------------------------------------------------
+// 为什么不直接上传工作区字节：git 的「工作区形态」与「对象库形态」是两回事。
+//   本机 core.autocrlf=true → 工作区是 CRLF、对象库里存的是 LF。
+//   本脚本走 Git Data API，**绕过 git 自身的 clean 过滤器**，
+//   于是工作区的 CRLF 被原样写进对象库。
+//
+//   后果（实测）：110 个受控文件里有 76 个已经变成 CRLF 存储；
+//   这些文件此后只要走一次正常 `git add`，git 就会按 clean 规则把它改判成 LF，
+//   整篇 diff → 「同一文件在 CRLF / LF 之间反复翻面」，历史上一直无法收敛。
+//
+//   现在与 git 保持一致：文本 CRLF→LF；二进制（含 NUL 字节）原样。
+//   判定口径与 git 的自动文本探测一致（NUL 字节 = 二进制）。
+const AUTO_CRLF = readCoreConfig('autocrlf');
+const HAS_TEXT_AUTO = (() => {
+  try {
+    // `* text=auto`（或 `* text`）＝仓库级权威声明：文本一律以 LF 入库
+    return /^\s*\*\s+[^\n]*\btext\b/m.test(readFileSync(join(ROOT, '.gitattributes'), 'utf8'));
+  } catch (e) { return false; }
+})();
+const NORMALIZE_EOL = AUTO_CRLF === 'true' || AUTO_CRLF === 'input' || HAS_TEXT_AUTO;
+
+/**
+ * 读 [core] 段里的某个键，按「全局 → 仓库」的顺序覆盖。
+ *   注意 `git config --show-origin` 显示本机真值来自 **PortableGit 的系统级
+ *   etc/gitconfig**（`autocrlf = true`），那一路径随安装位置变化、无法可靠推导，
+ *   所以本脚本不以它为唯一依据 —— 仓库根的 `.gitattributes`（`* text=auto`）
+ *   才是权威声明，只要它在，归一化就一定生效。
+ */
+function readCoreConfig(key) {
+  const home = process.env.HOME || process.env.USERPROFILE || '';
+  const candidates = [
+    process.env.GIT_CONFIG_GLOBAL || '',
+    home ? join(home, '.gitconfig') : '',
+    home ? join(home, '.config', 'git', 'config') : '',
+    join(ROOT, '.git', 'config'),
+  ];
+  let val = null;
+  for (const f of candidates) {
+    if (!f || !existsSync(f)) continue;
+    let inCore = false;
+    for (const raw of readFileSync(f, 'utf8').split(/\r?\n/)) {
+      const line = raw.trim();
+      if (!line || line.startsWith('#') || line.startsWith(';')) continue;
+      const sec = line.match(/^\[([^\]]+)\]$/);
+      if (sec) { inCore = sec[1].trim().toLowerCase() === 'core'; continue; }
+      if (!inCore) continue;
+      const kv = line.match(/^([^=]+?)\s*=\s*(.*)$/);
+      if (kv && kv[1].trim().toLowerCase() === key) val = kv[2].trim().replace(/^"|"$/g, '').toLowerCase();
+    }
+  }
+  return val;
+}
+
+function normalizeEol(buf) {
+  if (!NORMALIZE_EOL) return buf;
+  if (buf.includes(0)) return buf;              // 二进制：一个字节都不动
+  const out = [];
+  for (let i = 0; i < buf.length; i++) {
+    if (buf[i] === 0x0d && buf[i + 1] === 0x0a) continue;   // 丢掉 CRLF 里的 CR
+    out.push(buf[i]);
+  }
+  return Buffer.from(out);
+}
+
 // v0.4.14：**先实测令牌再动手**。
 //   之前只有 api() 报错时才看得出令牌坏了，而那时已经把上百个 blob 传完了，
 //   报错信息还被淹没在进度里。现在开头就验一次，失败直接退出并给出三条出路。
@@ -206,29 +272,50 @@ if (skipped.length) {
   if (process.env.GITIGNORE_VERBOSE) skipped.forEach((f) => console.log('    - ' + f));
 }
 
-// 1) 取远端当前 ref
+// 1) 取远端当前 ref 与 tree
+//   tree 提前取：既用于下面「删除远端多余文件」，也用于**保留每个文件在远端的 mode**
+//   （v0.4.20：此前 treeEntries 全部硬编码 '100644'，会把远端已设 100755 的文件
+//    改回普通文件 —— 本仓库虽无脚本文件，但这是个会静默丢权限的坑）。
 const ref = await api('/repos/' + R.owner + '/' + R.repo + '/git/ref/heads/main').catch(async (e) => {
   console.error('读取远端 main 失败: ' + e.message);
   process.exit(3);
 });
 const baseSha = ref.object.sha;
 const baseCommit = await api('/repos/' + R.owner + '/' + R.repo + '/git/commits/' + baseSha);
+const remoteTree = await api('/repos/' + R.owner + '/' + R.repo + '/git/trees/'
+  + baseCommit.tree.sha + '?recursive=1');
+
+const remoteFiles = [];
+const remoteMode = new Map();
+(function flattenRemote(node, prefix) {
+  for (const e of node.tree || []) {
+    const p = prefix ? prefix + '/' + e.path : e.path;
+    if (e.type === 'tree') flattenRemote(e, p);
+    else if (e.type === 'blob') { remoteFiles.push(p); remoteMode.set(p, e.mode || '100644'); }
+  }
+})(remoteTree, '');
 
 // 2) 建 blob
-let blobCount = 0, changedCount = 0;
+// ⚠️ v0.4.20 修复本脚本最严重的一处缺陷：此前直接 readFileSync **工作区**内容当
+//   blob 原样上传，把工作区的 CRLF 写进了 git 对象库（详见下方 normalizeEol 说明）。
+//   实测修复前 110 个受控文件里有 76 个是 CRLF 存储。现在统一做 clean 归一化。
+let blobCount = 0, eolFixed = 0;
 const treeEntries = [];
 for (const rel of files) {
-  const content = readFileSync(join(ROOT, rel));
+  const raw = readFileSync(join(ROOT, rel));
+  const content = normalizeEol(raw);
+  if (!content.equals(raw)) eolFixed++;
   const blob = await api('/repos/' + R.owner + '/' + R.repo + '/git/blobs', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ content: content.toString('base64'), encoding: 'base64' }),
   });
-  treeEntries.push({ path: rel, mode: '100644', type: 'blob', sha: blob.sha });
+  treeEntries.push({ path: rel, mode: remoteMode.get(rel) || '100644', type: 'blob', sha: blob.sha });
   blobCount++;
   process.stdout.write('\r  blob ' + blobCount + '/' + files.length);
 }
-console.log('\n  blob 完成: ' + blobCount);
+console.log('\n  blob 完成: ' + blobCount
+  + (eolFixed ? '（其中 ' + eolFixed + ' 个做了 CRLF→LF 归一化）' : ''));
 
 // v0.4.15 **删除远端已不存在的文件**。
 //   base_tree 是增量语义：不列出的条目保持不变，所以本地删掉的文件会**留在远端**。
@@ -240,19 +327,6 @@ console.log('\n  blob 完成: ' + blobCount);
 //   修改与删除**没有任何影响**。v0.4.15 第一次写这里时错误地加了 `!ignored(p)`
 //   过滤条件，结果那 55 个 docs/_probe_* 残留因为刚好命中新加的 `docs/*`
 //   规则而被判为「忽略、不删」，一个都清不掉 —— 清理反而做成了空操作。
-const remoteTree = await api('/repos/' + R.owner + '/' + R.repo + '/git/trees/'
-  + baseCommit.tree.sha + '?recursive=1');
-
-function flattenRemote(node, prefix, out) {
-  for (const e of node.tree || []) {
-    const p = prefix ? prefix + '/' + e.path : e.path;
-    if (e.type === 'tree') flattenRemote(e, p, out);
-    else if (e.type === 'blob') out.push(p);
-  }
-  return out;
-}
-
-const remoteFiles = flattenRemote(remoteTree, '', []);
 const localSet = new Set(files);
 const toRemove = remoteFiles.filter((p) => !localSet.has(p));
 if (toRemove.length) {
@@ -291,6 +365,14 @@ if (newTree.sha === baseCommit.tree.sha) {
 
 // 4) 建 commit —— 版本号与条目**从 js/version.js 动态取**，不再硬编码
 //    （原先写死 'v0.4.1'，结果推 v0.4.2 时提交信息仍是旧版本号，误导后续排查）
+//
+//    v0.4.20：支持 `--title "..."` / `--body "..."` 覆盖。
+//      纯仓库维护类提交（行尾归一化、清冗余）不该硬套「release(x): 日期」——
+//      否则历史里会出现两个同名 release 提交，分辨不出哪个是真发版。
+const argOf = (name) => {
+  const i = process.argv.indexOf(name);
+  return i >= 0 && process.argv[i + 1] ? process.argv[i + 1] : null;
+};
 const V = await import(pathToFileURL(join(ROOT, 'js/version.js')).href + '?v=' + Date.now());
 const vEntry = V.VERSIONS[0] || [V.VERSION, V.VERSION_DATE, []];
 const vTitle = vEntry[0] || V.VERSION;
@@ -298,11 +380,15 @@ const entries = Array.isArray(vEntry[2]) ? vEntry[2] : [];
 const body = entries.length
   ? entries.map((e) => '- ' + String(e).replace(/\*\*/g, '').slice(0, 160)).join('\n')
   : '（无更新日志条目）';
-const msg = [
-  'release(' + vTitle + '): ' + vEntry[1],
-  '',
-  body,
-].join('\n');
+const customTitle = argOf('--title');
+const customBody = argOf('--body');
+const msg = customTitle
+  ? [customTitle, '', customBody || ''].join('\n')
+  : [
+    'release(' + vTitle + '): ' + vEntry[1],
+    '',
+    body,
+  ].join('\n');
 
 const commit = await api('/repos/' + R.owner + '/' + R.repo + '/git/commits', {
   method: 'POST',

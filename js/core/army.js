@@ -12,8 +12,9 @@
 
 import {
   ARMY_BP_BY_ID, ARMY_PART_BY_ID, ARMY_SLOT_BY_CAT, armyBpPartNeeds,
-} from '../data/army_parts.js?v=59.10';
-import { materialMul, materialOptionsFor } from './shipyard.js?v=59.10';   // 无循环：shipyard 不依赖本模块
+} from '../data/army_parts.js?v=60.11';
+import { materialMul, materialOptionsFor } from './shipyard.js?v=60.11';   // 无循环：shipyard 不依赖本模块
+import { mulberry32 } from './util.js?v=60.11';
 
 // ============================================================================
 // 一、账号军队列表（迁移 + 查询）
@@ -419,15 +420,9 @@ const COMBAT_WIDTH = 3;
 const MAX_ROUNDS = 24;
 const ORG_MAX = 100;
 
-function mulberry32(seed) {
-  let t = seed >>> 0;
-  return function () {
-    t += 0x6D2B79F5;
-    let r = Math.imul(t ^ (t >>> 15), 1 | t);
-    r ^= r + Math.imul(r ^ (r >>> 7), 61 | r);
-    return ((r ^ (r >>> 14)) >>> 0) / 4294967296;
-  };
-}
+// v0.4.20：本文件原有的 mulberry32 已删除 —— 它与 core/util.js#mulberry32 **逐位等价**
+//   （实测 2000 个种子 × 40 次采样 = 80000 个数，差异 0），统一从 util.js 引入。
+//   同一公式两份副本正是「改一处忘另一处 → 战斗结果不可复现」的温床，故收敛。
 
 /** 军队实例 → 战斗单位（power 快照兜底按蓝图重算） */
 export function armyToUnit(a) {

@@ -54,23 +54,10 @@ export const GENERIC_FACTIONS = [
   },
 ];
 
-/** 通用势力 id 前缀（与 1936 国家 id 隔离） */
-export const FAC_PREFIX = 'fac_';
-
 /** id → 势力定义（仅通用势力） */
 export const GENERIC_FACTION_BY_ID = Object.fromEntries(
   GENERIC_FACTIONS.map((f) => [f.id, f]),
 );
-
-/** 判断一个 owner id 是否属于通用势力 */
-export function isGenericFaction(id) {
-  return String(id || '').indexOf(FAC_PREFIX) === 0;
-}
-
-/** 是否是科幻剧本势力（sci_ 前缀） */
-export function isSciFaction(id) {
-  return String(id || '').indexOf('sci_') === 0;
-}
 
 /**
  * 任意 owner id → 势力名。

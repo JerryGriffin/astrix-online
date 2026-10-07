@@ -26,11 +26,6 @@ export function clamp01(v) {
   return clamp(v, 0, 1);
 }
 
-/** 夹取到 [0, n] */
-export function clampMax(v, n) {
-  return clamp(v, 0, n);
-}
-
 /**
  * 可复现的伪随机数发生器（mulberry32）。
  * 战斗与地图结算必须可复现 —— 用 Math.random() 会让同一份存档重算出不同结果。

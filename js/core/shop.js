@@ -7,15 +7,15 @@
 // 运输：本模块只负责「下单与结算」；**货必须由运输船运**（运输判定在 core/fleet.js，
 //   订单上带 cells 供其判断载货格数是否够）。
 
-import { MATERIALS } from '../data/materials.js?v=59.10';
-import { clamp } from './util.js?v=59.10';
-import { ownedOf, spendOwned, STATE} from './state.js?v=59.10';
-import { ensureEntry } from './production.js?v=59.10';
-import { ASCOIN_PER_GOLD } from './currency.js?v=59.10';
+import { MATERIALS } from '../data/materials.js?v=60.11';
+import { clamp } from './util.js?v=60.11';
+import { ownedOf, spendOwned, STATE} from './state.js?v=60.11';
+import { ensureEntry } from './production.js?v=60.11';
+import { ASCOIN_PER_GOLD } from './currency.js?v=60.11';
 // v0.1.2 R9：装备类交易键走 partId@材料（与 v0.1.1 贡品契约同口径），
 // 需能识别部件 id 并估值，故引入部件数据表（PART_BY_ID）与 resolvePart。
-import { PART_BY_ID } from '../data/ship_parts.js?v=59.10';
-import { resolvePart } from './shipyard.js?v=59.10';
+import { PART_BY_ID } from '../data/ship_parts.js?v=60.11';
+import { resolvePart } from './shipyard.js?v=60.11';
 
 const MAT_BY_NAME = Object.fromEntries(MATERIALS.map((m) => [m.nameCn, m]));
 
@@ -209,14 +209,6 @@ function clampShared(price, base) {
   const p = Number(price) || 0;
   const b = Number(base) || 1;
   return Math.max(b * 0.2, Math.min(b * 4, p));
-}
-
-/** 当前价格快照 { mat: price }（共享市场同步用） */
-export function priceSnapshotOf(acc) {
-  const st = shopStateOf(acc);
-  const out = {};
-  for (const mat in st) out[mat] = Math.round(Number(st[mat].price) || 0);
-  return out;
 }
 
 /** 应用外部（全服共享）价格；base 由本地公式保底，price 夹在安全区间内 */
@@ -537,15 +529,6 @@ export function marketListings(acc, mat) {
   }));
 }
 
-/** 撤单（玩家只能撤自己的，调用方负责只把玩家自己的挂单 id 传进来） */
-export function cancelListing(acc, listingId) {
-  if (!acc || !Array.isArray(acc.shopListings)) return { ok: false, reason: '没有交易池' };
-  const i = acc.shopListings.findIndex((l) => l.id === listingId);
-  if (i < 0) return { ok: false, reason: '找不到该挂单' };
-  acc.shopListings.splice(i, 1);
-  return { ok: true };
-}
-
 /** 买入别人的挂单：玩家付 ascoin，物品进当前星球物品栏，价格被买涨 */
 export function buyListing(acc, listingId, inst) {
   if (!acc) return { ok: false, reason: '账号缺失' };
@@ -636,33 +619,6 @@ export function tickListings(acc, dt) {
     }
     purgeDeadListings(pool);
   }
-}
-
-// ============================================================================
-// v0.1.0：电脑账号（npc.js）的交易池接口
-// ============================================================================
-// npc.js 是叶子模块（不 import 本文件），由 state.js 通过 env 注入这两个回调。
-/** 电脑账号把自己的货挂到交易池 */
-export function npcListOnMarket(acc, npc, mat, qty, price) {
-  if (!acc || !npc) return null;
-  if (!Array.isArray(acc.shopListings)) acc.shopListings = [];
-  const L = {
-    id: genListingId(),
-    sellerAccountId: npc.id,
-    sellerNameCn: npc.nameCn || '电脑账号',
-    mat,
-    qty: Math.max(1, Math.floor(Number(qty) || 1)),
-    price: Math.max(1, Math.round(Number(price) || 1)),
-    at: Date.now(),
-  };
-  acc.shopListings.push(L);
-  // v0.1.2 R9：交易池上限 改前 40 条 → 改后 120 条（配合 npc.js 缩短 listEvery，挂单量明显增多，
-  // 同时保留上限防止 tickListings 性能恶化）。优先丢掉最旧的电脑挂单（不动玩家自己的）。
-  if (acc.shopListings.length > 120) {
-    const i = acc.shopListings.findIndex((l) => l.sellerAccountId !== acc.id);
-    if (i >= 0) acc.shopListings.splice(i, 1);
-  }
-  return L;
 }
 
 /**

@@ -11,9 +11,9 @@
 //     格数 = max(1, ceil(footprint / 20))；「同型号 + 同材料」算一种，数量再多也还是这么多格。
 // 用途：运输船的载货判定（上层拿 totalCells 去和船的载货格数比）。
 
-import { MATERIALS } from '../data/materials.js?v=59.10';
-import { PART_BY_ID } from '../data/ship_parts.js?v=59.10';
-import { POWER_FACILITY_BY_ID } from '../data/facilities.js?v=59.10';
+import { MATERIALS } from '../data/materials.js?v=60.11';
+import { PART_BY_ID } from '../data/ship_parts.js?v=60.11';
+import { POWER_FACILITY_BY_ID } from '../data/facilities.js?v=60.11';
 
 const MATERIAL_BY_NAME = Object.fromEntries(MATERIALS.map((m) => [m.nameCn, m]));
 
@@ -37,12 +37,6 @@ function finenessOf(inst, matName) {
   return 1;
 }
 
-/** 单个材料条目占几格（材料恒为 1 格） */
-export function itemFootprintOf(entry) {
-  if (!entry || !entry.mat) return 0;
-  return Number(entry.owned) > 0 ? 1 : 0;
-}
-
 /** 部件按体积占格：1 格 = CELL_VOLUME 体积 */
 export function equipmentFootprintOf(eq) {
   if (!eq || !eq.partId) return 0;
@@ -51,54 +45,6 @@ export function equipmentFootprintOf(eq) {
   return Math.max(1, Math.ceil(vol / CELL_VOLUME));
 }
 
-/**
- * 星球舱单：把物品栏与装备库存折算成「占地格数」
- * 返回 { materials, equipment, materialCells, equipmentCells, totalCells }
- *   materials: [{ mat, fineness, count, cells }]      // 同材料不同精细度分开
- *   equipment: [{ key, partId, material, count, cells }]
- */
-export function cargoGridOf(inst) {
-  const matMap = new Map();
-  for (const e of (inst && inst.inventory) || []) {
-    if (!e || !e.mat) continue;
-    const owned = Number(e.owned) || 0;
-    if (!(owned > 0)) continue;
-    const fin = finenessOf(inst, e.mat);
-    const key = e.mat + '#' + fin;                 // 同材料不同精细度 = 不同种
-    const it = matMap.get(key) || { mat: e.mat, fineness: fin, count: 0, cells: 1, isGas: GAS_NAMES.has(e.mat) };
-    it.count += owned;
-    matMap.set(key, it);
-  }
-  const materials = [...matMap.values()].sort((a, b) => a.mat.localeCompare(b.mat, 'zh'));
-
-  const equipment = [];
-  let eqList = [];
-  try {
-    // 装备库存形状由 core/shipyard.js 维护：{ [key]: { partId, material, count } }
-    const eq = (inst && inst.equipment) || {};
-    for (const key in eq) {
-      const e = eq[key];
-      if (!e || !(Number(e.count) > 0)) continue;
-      eqList.push({
-        key,
-        partId: e.partId,
-        material: e.material,
-        count: Number(e.count) || 0,
-        cells: equipmentFootprintOf({ partId: e.partId }),
-      });
-    }
-  } catch (err) { eqList = []; }
-  equipment.push(...eqList.sort((a, b) => a.partId.localeCompare(b.partId)));
-
-  const materialCells = materials.reduce((s, x) => s + x.cells, 0);
-  const equipmentCells = equipment.reduce((s, x) => s + x.cells, 0);
-  return { materials, equipment, materialCells, equipmentCells, totalCells: materialCells + equipmentCells };
-}
-
-/** 某类物资的占地（供运输/商店下单使用）：材料按名字 + 精细度查 */
-export function cellsForMaterial(inst, matName) {
-  return 1;   // 材料恒 1 格（同材料不同精细度各算一种，由调用方区分）
-}
 export function cellsForEquipmentKey(key) {
   const partId = String(key).split('@')[0];
   return equipmentFootprintOf({ partId });

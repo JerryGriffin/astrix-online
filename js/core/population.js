@@ -33,8 +33,8 @@
 // 人口变化：H > 0.5 增长、H < 0.3 下降，否则持平。
 // 各项系数都在下方常量区，改一个数就能调平衡。
 
-import { BUILDING_BY_ID } from '../data/buildings.js?v=59.10';
-import { clamp } from './util.js?v=59.10';
+import { BUILDING_BY_ID } from '../data/buildings.js?v=60.11';
+import { clamp } from './util.js?v=60.11';
 
 // ============================================================================
 // 可调常量（集中放这里，方便策划调参）
@@ -60,10 +60,6 @@ export const NUTRIENT_KEYS = ['oxygen', 'organic', 'water'];
 export const NUTRIENT_NAMES = { oxygen: '氧气', organic: '有机质', water: '水' };
 export const METABOLITE_KEYS = ['co2', 'methane', 'ammonia'];
 export const METABOLITE_NAMES = { co2: '二氧化碳', methane: '甲烷', ammonia: '氨气' };
-
-// 兼容 v0.0.2~v0.0.4 的旧名字（那时只有氧气 + 有机质两条）
-export const BASE_O2 = BASE_CONSUME.oxygen;
-export const BASE_ORGANIC = BASE_CONSUME.organic;
 
 // 劳动参与率：总人力 = floor(总人数 × 参与率)
 export const LABOR_PARTICIPATION = 0.9;
@@ -91,7 +87,6 @@ export const HAPPINESS_RECOVER = 0.02;       // 向目标值逼近速度（上�
 //   不动 HAPPINESS_INIT(0.9) / HAPPINESS_BASE(0.40) / 上限 1；
 //   断粮（温饱项→0）、无庇护（庇护项→0）时 target 仍会低于当前值，幸福度**照样掉**，只是更缓。
 export const HAPPINESS_RECOVER_DOWN = 0.008;  // 下降时更慢（时间常数 ~125 秒）
-export const NUTRI_DEFICIT_PENALTY = 0.5;    // 断粮时的直接惩罚系数（兼容旧调用）
 
 // 人口增长 / 下降阈值与速率
 // v0.0.51：速率整体调慢约 100 倍。旧值 0.005 是「每秒」的复合增长率，
@@ -163,10 +158,6 @@ export function shelterGrowthBonus(ratio) {
   const r = Number(ratio) || 0;
   return 1 + Math.min(SHELTER_BONUS_MAX, Math.max(0, r - 1) * SHELTER_BONUS_MAX);
 }
-// 兼容旧名（保留导出，避免其它模块引用报错）
-export const GROWTH_THRESHOLD = 0.5;
-export const DECLINE_THRESHOLD = 0.5;
-
 // ============================================================================
 // 工作强度 5 档
 // ============================================================================
@@ -257,11 +248,6 @@ export function getIntensity(id, pop = null) {
     }
   }
   return base;
-}
-
-// 便捷写法：先传 pop 再传 id（与 getIntensity(id, pop) 等价，便于生产层按人口取档）。
-export function getIntensityFor(pop, id) {
-  return getIntensity(id, pop);
 }
 
 // ============================================================================
@@ -548,11 +534,6 @@ export function computeHappiness(pop, opts = {}) {
 
 // v0.0.94：母星幸福度的下限（母星基本不波动）
 export const HOME_HAPPINESS_FLOOR = 0.88;
-
-// 只要数值（UI 快速取用）
-export function happinessOf(pop, opts) {
-  return computeHappiness(pop, opts).value;
-}
 
 // 推进 dt 秒：营养消耗、幸福度变化、人口增长 / 下降
 // supply = { oxygen, organic, water } 为「当前库存」对象，会被就地扣减

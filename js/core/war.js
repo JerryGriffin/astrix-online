@@ -137,11 +137,3 @@ export function surrenderWar(acc, targetId, terms, note) {
   return endWar(acc, targetId, 'them', terms || {}, note || '我方投降');
 }
 
-export function warSummaryOf(acc) {
-  const wars = activeWarsOf(acc);
-  return wars.map((w) => ({
-    id: w.id, targetName: w.targetName, kind: w.kind,
-    myScore: w.myScore, theirScore: w.theirScore, battles: w.battles,
-    days: Math.max(1, Math.round((Date.now() - w.startedAt) / 86400000 * 10) / 10),
-  }));
-}

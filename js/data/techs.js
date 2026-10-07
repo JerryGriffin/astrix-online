@@ -411,30 +411,8 @@ export const RESEARCH_SECTIONS = [
   { id: 'facility', nameCn: '设施', desc: '船上设施目录：乘员仓、仓库、机库、装甲等（v0.0.61 起造出船坞即可使用，不再需要单独研究）' },
 ];
 
-// ============================================================================
-// 舰船科技（v0.0.61 已全部移除）
-// ============================================================================
-// 设计者原话：「科研里面舰船 mki-iii 去掉，无实际意义；科研里面的 abcd 也去掉，
-//   一些基础船上设施的研究前置为船坞」。
-// 于是本文件里不再有任何 branch: 'ship' 的节点（舰船支线已删除）。
-//   注意：v0.0.7 重新引入了 12 个 section: 'facility' 的科技节点（电力设施解锁，见上文），
-//   它们由 facilityTechs() 取回、在科研面板「设施」分区渲染，且不进入主科技树。
-// 下面两个函数**保留导出但恒返回空数组**——它们的调用方（科研面板、旧探针）
-// 只需要改成不渲染即可，不必再判断函数是否存在。
-//
-// 舰船部件现在由「造出船坞」直接解锁，见 js/data/ship_parts.js#isPartUnlocked。
-export function shipTechs() {
-  return TECHS.filter((t) => t.branch === 'ship');
-}
-
 // 曾用于「设施」分区里的「舰船研发」区块（R4）。v0.0.61 起该区块已取消。
 export function facilityTechs() {
   return TECHS.filter((t) => t.section === 'facility');
 }
 
-// 玩家当前可用的最高舰船 MK 等级。
-// v0.0.61：MK 分级取消（部件只有 MKI），所以恒为 1——只要船坞科技已研究。
-export function unlockedMark(researched) {
-  const done = researched instanceof Set ? researched : new Set(researched || []);
-  return done.has('t_e3') ? 1 : 0;
-}

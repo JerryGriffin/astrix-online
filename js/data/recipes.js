@@ -654,7 +654,3 @@ export function recipesOfBuilding(buildingId) {
   return RECIPES.filter((r) => r.buildingId === buildingId);
 }
 
-// 按 id 取配方（冻结接口）
-export function getRecipe(id) {
-  return (id != null && RECIPE_BY_ID[id]) || null;
-}

@@ -12,8 +12,8 @@
 //   需要 STATE.planets 的操作（如把新星球实例挂进存档）由调用方传入或通过回调完成。
 //   同理也**不 import production.js / shop.js**（它们间接依赖 state.js / 会与本模块成环）。
 
-import { PLANETS } from '../data/planets.js?v=59.10';
-import { JOBS, getTotalLabor, buildingSlots } from './population.js?v=59.10';
+import { PLANETS } from '../data/planets.js?v=60.11';
+import { JOBS, getTotalLabor, buildingSlots } from './population.js?v=60.11';
 
 // ============================================================================
 // 管理模式（设计者已确认：同时影响 产出 / 幸福度 / 独立倾向）
@@ -261,13 +261,6 @@ export function captureDefaultPlanet(acc, planetCode) {
 export function uncapturedDefaults(acc) {
   const owned = new Set((acc && acc.capturedPlanets ? acc.capturedPlanets : []).map((p) => p.code));
   return PLANETS.filter((p) => !owned.has(p.code));
-}
-
-// 星球编号/名称唯一性（在线模式要用；离线侧先保证本地不重复）
-export function planetCodeTaken(acc, code) {
-  if (PLANETS.some((p) => p.code === code)) return true;
-  if (isDiscovered(acc, code)) return true;   // v0.1.1：已发现的随机星球编号也算占用
-  return (acc && acc.capturedPlanets ? acc.capturedPlanets : []).some((p) => p.code === code);
 }
 
 // ============================================================================
