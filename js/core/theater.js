@@ -32,10 +32,10 @@
 // v0.4.8：HOI_MAIN_NATIONS 只在「风暴前夜」剧本用作势力源；
 //   其余剧本改用 data/factions.js 的通用势力表（见 generateTheater 内的说明）。
 //   HOI_BY_ID 仍保留 —— UI 要靠它把 owner id 解析成国家名/旗帜。
-import { HOI_BY_ID, HOI_MAIN_NATIONS } from '../data/hoi1936.js?v=58.9';
-import { GENERIC_FACTIONS } from '../data/factions.js?v=58.9';
+import { HOI_BY_ID, HOI_MAIN_NATIONS } from '../data/hoi1936.js?v=59.10';
+import { GENERIC_FACTIONS } from '../data/factions.js?v=59.10';
 // v0.4.9：科幻剧本势力表（普通开局用；8 个完整势力，含 popM/ic/divisions 可按实力分领土）
-import { SCI_NATIONS } from '../data/scenario_sci.js?v=58.9';
+import { SCI_NATIONS } from '../data/scenario_sci.js?v=59.10';
 
 export const THEATER_COLS = 6;
 export const THEATER_ROWS = 6;
@@ -84,19 +84,27 @@ export const SIEGE_REQUIRED = 0.55;         // dome 类建筑需要的围城进�
  *   殖民地不只是「分数」，而是**真实经济来源** —— 各地貌/建筑产出不同资源，
  *   由 state.js 每 tick 把产出注入母星物品栏（真正的物资，而非计数器）。
  *   产出受该战区**补给网络**与**驻防**影响：断供或驻军不足 → 产量大跌。
+ *
+ * ⚠️ v0.4.19：产出**只能是原矿**（materials.js 里 category='natural' 的材料）。
+ *   旧表直接产「钢 0.7 / 铝 0.5 / 铜 0.6」等**精炼品**，而钢本身是
+ *   composite（铁 + 碳）、铁/铝/铜又各需赤铁矿/红土/孔雀石熔炼 ——
+ *   于是玩家开局带着「本土 + 相邻 2 个」战区，从第 1 秒起精炼金属凭空增长，
+ *   且这笔来源**不出现在净增长表（netRates）**里，玩家根本查不到出处
+ *   （只有抽到「本土全是冰盖/月壤」的随机地图才看不到，故表现为概率性 bug）。
+ *   精炼/合成必须由玩家自己开熔炉，战区只送矿石。
  */
 export const REGION_OUTPUT = {
   regolith: { 有机质: 1.0, 水: 0.8 },                 // 富含挥发物的风化层
-  crater:   { 钢: 0.7, 铝: 0.5 },                     // 撞击溅射带出金属矿脉
-  canyon:   { 钢: 0.9, 石头: 1.0 },                   // 裸露岩层
-  dust:     { 硅: 0.6, 铝: 0.7, 有机质: 0.3 },        // 悬浮硅酸盐
+  crater:   { 赤铁矿: 0.7, 红土: 0.5 },               // 撞击溅射带出金属矿脉（铁矿 / 铝土）
+  canyon:   { 赤铁矿: 0.9, 石头: 1.0 },               // 裸露岩层
+  dust:     { 硅: 0.6, 红土: 0.7, 有机质: 0.3 },      // 悬浮硅酸盐（铝土）
   // ⚠️ 冰盖**刻意不产氧气**：本游戏的气体（氮气/氧气/氨气/甲烷/二氧化碳/氢气）
   //   走星球大气储量（inventory 条目的 remaining），不作为物品栏资源 ——
   //   v0.0.61 需求 3 明确要求「开局不给氧气，氧气直接扣星球储量」。
   //   曾因冰盖/穹顶产出氧气而把氧气灌进物品栏，触发 selfcheck_v006 的
   //   「氧气不应因人口呼吸而积累到物品栏」（且只在冰盖/穹顶落在本土时随机复现）。
   ice:      { 水: 1.4 },                              // 冰层与升华气（仅水入栏）
-  lava:     { 钢: 0.8, 铜: 0.6, 硫: 0.5 },           // 硫化物金属
+  lava:     { 赤铁矿: 0.8, 孔雀石: 0.6, 硫磺: 0.5 },   // 硫化物金属矿（铁矿 / 铜矿 / 硫）
   dome:     { 有机质: 0.9, 硅: 0.5 },                 // 穹顶生态圈（氧气走大气，不入栏）
 };
 /** 气体名单：与 production.js#GAS_NAMES 一致。战区产出**不得**包含这些。 */
@@ -122,7 +130,7 @@ const TERRAIN_WORDS = {
 // ---------------------------------------------------------------------------
 // v0.4.7：hash32 / clamp 已收敛到 core/util.js（与 battle.js 共用唯一实现）。
 // 实测与原实现逐位一致，收敛零回归。
-import { hash32, clamp } from './util.js?v=58.9';
+import { hash32, clamp } from './util.js?v=59.10';
 function smooth(t) { return t * t * (3 - 2 * t); }
 /** 二维值噪声（格点 hash + 双线性平滑） */
 function noise2(seed, x, y) {

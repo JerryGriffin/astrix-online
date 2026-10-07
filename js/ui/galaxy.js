@@ -16,29 +16,29 @@ import {
   ensureReady, cloudStatus, cloudUser,
   loginWithName, registerWithName, signOutCloud,
   listPublicPlanets, publishMyPlanet, postIncident, fetchInbox, markIncidentResolved,
-} from '../core/cloud.js?v=58.9';
-import { currentAccount, getPlanetInstance, ownedOf, spendOwned } from '../core/state.js?v=58.9';
-import { ensureEntry } from '../core/production.js?v=58.9';
-import { listFleets, fleetPowerOf, defenseBonusOf } from '../core/fleet.js?v=58.9';
-import { totalArmyPowerOf, listArmies, disbandArmy, resolveBattle, armyToUnit, armyPowerOfInstance } from '../core/army.js?v=58.9';
+} from '../core/cloud.js?v=59.10';
+import { currentAccount, getPlanetInstance, ownedOf, spendOwned } from '../core/state.js?v=59.10';
+import { ensureEntry } from '../core/production.js?v=59.10';
+import { listFleets, fleetPowerOf, defenseBonusOf } from '../core/fleet.js?v=59.10';
+import { totalArmyPowerOf, listArmies, disbandArmy, resolveBattle, armyToUnit, armyPowerOfInstance } from '../core/army.js?v=59.10';
 // v0.2.1：内嵌殖民地管理（含内联报告），取代在线模式独立的「星球选择」tab
-import { renderColony } from './colony.js?v=58.9';
-import { PLANETS } from '../data/planets.js?v=58.9';
-import { HOI_NATIONS, HOI_BY_ID, HOI_SCENARIO_ID } from '../data/hoi1936.js?v=58.9';   // v0.2.6 官方 mod
+import { renderColony } from './colony.js?v=59.10';
+import { PLANETS } from '../data/planets.js?v=59.10';
+import { HOI_NATIONS, HOI_BY_ID, HOI_SCENARIO_ID } from '../data/hoi1936.js?v=59.10';   // v0.2.6 官方 mod
 // v0.4.11 **入口整合**：战争操作（宣战 / 和平会议 / 投降）已全部收敛到「战区」页，
 //   这里只保留只读战况显示，故下列 import 随之移除（避免读者以为旧入口仍生效）：
 //     · declareWar / canForceSurrender / endWar / surrenderWar —— 均只在战区页调用
 //     · openPeaceConference —— 和平会议在战区页
 //   仍保留：activeWarsOf / warWith / addWarScore —— 本页读战况并结算跨玩家战斗结果。
-import { activeWarsOf, warWith, addWarScore } from '../core/war.js?v=58.9';
+import { activeWarsOf, warWith, addWarScore } from '../core/war.js?v=59.10';
 // v0.4.7：移除三个**未被使用的死 import**（v0.4.5 和平会议上线后旧路径已不可达，
 //   但 import 还留着 —— 既误导读者以为旧路径仍生效，也让 hoi1936.js 无法删旧实现）：
 //     · postwarOptionsFor / applyPostwarChoice —— 战后处置已由 treaty.js#signTreaty 独占
 //     · draftTreaty —— 和约已由和平会议签订
-import { fmtNum } from '../core/format.js?v=58.9';
+import { fmtNum } from '../core/format.js?v=59.10';
 // v0.4.7：el() 收敛到 ui/common.js（此前本文件自带一份；全项目共 14 份、两种不兼容签名，
 //   v0.3.2「列强区块不显示」即源于把 A 型调用写进了 B 型文件）
-import { el } from './common.js?v=58.9';
+import { el } from './common.js?v=59.10';
 
 function ascoinOf(acc) { return Math.floor(Number(acc && acc.ascoin) || 0); }
 
@@ -771,23 +771,29 @@ function resolveBattleSafe(seed, a, d) {
 // ============================================================================
 // 不走异步邮箱：NPC 在本地即时结算。交易价已含势力偏好（售价/收价不同）；
 // 进攻按钢铁雄心式多回合对 NPC 驻军，胜利掠夺其金库。
+//
+// v0.4.19：这些 NPC 的「星球」名（nameCn）统一改成 **Astroneer 官方七星球**
+//   （希尔瓦/德索罗/卡利多/弗沙尼亚/诺福斯/格拉西欧/阿特洛克斯）。此前是
+//   「熔炉前哨 / 商队自由港 / 废铁拆解场 / 皇家堡垒」这类自造名，玩家在
+//   「军事 → 势力」页看到的是一堆非 Astroneer 的星球卡。owner 是**势力名**、
+//   不是星球名，保持原样（开拓者/商会/拾荒团/Royal）。
 const NPC_FACTIONS = [
-  { id: 'npc_pioneer', owner: '开拓者', code: 'npc-forge', nameCn: '熔炉前哨',
+  { id: 'npc_pioneer', owner: '开拓者', code: 'npc-forge', nameCn: '德索罗',
     defense: 500, ascoin: 9000,
     sell: { '钢': [200, 60], '玻璃': [150, 30], '塑料': [120, 50] },
     buys: { '铁': 25, '铜': 40, '铝': 30 },
     desc: '拓荒者公会的前哨站：出售基础建材，收购金属原矿。' },
-  { id: 'npc_guild', owner: '商会', code: 'npc-exchange', nameCn: '商队自由港',
+  { id: 'npc_guild', owner: '商会', code: 'npc-exchange', nameCn: '卡利多',
     defense: 1200, ascoin: 30000,
     sell: { '钛合金': [40, 500], '石墨烯': [25, 1100] },
     buys: { '钢': 45, '陶瓷': 35, '玻璃': 22 },
     desc: '星系商会的自由港：高价出售合金材料，也高价回收精炼品。' },
-  { id: 'npc_scrap', owner: '拾荒团', code: 'npc-junkyard', nameCn: '废铁拆解场',
+  { id: 'npc_scrap', owner: '拾荒团', code: 'npc-junkyard', nameCn: '诺福斯',
     defense: 2200, ascoin: 16000,
     sell: { '钢': [400, 35], '陶瓷': [200, 25], '橡胶': [120, 40] },
     buys: { '铁': 20, '石头': 8, '石英': 15 },
     desc: '什么都能拆的拾荒团：什么都卖也什么都收，价格被压得很低；民风彪悍，防守不弱。' },
-  { id: 'npc_royal', owner: 'Royal', code: 'npc-citadel', nameCn: '皇家堡垒',
+  { id: 'npc_royal', owner: 'Royal', code: 'npc-citadel', nameCn: '阿特洛克斯',
     defense: 5200, ascoin: 90000,
     sell: { '纳米碳合金': [20, 1900], '钻石': [12, 1600], '钛合金': [60, 420] },
     buys: { '石墨烯': 850, '碳化钨': 300, '钛合金': 300 },

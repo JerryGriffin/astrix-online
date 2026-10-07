@@ -9,10 +9,10 @@
 //   故跨玩家在线竞价暂以本地 NPC 兜底（在线/离线同逻辑）；tickAuctions 预留 cloud 同步钩子，
 //   若日后云端提供公共板即可无缝接入（见 opts.syncCloud）。
 
-import { isEquipmentKey, ascoinOf, priceOf } from './shop.js?v=58.9';
-import { ownedOf, spendOwned, getPlanetInstance } from './state.js?v=58.9';
-import { equipmentList } from './shipyard.js?v=58.9';
-import { MATERIALS } from '../data/materials.js?v=58.9';
+import { isEquipmentKey, ascoinOf, priceOf } from './shop.js?v=59.10';
+import { ownedOf, spendOwned, getPlanetInstance } from './state.js?v=59.10';
+import { equipmentList } from './shipyard.js?v=59.10';
+import { MATERIALS } from '../data/materials.js?v=59.10';
 
 const AUCTION_DEFAULT_SEC = 15;     // 竞价窗口（秒）
 const AUCTION_FEE = 0.05;           // 卖家佣金（成交额的 5% 归平台）
@@ -284,7 +284,9 @@ export function tickAuctions(acc, dt, opts) {
  * 每 60~120 秒尝试一次；活跃拍卖 ≥ 8 时不再生成；时长 3~8 分钟。
  * 起拍价按市价 ×0.7~1.0；无 NPC 自己竞价，流拍直接移除。
  */
-const NPC_AUCTION_SELLERS = ['开拓者商会', '商队自由港', '拾荒团', '皇家堡垒'];
+// v0.4.19：卖家名里原含「商队自由港 / 皇家堡垒」两个已被废弃的自造星球名，
+//   统一改为纯势力/机构名（不再复用任何星球名，避免玩家在拍卖行又看到非 Astroneer 地名）。
+const NPC_AUCTION_SELLERS = ['开拓者商会', '星系商会', '拾荒团', '皇家商团'];
 const NPC_AUCTION_ACTIVE_CAP = 8;
 let _npcAuctionNextAt = 0;
 

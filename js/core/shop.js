@@ -7,15 +7,15 @@
 // 运输：本模块只负责「下单与结算」；**货必须由运输船运**（运输判定在 core/fleet.js，
 //   订单上带 cells 供其判断载货格数是否够）。
 
-import { MATERIALS } from '../data/materials.js?v=58.9';
-import { clamp } from './util.js?v=58.9';
-import { ownedOf, spendOwned, STATE} from './state.js?v=58.9';
-import { ensureEntry } from './production.js?v=58.9';
-import { ASCOIN_PER_GOLD } from './currency.js?v=58.9';
+import { MATERIALS } from '../data/materials.js?v=59.10';
+import { clamp } from './util.js?v=59.10';
+import { ownedOf, spendOwned, STATE} from './state.js?v=59.10';
+import { ensureEntry } from './production.js?v=59.10';
+import { ASCOIN_PER_GOLD } from './currency.js?v=59.10';
 // v0.1.2 R9：装备类交易键走 partId@材料（与 v0.1.1 贡品契约同口径），
 // 需能识别部件 id 并估值，故引入部件数据表（PART_BY_ID）与 resolvePart。
-import { PART_BY_ID } from '../data/ship_parts.js?v=58.9';
-import { resolvePart } from './shipyard.js?v=58.9';
+import { PART_BY_ID } from '../data/ship_parts.js?v=59.10';
+import { resolvePart } from './shipyard.js?v=59.10';
 
 const MAT_BY_NAME = Object.fromEntries(MATERIALS.map((m) => [m.nameCn, m]));
 

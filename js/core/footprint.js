@@ -11,9 +11,9 @@
 //     格数 = max(1, ceil(footprint / 20))；「同型号 + 同材料」算一种，数量再多也还是这么多格。
 // 用途：运输船的载货判定（上层拿 totalCells 去和船的载货格数比）。
 
-import { MATERIALS } from '../data/materials.js?v=58.9';
-import { PART_BY_ID } from '../data/ship_parts.js?v=58.9';
-import { POWER_FACILITY_BY_ID } from '../data/facilities.js?v=58.9';
+import { MATERIALS } from '../data/materials.js?v=59.10';
+import { PART_BY_ID } from '../data/ship_parts.js?v=59.10';
+import { POWER_FACILITY_BY_ID } from '../data/facilities.js?v=59.10';
 
 const MATERIAL_BY_NAME = Object.fromEntries(MATERIALS.map((m) => [m.nameCn, m]));
 

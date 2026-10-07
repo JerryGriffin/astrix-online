@@ -1,13 +1,12 @@
 // 开始界面：标题、离线/在线模式、账号选择、各次要入口模态层（Astrix）
-import {  STATE, createAccount, switchAccount, deleteAccount, currentAccount, START_MODES, switchPool  } from '../core/state.js?v=58.9';
-// v0.4.9：科幻势力（普通模式开局可选，与 HOI_NATIONS 同构）
-import { SCI_NATIONS } from '../data/scenario_sci.js?v=58.9';
-import { fmtNum, fmtTime } from '../core/format.js?v=58.9';
+import {  STATE, createAccount, switchAccount, deleteAccount, currentAccount, START_MODES, switchPool  } from '../core/state.js?v=59.10';
+// v0.4.19：不再需要科幻势力表 —— 开局势力下拉框已整段移除（见下方 buildNewAccountForm）
+import { fmtNum, fmtTime } from '../core/format.js?v=59.10';
 // 版本号与更新日志的唯一来源：任何地方要显示版本都从这里取，改版本只改 js/version.js 一处
-import { VERSION, VERSIONS } from '../version.js?v=58.9';
+import { VERSION, VERSIONS } from '../version.js?v=59.10';
 // v0.4.7：el() 收敛到 ui/common.js（此前本文件自带一份；全项目共 14 份、两种不兼容签名，
 //   v0.3.2「列强区块不显示」即源于把 A 型调用写进了 B 型文件）
-import { el } from './common.js?v=58.9';
+import { el } from './common.js?v=59.10';
 
 function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, (c) => (
@@ -235,65 +234,16 @@ function renderNewSaveForm(body, ctx, pool) {
     modeTip.textContent = visibleModes[0].desc;
   }
 
-  // 开局势力/国家选择。
-  // v0.2.6：1936 剧本选国家（真实历史数据预览）
-  // v0.4.9：普通模式（初登星球 / 漫溯深空）也接入**科幻势力**选择 ——
-  //   两套数据同构（flag/nameCn/nameEn/capital/popM/ic/divisions/navy/airforce/desc），
-  //   所以复用同一个下拉框，只按当前开局模式换数据源。
-  const isSci = () => mode !== 'hoi1936';
-  const factionList = () => SCI_NATIONS;
-  let countryId = SCI_NATIONS[0].id;
-  const countryBox = el('div', 'acc-country-box');
-  const cSel = document.createElement('select');
-  cSel.className = 'acc-new-input';
-  cSel.style.minHeight = '44px';
-  const cInfo = el('p', 'acc-new-tip muted', '');
-
-  // 切换开局模式 → 换势力列表（两套 id 前缀不同，必须重建 option）
-  const fillFactionOptions = () => {
-    const list = factionList();
-    if (!list.some((x) => x.id === countryId)) countryId = list[0].id;
-    cSel.innerHTML = '';
-    for (const n of list) {
-      const o = document.createElement('option');
-      o.value = n.id;
-      o.textContent = n.flag + ' ' + n.nameCn + '（' + n.nameEn + '）';
-      cSel.appendChild(o);
-    }
-    cSel.value = countryId;
-    renderCountryInfo();
-  };
-  const renderCountryInfo = () => {
-    const list = factionList();
-    const n = list.find((x) => x.id === countryId) || list[0];
-    // v0.4.9：1936 有「属地」字段（历史殖民地），科幻势力没有这一项
-    const colonyLine = n.colony ? ('\n本土：' + n.capital + '　属地：' + n.colony.name) : '';
-    cInfo.textContent = (isSci() ? '首府 ' : '首都 ') + n.capital
-      + ' · 人口 ' + n.popM + ' 百万 · 工业 ' + n.ic
-      + ' · 陆军 ' + n.divisions + ' 师 · 海军 ' + n.navy + ' 舰'
-      + ' · 轨道火力 ' + n.airforce + '\n'
-      + colonyLine + '\n' + (n.desc || '');
-    cInfo.style.whiteSpace = 'pre-line';
-  };
-  cSel.addEventListener('change', () => { countryId = cSel.value; renderCountryInfo(); });
-  countryBox.append(cSel, cInfo);
-  fillFactionOptions();
-
-  // 切换开局模式时刷新势力列表
-  // v0.4.9：用「后注册先执行」的顺序**同步**刷新，不用 setTimeout。
-  //   原先用 setTimeout(syncCountryBox, 0) 会读到**还没被更新的 mode** 闭包值
-  //   （mode 在上面那个 onclick 里才赋值），导致选「风暴前夜」时下拉里
-  //   仍显示科幻势力 —— 冒烟 A 段实测 optionCount=8 / firstOption=地球联邦。
-  //   addEventListener 在 onclick 之后注册 → 同一事件里后执行，此时 mode 已是新值。
-  const modeBtnsAll = Array.from(modeRow.querySelectorAll('button'));
-  const syncCountryBox = () => {
-    countryBox.style.display = 'block';   // v0.4.9：所有开局都可选势力
-    fillFactionOptions();
-  };
-  for (const b of modeBtnsAll) {
-    b.addEventListener('click', syncCountryBox);
-  }
-  syncCountryBox();
+  // v0.4.19：**开局势力/国家下拉框整段移除**。
+  //   设计者要求「所有星球名严格按照 Astroneer 改、出生仅能在希尔瓦」。
+  //   旧控件制造了两个问题：
+  //   ① 让玩家出生在一颗被改名成「地球同步轨道港 / 奥林帕斯穹顶」的星球上
+  //      —— applySciStart 会拿势力首府给母星实例改名（state.js: inst.nameCn = n.capital）；
+  //   ② 它其实一直是坏的：factionList() 恒返回 SCI_NATIONS，1936 模式下选出的
+  //      sci_* id 传进 apply1936Start 会 HOI_BY_ID 查不到 → 静默回落到德意志国
+  //      （state.js: HOI_BY_ID[countryId] || HOI_NATIONS[0]），等于摆了个假控件。
+  //   现在建档一律走默认势力（SCI_NATIONS[0] 地球联邦，首府＝希尔瓦），
+  //   母星恒为 syl，玩家不再需要也不应该选星球。
 
   const add = el('button', 'btn btn-primary', '+ 新建存档');
   const tip = el('p', 'acc-new-tip muted', '');
@@ -312,7 +262,9 @@ function renderNewSaveForm(body, ctx, pool) {
     }
     // v0.1.0：按所选开局模式建档（'deep' = 漫溯深空）；v0.2.10：在线 + 开发者模式也可 deep
     // v0.2.6：1936 剧本传所选国家
-    createAccount(name, mode, { countryId });
+    // v0.4.19：不传 countryId → createAccount 用默认势力（SCI_NATIONS[0] 地球联邦），
+    //   母星固定为 syl（希尔瓦）。玩家不再能选势力/星球。
+    createAccount(name, mode);
     if (isOnline) {
       if (typeof ctx.enterOnlineGame === 'function') ctx.enterOnlineGame();
       else ctx.enterOffline();
@@ -322,7 +274,7 @@ function renderNewSaveForm(body, ctx, pool) {
   };
   add.onclick = submit;
   input.addEventListener('keydown', (e) => { if (e.key === 'Enter') submit(); });
-  form.append(input, modeRow, countryBox, modeTip, add);
+  form.append(input, modeRow, modeTip, add);
   form.appendChild(tip);
   body.appendChild(form);
 }
@@ -359,7 +311,7 @@ function openTips(ctx) {
     '<b>星际股市</b>　商店星每种资源随时买卖，价格随成交**买涨卖跌**并自然回归；原矿类极度贬值，精加工品才值钱——低级货建议先加工再卖。',
     '<b>拍卖行</b>　出售资产（资源 / 装备 / 飞船）的唯一途径：15 秒竞价，价高者得，流拍原样退还。离线由「星际买家」NPC 兜底出价；电脑势力也会实时挂单，记得去捡漏。',
     '<b>在线模式</b>　邮箱验证码登录，存档按邮箱分开、登录一次永久免登；星系无迷雾：所有玩家与电脑势力星球全部可见，可贸易、进攻或**结盟**（互不侵犯 + 盟友购买价 9 折）。GitHub 版与正式版同属一个星系；**商店星仓库全服共用**，所有人的买卖实时增减同一个池子。',
-    '<b>科幻势力（默认）</b>　新建存档在「初登星球 / 漫溯深空」里选一个**星际势力**（地球联邦 / 火星矿业公社 / 外环拓殖联合 / 月面采矿同盟 / 谷神星开发署 / 木卫二冰洋城邦 / 土卫六浮空舰队 / 游离者同盟）开局：势力数据同构于原 1936 剧本（人口 / 工业 / 地面军 / 空间舰队 / 轨道火力），其余机制（战区地图、战役、国策树、阵营、和平会议）完全一致。',
+    '<b>出生星球</b>　v0.4.19 起**固定出生在希尔瓦（Sylva）**，开局不再需要选势力/星球：建档即加入默认星际势力「地球联邦」（人口 / 工业 / 地面军 / 空间舰队 / 轨道火力），其余机制（战区地图、战役、国策树、阵营、和平会议）完全一致。',
     '<b>战争</b>　在模拟国家星球卡上「宣战」即进入**持续战争**（跨会话保留，不会自动结束）；进攻获胜积累战争分数，**分数 ≥ 60 可迫降签约**（拿赔款），也可「我方投降」付赔款结束 —— 只有投降签约才能终止战争。',
     '<b>离线结算</b>　关屏也在推进，回来一次性结算；收益上限 12 小时，长挂不如定时收一次。',
   ];
@@ -408,7 +360,8 @@ function openMod(ctx) {
     + '已由科幻势力层在**普通模式**接管，功能不丢；这里仅供回溯与调试（需开启开发者模式）。');
   d.style.cssText = 'font-size:12px;line-height:1.8;margin:6px 0;';
   item.appendChild(d);
-  item.appendChild(el('p', 'muted', '启用方式：新建存档 → 开局模式选「风暴前夜」→ 选择国家。'
+  item.appendChild(el('p', 'muted', '启用方式：新建存档 → 开局模式选「风暴前夜」即可'
+    + '（v0.4.19 起移除了国家下拉框，固定用该 mod 的默认国家）。'
     + '（在线模式下 1936 剧本仅开发者可用：设置 → 开发者模式 → 输入密码 astrix。）'));
   box.appendChild(item);
   body.appendChild(box);

@@ -19,24 +19,24 @@
 import {
   HULLS, ENGINES, WEAPONS, FACILITIES,
   DEFAULT_MATERIAL,
-} from '../data/ship_parts.js?v=58.9';
+} from '../data/ship_parts.js?v=59.10';
 import {
   evaluateBlueprint, materialMul, materialOptionsFor,
   ensureBlueprints, genBlueprintId, kindOfHull, HULL_RP_COST,
   equipmentList, emptyBlueprint, shipBuildCheck,
-} from '../core/shipyard.js?v=58.9';
-import { getPlanetInstance, ownedOf, getBuildingCounts, spendOwned } from '../core/state.js?v=58.9';
-import { lineSlotInfo, freeLaborOf, materialLookup } from '../core/production.js?v=58.9';
-import { fmtNum } from '../core/format.js?v=58.9';
+} from '../core/shipyard.js?v=59.10';
+import { getPlanetInstance, ownedOf, getBuildingCounts, spendOwned } from '../core/state.js?v=59.10';
+import { lineSlotInfo, freeLaborOf, materialLookup } from '../core/production.js?v=59.10';
+import { fmtNum } from '../core/format.js?v=59.10';
 // v0.4.7：el() 收敛到 ui/common.js（此前本文件自带一份；全项目共 14 份、两种不兼容签名，
 //   v0.3.2「列强区块不显示」即源于把 A 型调用写进了 B 型文件）
-import { el } from './common.js?v=58.9';
+import { el } from './common.js?v=59.10';
 // R4：蓝图编辑器（含「建造」开 dock 线）从 shipyard.js 的舰船分支迁到「设计」分支。
 //   这里只复用函数，编辑器本体仍定义在 shipyard.js（其天然的归属），按其渲染。
 import {
   buildBlueprintEditor, shipBuildBlockReason,
   materialBuildBlockReason, createDockLine, blueprintMaterialNeeds,
-} from './shipyard.js?v=58.9';
+} from './shipyard.js?v=59.10';
 
 function esc(s) {
   return String(s).replace(/[&<>"']/g, (c) => (

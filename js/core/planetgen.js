@@ -12,8 +12,8 @@
 //   需要 STATE.planets 的操作（如把新星球实例挂进存档）由调用方传入或通过回调完成。
 //   同理也**不 import production.js / shop.js**（它们间接依赖 state.js / 会与本模块成环）。
 
-import { PLANETS } from '../data/planets.js?v=58.9';
-import { JOBS, getTotalLabor, buildingSlots } from './population.js?v=58.9';
+import { PLANETS } from '../data/planets.js?v=59.10';
+import { JOBS, getTotalLabor, buildingSlots } from './population.js?v=59.10';
 
 // ============================================================================
 // 管理模式（设计者已确认：同时影响 产出 / 幸福度 / 独立倾向）
@@ -126,11 +126,12 @@ export function tickIndependence(inst, dt) {
 // 随机星球生成
 // ============================================================================
 // 名字池：中文名 + 英文名（设计者：「你自行取名，随机他们的星球属性」）
+// v0.4.19：改为**只用 Astroneer 官方七星球**（设计者要求「所有星球名严格按照
+//   Astroneer 改」）。此前是「烬砂/霜环/翠谷/苍泊…」16 个自造名，探索出来的
+//   星球和 Astroneer 对不上号。随机星球与基座星球同名时以 code 区分（syl vs syl2）。
 const NAME_POOL = [
-  ['烬砂', 'Embersand'], ['霜环', 'Frostring'], ['翠谷', 'Verdantia'], ['苍泊', 'Palemere'],
-  ['锈原', 'Rustvale'], ['晶簇', 'Crystalis'], ['黯潮', 'Duskflow'], ['曦洲', 'Aurorland'],
-  ['玄砾', 'Obsidian'], ['鎏丘', 'Aurelia'], ['雾屿', 'Mistisle'], ['熔脊', 'Magmaridge'],
-  ['银淞', 'Silverrime'], ['赤帆', 'Redsail'], ['靛窟', 'Indigolair'], ['鸣沙', 'Songdune'],
+  ['希尔瓦', 'Sylva'], ['德索罗', 'Desolo'], ['卡利多', 'Calidor'], ['弗沙尼亚', 'Vesania'],
+  ['诺福斯', 'Novus'], ['格拉西欧', 'Glacio'], ['阿特洛克斯', 'Atrox'],
 ];
 const TYPE_POOL = ['类地行星', '干旱行星', '苔原行星', '奇异行星', '辐射行星', '海洋行星', '荒漠卫星', '气态卫星'];
 const GAS_POOL = ['氮气', '氧气', '氨气', '甲烷', '二氧化碳', '氢气', '氩气', '氦气', '硫磺气'];

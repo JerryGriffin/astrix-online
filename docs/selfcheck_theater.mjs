@@ -19,6 +19,7 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const { CACHE_TAG } = await import(pathToFileURL(join(ROOT, 'js/version.js')));
 const TH = await import(pathToFileURL(join(ROOT, 'js/core/theater.js')) + `?v=${CACHE_TAG}`);
 const B = await import(pathToFileURL(join(ROOT, 'js/core/battle.js')) + `?v=${CACHE_TAG}`);
+const { MATERIALS } = await import(pathToFileURL(join(ROOT, 'js/data/materials.js')) + `?v=${CACHE_TAG}`);
 
 let pass = 0, fail = 0;
 const bad = [];
@@ -545,6 +546,33 @@ console.log('\nT16 战区产出不含气体（回归守卫）');
   const badTables = Object.keys(TH.REGION_OUTPUT).filter((k) =>
     Object.keys(TH.REGION_OUTPUT[k]).some((m) => TH.GAS_MATERIALS.has(m)));
   ok(badTables.length === 0, '所有地貌产出表都不含气体', badTables.join(','));
+}
+
+// ---------------------------------------------------------------------------
+// T17 v0.4.19：战区产出只能是**原矿**（不得直接产精炼/合成品）
+//
+//   回归守卫。旧表（v0.4.2~v0.4.18）里陨石坑产「钢 0.7 / 铝 0.5」、峡谷产「钢 0.9」、
+//   熔岩产「钢 0.8 / 铜 0.6」—— 而钢是 composite（铁 + 碳）、铁/铝/铜又分别要
+//   赤铁矿/红土/孔雀石熔炼。玩家开局自带「本土 + 相邻 2 个」战区，于是从第 1 秒起
+//   精炼金属凭空增长，且这笔来源**不出现在净增长表（netRates）**里，根本查不到出处。
+//   本守卫锁死：产出表里的材料必须真实存在，且 category 必须是 'natural'。
+// ---------------------------------------------------------------------------
+console.log('\nT17 战区产出只能是原矿（不许直接产精炼/合成品）');
+{
+  const catOf = {}, known = new Set();
+  for (const m of MATERIALS) { catOf[m.nameCn] = m.category; known.add(m.nameCn); }
+  const ghost = [], badCat = [];
+  for (const key of Object.keys(TH.REGION_OUTPUT)) {
+    for (const mat of Object.keys(TH.REGION_OUTPUT[key])) {
+      if (!known.has(mat)) ghost.push(key + ':' + mat);
+      else if (catOf[mat] !== 'natural') badCat.push(key + ':' + mat + '(' + catOf[mat] + ')');
+    }
+  }
+  ok(ghost.length === 0, '产出表里的材料名都真实存在（无幽灵材料）', ghost.join(','));
+  ok(badCat.length === 0, '产出表只含 natural 类原矿', badCat.join(','));
+  const flat = new Set([].concat(...Object.values(TH.REGION_OUTPUT).map((t) => Object.keys(t))));
+  ok(!flat.has('钢') && !flat.has('铝') && !flat.has('铜'),
+    '钢/铝/铜 不再由战区直接产出', [...flat].join(','));
 }
 
 // ---------------------------------------------------------------------------

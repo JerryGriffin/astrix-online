@@ -32,53 +32,62 @@ export const SCI_SCENARIO_NAME = '深空纪元';
 // ---------------------------------------------------------------------------
 // 一、势力总表（8 个，覆盖太阳系内外的主要殖民势力）
 //   字段与 HOI_NATIONS 同构，便于核心逻辑按同一套口径消费。
+//
+// v0.4.19：`capital` / `capitalEn` 一律取 **Astroneer 官方七星球**——
+//   希尔瓦(Sylva) / 德索罗(Desolo) / 卡利多(Calidor) / 弗沙尼亚(Vesania) /
+//   诺福斯(Novus) / 格拉西欧(Glacio) / 阿特洛克斯(Atrox)。
+//   原因：`applySciStart` 会把玩家的**母星实例直接以势力首府命名**
+//   （state.js: inst.nameCn = n.capital），此前首府写的是「地球同步轨道港」
+//   这类自造名，于是玩家一出生的星球就叫「地球同步轨道港」而不是希尔瓦。
+//   设计者要求「所有星球名严格按 Astroneer 改、出生仅能在希尔瓦」。
+//   八势力对七星球，游离者同盟（无固定家园）与地球联邦共用希尔瓦。
 // ---------------------------------------------------------------------------
 export const SCI_NATIONS = [
   {
-    id: 'sci_terran', nameCn: '地球联邦', nameEn: 'Terran Compact', capital: '地球同步轨道港', flag: '🔵',
+    id: 'sci_terran', nameCn: '地球联邦', nameEn: 'Terran Compact', capital: '希尔瓦', capitalEn: 'Sylva', flag: '🔵',
     // 起步强势：玩家可选的"母体势力"，工业与人口都高
     popM: 320, ic: 145, divisions: 46, navy: 34, airforce: 30,
     bloc: 'core',
     desc: '人类的母星势力：轨道城带串珠成线，重工业与人口都是银河系第一。',
   },
   {
-    id: 'sci_martian', nameCn: '火星矿业公社', nameEn: 'Martian Communes', capital: '奥林帕斯穹顶', flag: '🔴',
+    id: 'sci_martian', nameCn: '火星矿业公社', nameEn: 'Martian Communes', capital: '德索罗', capitalEn: 'Desolo', flag: '🔴',
     popM: 86, ic: 118, divisions: 34, navy: 22, airforce: 26,
     bloc: 'inner',
     desc: '以地下矿脉立国的公社联盟，钢与稀土产量惊人，军事偏机动。',
   },
   {
-    id: 'sci_outer', nameCn: '外环拓殖联合', nameEn: 'Outer Belt Compact', capital: '谷神星门户', flag: '🟠',
+    id: 'sci_outer', nameCn: '外环拓殖联合', nameEn: 'Outer Belt Compact', capital: '卡利多', capitalEn: 'Calidor', flag: '🟠',
     popM: 140, ic: 92, divisions: 38, navy: 26, airforce: 22,
     bloc: 'belt',
     desc: '小行星带拓殖者的联合体，船坞遍布环带，靠商路而非矿脉立国。',
   },
   {
-    id: 'sci_lunar', nameCn: '月面采矿同盟', nameEn: 'Lunar Consortium', capital: '静海基地', flag: '⚪',
+    id: 'sci_lunar', nameCn: '月面采矿同盟', nameEn: 'Lunar Consortium', capital: '弗沙尼亚', capitalEn: 'Vesania', flag: '⚪',
     popM: 64, ic: 74, divisions: 22, navy: 14, airforce: 18,
     bloc: 'inner',
     desc: '垄断氦-3 与低重力冶炼的月面同盟，人口不多但技术极精。',
   },
   {
-    id: 'sci_ceres', nameCn: '谷神星开发署', nameEn: 'Ceres Authority', capital: '阿里巴 ring 站', flag: '🟡',
+    id: 'sci_ceres', nameCn: '谷神星开发署', nameEn: 'Ceres Authority', capital: '诺福斯', capitalEn: 'Novus', flag: '🟡',
     popM: 52, ic: 88, divisions: 26, navy: 20, airforce: 16,
     bloc: 'belt',
     desc: '企业化运作的谷神星开发机构，自动化程度最高，劳动力奇缺。',
   },
   {
-    id: 'sci_europa', nameCn: '木卫二冰洋城邦', nameEn: 'Europa Ice Cities', capital: '哈德斯撞击坑', flag: '🟣',
+    id: 'sci_europa', nameCn: '木卫二冰洋城邦', nameEn: 'Europa Ice Cities', capital: '格拉西欧', capitalEn: 'Glacio', flag: '🟣',
     popM: 74, ic: 66, divisions: 20, navy: 18, airforce: 20,
     bloc: 'outer',
     desc: '藏在冰层之下的城邦群，科研领先但补给线脆弱。',
   },
   {
-    id: 'sci_titan', nameCn: '土卫六浮空舰队', nameEn: 'Titan Aerostat Armada', capital: '极地上层城', flag: '🟡',
+    id: 'sci_titan', nameCn: '土卫六浮空舰队', nameEn: 'Titan Aerostat Armada', capital: '阿特洛克斯', capitalEn: 'Atrox', flag: '🟡',
     popM: 42, ic: 54, divisions: 18, navy: 22, airforce: 14,
     bloc: 'outer',
     desc: '以浮空巨舰为家园的民族，机动性冠绝群雄，疆域却最不固定。',
   },
   {
-    id: 'sci_belt', nameCn: '游离者同盟', nameEn: 'Freehaul Alliance', capital: '移动锻炉「长明」', flag: '⬛',
+    id: 'sci_belt', nameCn: '游离者同盟', nameEn: 'Freehaul Alliance', capital: '希尔瓦', capitalEn: 'Sylva', flag: '⬛',
     popM: 28, ic: 46, divisions: 30, navy: 12, airforce: 10,
     bloc: 'none',
     desc: '拒绝归属任何星系的走私者与雇佣兵，靠劫掠矿脉与出卖情报为生。',
@@ -94,7 +103,7 @@ export const SCI_MAIN_BY_ID = SCI_BY_ID;
 //   factions.js 是 UI 侧「owner id → 势力名/旗/描述/实力」的统一入口，
 //   但它不能静态 import 本文件（会与 state.js / hoi1936.js 形成加载顺序依赖），
 //   所以用「注册 + 全局缓存」的方式打通 —— 效果等价，且不引入循环依赖。
-import { registerSciFactions } from './factions.js?v=58.9';
+import { registerSciFactions } from './factions.js?v=59.10';
 registerSciFactions(SCI_NATIONS);
 
 // ---------------------------------------------------------------------------
@@ -114,7 +123,7 @@ export const SCI_BLOC_NAME = {
 //   同步轨道 / 拉格朗日 / 深空门户 / 极地轨道 / 气层防线），不含任何地球地名，
 //   因此这里**直接复用**，不重复造一套。
 // ---------------------------------------------------------------------------
-export { HOI_SEAS as SCI_SEAS } from './hoi1936.js?v=58.9';
+export { HOI_SEAS as SCI_SEAS } from './hoi1936.js?v=59.10';
 
 // 各势力开局已控制的圈层（替代 1936 的「英国控制英吉利海峡 85%」这类设定）
 export const SCI_SEA_INITIAL_CONTROL = {
