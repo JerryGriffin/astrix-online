@@ -53,7 +53,7 @@ for (const name of rdRoot(ROOT)) {
 
 // 3) docs/*.mjs：自检脚本里对 js/ 模块的 import 也必须带**同一个** CACHE_TAG。
 //    背景（v0.1.1 render 自检 13 项级联失败）：ESM 按 URL 区分模块实例——
-//    UI 链加载的是 state.js?v=11.0，而自检脚本若 import '../js/core/state.js?v=60.11'（无串）
+//    UI 链加载的是 state.js?v=11.0，而自检脚本若 import '../js/core/state.js?v=61.12'（无串）
 //    就会得到**第二份模块实例**（STATE 双份），于是 S.currentAccount() 恒为 null，
 //    表现为「Cannot set properties of null (setting 'tech')」并级联炸掉整条船坞链。
 //    所以这里与 js/ 用同一个正则，无串的补上、旧串的剥掉重写。

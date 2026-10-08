@@ -8,16 +8,16 @@ import {
   computePower, energyOf,
   installedFacilities, installFacility, uninstallFacility, facilityStockOf,
   panelEffOf, facilityFuelOf, buildingCountBonus,
-} from '../core/power.js?v=60.11';
-import { POWER_FACILITIES, POWER_FACILITY_BY_ID } from '../data/facilities.js?v=60.11';
-import { BUILDING_BY_ID } from '../data/buildings.js?v=60.11';
-import { RECIPES } from '../data/recipes.js?v=60.11';
-import { linesOf } from '../core/production.js?v=60.11';
-import { jobsOfBuilding, jobOutput, assignedToBuilding, buildingSlots } from '../core/population.js?v=60.11';
-import { fmtNum, fmtRate, fmtRateBody } from '../core/format.js?v=60.11';
+} from '../core/power.js?v=61.12';
+import { POWER_FACILITIES, POWER_FACILITY_BY_ID } from '../data/facilities.js?v=61.12';
+import { BUILDING_BY_ID } from '../data/buildings.js?v=61.12';
+import { RECIPES } from '../data/recipes.js?v=61.12';
+import { linesOf } from '../core/production.js?v=61.12';
+import { jobsOfBuilding, jobOutput, assignedToBuilding, buildingSlots } from '../core/population.js?v=61.12';
+import { fmtNum, fmtRate, fmtRateBody } from '../core/format.js?v=61.12';
 // v0.4.7：el() 收敛到 ui/common.js（此前本文件自带一份；全项目共 14 份、两种不兼容签名，
 //   v0.3.2「列强区块不显示」即源于把 A 型调用写进了 B 型文件）
-import { el, ensureStyle } from './common.js?v=60.11';
+import { el, ensureStyle } from './common.js?v=61.12';
 
 const CSS = `
   .pwr-panel { font-family: system-ui, sans-serif; color: #e8eef2; padding: 12px; box-sizing: border-box; }
@@ -400,6 +400,7 @@ export function renderPower(root, ctx) {
   // 1 秒刷新数字
   if (root._pwrTimer) { clearInterval(root._pwrTimer); root._pwrTimer = null; }
   root._pwrTimer = setInterval(() => {
+    if (typeof document !== 'undefined' && document.hidden) return;   // v0.4.21：后台标签页不刷新
     if (!isMounted()) { clearInterval(root._pwrTimer); root._pwrTimer = null; return; }
     draw();
   }, 1000);

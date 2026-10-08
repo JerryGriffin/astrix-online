@@ -14,12 +14,12 @@
 
 import {
   generateRandomPlanet, capturePlanet, captureDefaultPlanet, uncapturedDefaults,
-} from './planetgen.js?v=60.11';
-import { ownedOf, spendOwned, getPlanetInstance } from './state.js?v=60.11';
-import { CELL_VOLUME, cellsForEquipmentKey } from './footprint.js?v=60.11';   // 纯聚合工具，state.js 不 import 本文件，无环
-import { resolveBlueprint, totalMass, blueprintOfShip } from './shipyard.js?v=60.11';          // 只读导出：蓝图部件 / 蓝图质量
-import { ensureEntry } from './production.js?v=60.11';                        // 装卸货 / 奖励入包（生产模块不 import 本文件，无环）
-import { fmtNum } from './format.js?v=60.11';
+} from './planetgen.js?v=61.12';
+import { ownedOf, spendOwned, getPlanetInstance } from './state.js?v=61.12';
+import { CELL_VOLUME, cellsForEquipmentKey } from './footprint.js?v=61.12';   // 纯聚合工具，state.js 不 import 本文件，无环
+import { resolveBlueprint, totalMass, blueprintOfShip } from './shipyard.js?v=61.12';          // 只读导出：蓝图部件 / 蓝图质量
+import { ensureEntry } from './production.js?v=61.12';                        // 装卸货 / 奖励入包（生产模块不 import 本文件，无环）
+import { fmtNum } from './format.js?v=61.12';
 
 // ============================================================================
 // 编队

@@ -1,8 +1,13 @@
 {
   "name": "astrix-online",
-  "version": "0.4.18",
+  "version": "0.4.21",
   "description": "Astrix · 太空殖民 —— 零构建（原生 HTML/CSS/JS + ES Modules）太空殖民模拟游戏",
   "license": "MIT",
   "author": "JerryGriffin",
-  "type": "module"
+  "type": "module",
+  "private": true,
+  "comment-devDeps": "本游戏为纯静态站点，运行时零依赖。playwright-core 仅供本地自检探针（docs/selfcheck_*.mjs）使用，不参与部署，勿打进产物。",
+  "devDependencies": {
+    "playwright-core": "^1.63.0"
+  }
 }

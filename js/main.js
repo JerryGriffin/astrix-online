@@ -1,13 +1,13 @@
 // 应用入口：路由、全局模态层与启动（Astrix）
-import { STATE, loadState, createAccount, currentAccount, saveState, tick, settleOffline, OFFLINE_RATIO } from './core/state.js?v=60.11';
-import { renderStart, openAccountPicker } from './ui/start.js?v=60.11';
-import { renderPlanet } from './ui/planet.js?v=60.11';
+import { STATE, loadState, createAccount, currentAccount, saveState, tick, settleOffline, OFFLINE_RATIO } from './core/state.js?v=61.12';
+import { renderStart, openAccountPicker } from './ui/start.js?v=61.12';
+import { renderPlanet } from './ui/planet.js?v=61.12';
 // v0.4.16：本文件原先自带一份 el()，与 ui/common.js 的 el 并存 ——
 //   两种不兼容签名正是 v0.3.2「列强区块不显示」的根因（全库曾有 14 份 el）。
 //   本文件只用三参数位置式，与 common 版兼容，故统一从 common 引入。
-import { el } from './ui/common.js?v=60.11';
+import { el } from './ui/common.js?v=61.12';
 // v0.2.1：在线模式前置 —— 进入游戏前必须先绑定邮箱（验证码登录 / 注册）
-import { cloudUser, loginWithName, registerWithName, ensureReady } from './core/cloud.js?v=60.11';
+import { cloudUser, loginWithName, registerWithName, ensureReady } from './core/cloud.js?v=61.12';
 
 const root = document.getElementById('app');
 const modalRoot = document.getElementById('modal-root');
@@ -20,6 +20,10 @@ function closeModal() {
     currentModal.remove();
     currentModal = null;
   }
+  // v0.4.21（内存泄漏修复）：escClose 挂在 document 上，此前只有按 Esc 关闭才会摘除；
+  //   点 × 、点遮罩、或代码里直接调 closeModal()（切视图前清理弹窗到处都是）时
+  //   监听器永久残留 —— 开 N 个弹窗就漏 N 个 keydown 闭包，长会话下越积越多。
+  document.removeEventListener('keydown', escClose);
 }
 
 // 打开一个模态层。opts: { title, body(DOM 或字符串), sheet(移动端是否从底部滑出) }

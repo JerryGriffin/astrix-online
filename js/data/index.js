@@ -7,7 +7,7 @@
 //   实际被用到的只有 getPlanetByCode（js/ui/planet.js 以 _idxGetPlanet 之名引入）。
 //   连带删掉的还有只服务于它们的 MATERIALS / PLANET_MAP 派生逻辑。
 
-import { PLANETS } from './planets.js?v=60.11';
+import { PLANETS } from './planets.js?v=61.12';
 
 export function getPlanetByCode(code) {
   return PLANETS.find(p => p.code === code) || null;
