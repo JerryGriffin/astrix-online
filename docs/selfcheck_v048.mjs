@@ -68,10 +68,22 @@ section('Bug A：renderArmyDesigner 里的 inst 必须有声明（不能是自�
   // 运行时：真实调用一次，不应抛 ReferenceError
   const { chromium } = await import('node:module').then(async (m) => {
     const { createRequire } = m;
-    // v0.4.17：原先硬编码原开发机的 package.json 路径，本机不存在 → 必然加载失败。
-  // 改成以脚本自身为基准，Node 会逐级向上找 node_modules。
-  const require = createRequire(import.meta.url);
-    return require('playwright-core');
+    // v0.4.17 改成了 createRequire(import.meta.url)，靠 Node 逐级向上找 node_modules。
+    // 但本仓库**不在 WorkBuddy 的 node workspace 目录下**，仓库根也没有 node_modules
+    // → 逐级向上找不到，直接 MODULE_NOT_FOUND（v0.4.21 实测 v048/v049 双双报错）。
+    // v0.4.22：改成多候选路径依次尝试 —— 先逐级向上（覆盖「仓库内自带依赖」的情况），
+    //   再试已知的 WorkBuddy workspace 绝对路径。
+    const req = createRequire(import.meta.url);
+    const candidates = [
+      () => req('playwright-core'),
+      () => createRequire(join(ROOT, 'package.json'))('playwright-core'),
+      () => createRequire('C:/Users/11603/.workbuddy/binaries/node/workspace/package.json')('playwright-core'),
+    ];
+    let lastErr = null;
+    for (const fn of candidates) {
+      try { return fn(); } catch (e) { lastErr = e; }
+    }
+    throw lastErr || new Error('无法加载 playwright-core');
   });
   // 用 Node 的 DOM 桩不现实（army.js 依赖大量 DOM API），改为在浏览器里跑
   const http = await import('node:http');

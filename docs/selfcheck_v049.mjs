@@ -36,10 +36,24 @@ const server = http.createServer((req, res) => {
 });
 await new Promise((r) => server.listen(8797, '127.0.0.1', r));
 
-// v0.4.17：原先硬编码原开发机的 package.json 路径，本机不存在 → 必然加载失败。
-  // 改成以脚本自身为基准，Node 会逐级向上找 node_modules。
-  const require = createRequire(import.meta.url);
-const { chromium } = require('playwright-core');
+// v0.4.17 把硬编码的开发机路径改成了 createRequire(import.meta.url)，
+// 靠 Node 逐级向上找 node_modules。但本仓库**不在 WorkBuddy 的 node workspace
+// 目录下**，仓库根也没有 node_modules → 必然 MODULE_NOT_FOUND。
+// v0.4.22：多候选路径依次尝试（逐级向上 → 仓库 package.json → 已知 workspace 绝对路径）。
+const PW_CANDIDATES = [
+  () => createRequire(import.meta.url)('playwright-core'),
+  () => createRequire(path.join(ROOT, 'package.json'))('playwright-core'),
+  () => createRequire('C:/Users/11603/.workbuddy/binaries/node/workspace/package.json')('playwright-core'),
+];
+let playwright = null; let pwErr = null;
+for (const fn of PW_CANDIDATES) {
+  try { playwright = fn(); break; } catch (e) { pwErr = e; }
+}
+if (!playwright) {
+  console.error('无法加载 playwright-core：' + (pwErr && pwErr.message));
+  process.exit(1);
+}
+const { chromium } = playwright;
 const browser = await chromium.launch({
   executablePath: 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe',
   headless: true, args: ['--no-sandbox'],
