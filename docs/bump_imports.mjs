@@ -53,7 +53,7 @@ for (const name of rdRoot(ROOT)) {
 
 // 3) docs/*.mjs：自检脚本里对 js/ 模块的 import 也必须带**同一个** CACHE_TAG。
 //    背景（v0.1.1 render 自检 13 项级联失败）：ESM 按 URL 区分模块实例——
-//    UI 链加载的是 state.js?v=11.0，而自检脚本若 import '../js/core/state.js?v=61.12'（无串）
+//    UI 链加载的是 state.js?v=11.0，而自检脚本若 import '../js/core/state.js?v=62.13'（无串）
 //    就会得到**第二份模块实例**（STATE 双份），于是 S.currentAccount() 恒为 null，
 //    表现为「Cannot set properties of null (setting 'tech')」并级联炸掉整条船坞链。
 //    所以这里与 js/ 用同一个正则，无串的补上、旧串的剥掉重写。
@@ -69,6 +69,21 @@ for (const f of walkDocs(join(ROOT, 'docs'))) {
   const src = readFileSync(f, 'utf8');
   const next = src.replace(re, (m, q, path) => `${q}${path}?v=${CACHE_TAG}${q}`);
   if (next !== src) { writeFileSync(f, next); changed++; }
+}
+
+// 4) package.json 的 version 与 js/version.js 的 VERSION 保持同步（v0.4.22 新增）。
+//    此前两处各自手改，是「版本号双源」隐患：发布包里 npm 元数据的版本可能落后于
+//    玩家看到的版本。这里把 version.js 当**唯一来源**，发版时顺带写回 package.json，
+//    从构造上消除漂移（自检 selfcheck_v049 另有断言兜底）。
+const VERSION_FOR_PKG = (await import(pathToFileURL(join(ROOT, 'js/version.js')))).VERSION;
+const pkgPath = join(ROOT, 'package.json');
+const pkg = JSON.parse(readFileSync(pkgPath, 'utf8'));
+const wantPkgVer = String(VERSION_FOR_PKG).replace(/^v/, '');
+if (pkg.version !== wantPkgVer) {
+  pkg.version = wantPkgVer;
+  writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + '\n');
+  changed++;
+  console.log(`package.json version → ${wantPkgVer}`);
 }
 
 console.log(`CACHE_TAG=${CACHE_TAG}，改写 ${changed} 个文件`);

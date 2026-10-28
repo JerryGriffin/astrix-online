@@ -13,29 +13,29 @@
 import {
   ARMY_BLUEPRINTS, ARMY_PART_BY_ID, ARMY_SLOT_BY_CAT, ARMY_PART_COST,
   armyCapOf, armyBpPartNeeds, armyBpMaterialNeeds,
-} from '../data/army_parts.js?v=61.12';
+} from '../data/army_parts.js?v=62.13';
 import {
   armyStatsOfBp, armyPowerOf, armyPowerOfInstance, armyBuildCheck, listArmies, disbandArmy,
   getArmyBp, armyEffStats, armyPartMaterialOptions, trainArmy, cancelTraining, ARMY_LABOR_PER_BARRACKS,
   attachShipToArmy, detachShipFromArmy, shipEligibleForArmy, shipArmyOf, ARMY_SHIP_TECH,
   // v0.4.9：补员搬进 core/army.js（自动整补 + 手动紧急补员），不再从剧本层 hoi1936.js 取
   reinforceArmy, menMaxOf,
-} from '../core/army.js?v=61.12';
-import { addLine, removeLine, freeLaborOf } from '../core/production.js?v=61.12';
-import { fmtNum, fmtTime } from '../core/format.js?v=61.12';
+} from '../core/army.js?v=62.13';
+import { addLine, removeLine, freeLaborOf } from '../core/production.js?v=62.13';
+import { fmtNum, fmtTime } from '../core/format.js?v=62.13';
 // v0.4.6：从 core/shipyard.js 取材料合并表（**不从 production.js 取**——
 //   后者与 state.js 循环引用，直接 import 会在模块求值顺序不对时抛
 //   「Cannot access '_getInst' before initialization」）。
-import { materialLookupFor} from '../core/shipyard.js?v=61.12';
+import { materialLookupFor} from '../core/shipyard.js?v=62.13';
 // v0.4.13 修真实缺陷：`getPlanetInstance` 在 buildArmyRow（补员按钮）里被调用，
 //   但此前**从未 import** —— 点「补员」在浏览器里直接抛 ReferenceError，
 //   按钮等于废的。静态检查抓不到（未声明标识符要到运行期才炸），
 //   是这次给部署徽标做渲染验证时顺带撞出来的。
-import { currentAccount, getBuildingCounts, getPlanetInstance } from '../core/state.js?v=61.12';
-import { TECH_BY_ID } from '../data/techs.js?v=61.12';
+import { currentAccount, getBuildingCounts, getPlanetInstance } from '../core/state.js?v=62.13';
+import { TECH_BY_ID } from '../data/techs.js?v=62.13';
 // v0.4.7：el() 收敛到 ui/common.js（此前本文件自带一份；全项目共 14 份、两种不兼容签名，
 //   v0.3.2「列强区块不显示」即源于把 A 型调用写进了 B 型文件）
-import { el } from './common.js?v=61.12';
+import { el, uiTick } from './common.js?v=62.13';
 
 const ARMY_TECH = 't_m1';
 const ARMY_CATS = ['frame', 'mobility', 'weapon', 'armor', 'support'];
@@ -109,8 +109,8 @@ function findDeployment(acc, armyId) {
 
 
 // v0.4.13（③）部署徽标用到的引擎 API：取进行中的战役、交战上限常量、查战区名
-import { activeBattlesOf, BATTLE_MAX_HOURS } from '../core/battle.js?v=61.12';
-import { regionById } from '../core/theater.js?v=61.12';
+import { activeBattlesOf, BATTLE_MAX_HOURS } from '../core/battle.js?v=62.13';
+import { regionById } from '../core/theater.js?v=62.13';
 
 export function renderArmyPage(root, ctx) {
   ctx = ctx || {};
@@ -164,11 +164,9 @@ export function renderArmyPage(root, ctx) {
   // 旧定时器会把军队页重绘回去盖掉新 tab（v0.2.0 冒烟抓到）。改为检查本页标记。
   // v0.2.4：设计子页不自动重绘（避免清掉正在编辑的编制）。
   // v0.2.6：先清旧定时器再建新，避免每次重绘叠加无限增长的定时器（此前泄漏）。
-  if (root._armyTimer) { clearInterval(root._armyTimer); root._armyTimer = null; }
-  root._armyTimer = setInterval(() => {
-    if (typeof document !== 'undefined' && document.hidden) return;   // v0.4.21：后台标签页不重绘
-    const title = root.querySelector && root.querySelector('.page-title');
-    if (!title || title.textContent !== '军队') { clearInterval(root._armyTimer); root._armyTimer = null; return; }
+  // v0.4.22：统一走 uiTick —— 后台标签页跳过、本页门牌消失即停表，
+  //   这两条口径原先在本文件与另外 13 个 UI 文件里各写一份（见 common.js 说明）。
+  uiTick(root, '_armyTimer', () => {
     if (root._armySub === 'design') return;
     const accNow = ctx.account || currentAccount();
     const instNow = ctx.planet || null;
@@ -176,7 +174,12 @@ export function renderArmyPage(root, ctx) {
     const active = document.activeElement;
     if (active && root.contains(active) && (active.tagName === 'INPUT' || active.tagName === 'SELECT')) return;
     renderArmyPage(root, Object.assign({}, ctx, { account: accNow }));
-  }, 1000);
+  }, {
+    alive: () => {
+      const title = root.querySelector && root.querySelector('.page-title');
+      return !!title && title.textContent === '军队';
+    },
+  });
 }
 
 // ============================================================================

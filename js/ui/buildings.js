@@ -16,17 +16,17 @@
 // 与人力系统的关系：
 //   建筑提供工位 → 人力面板按建筑分组分配人 → 分配了「建筑工」才有人施工（硬门槛）。
 
-import { BUILDINGS, BUILDING_BY_ID, CATEGORIES} from '../data/buildings.js?v=61.12';
-import { fmtNum, fmtTime, fmtRateBody } from '../core/format.js?v=61.12';
+import { BUILDINGS, BUILDING_BY_ID, CATEGORIES} from '../data/buildings.js?v=62.13';
+import { fmtNum, fmtTime, fmtRateBody } from '../core/format.js?v=62.13';
 import {
   getBuildingCounts, buildingCount, costOfNext, isBuildingUnlocked,
   startBuild, cancelBuild, buildQueueOf, BUILD_QUEUE_MAX, currentAccount,
-} from '../core/state.js?v=61.12';
-import { buildingSlots, assignedToBuilding, freeSlots } from '../core/population.js?v=61.12';
-import { buildRateOf, buildBlockReason } from '../core/construction.js?v=61.12';
+} from '../core/state.js?v=62.13';
+import { buildingSlots, assignedToBuilding, freeSlots } from '../core/population.js?v=62.13';
+import { buildRateOf, buildBlockReason } from '../core/construction.js?v=62.13';
 // v0.4.7：el() 收敛到 ui/common.js（此前本文件自带一份；全项目共 14 份、两种不兼容签名，
 //   v0.3.2「列强区块不显示」即源于把 A 型调用写进了 B 型文件）
-import { el, ensureStyle } from './common.js?v=61.12';
+import { el, ensureStyle, uiTick } from './common.js?v=62.13';
 
 const CSS = `
   .bld-panel { font-family: system-ui, sans-serif; color: #e8eef2; padding: 12px; box-sizing: border-box; }
@@ -237,15 +237,12 @@ export function renderBuildings(root, ctx) {
 
   // 定时刷新：只在有工程在施工时重绘。
   // 多了一个防护——如果玩家正在操作面板上的下拉框/按钮，这一次重绘就跳过。
-  if (root._bldTimer) { clearInterval(root._bldTimer); root._bldTimer = null; }
   // prevHadQueue 记录「上一次重绘时队列是否非空」。
   // 旧逻辑只在队列非空时才重绘：施工完成的最后一刻队列被清空（advanceConstruction 里 shift），
   // 于是后续不再触发重绘，进度条整块（“正在施工”标题 + 进度条）会一直挂在面板上，下次刷新也不会消失。
   // 修正：队列从「有」变「空」的那一次也必须补一次重绘，把进度条清掉并刷新建筑数量。
   let prevHadQueue = buildQueueOf(planet).length > 0;
-  root._bldTimer = setInterval(() => {
-    if (typeof document !== 'undefined' && document.hidden) return;   // v0.4.21：后台标签页不刷新
-    if (!isMounted()) { clearInterval(root._bldTimer); root._bldTimer = null; return; }
+  uiTick(root, '_bldTimer', () => {
     const ae = (typeof document !== 'undefined' && document.activeElement) || null;
     if (ae && typeof root.contains === 'function' && root.contains(ae)) return;   // 正在操作，别打断
     const q = buildQueueOf(planet);
@@ -254,5 +251,5 @@ export function renderBuildings(root, ctx) {
       prevHadQueue = had;
       draw();
     }
-  }, 1000);
+  }, { alive: isMounted });
 }

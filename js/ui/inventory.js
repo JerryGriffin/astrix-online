@@ -24,15 +24,15 @@
 // 所有数字显示一律走 format.js 的 fmtNum / fmtRate / fmtRateBody / fmtSci。
 // 样式集中在 css/planet.css。
 
-import { MATERIALS } from '../data/materials.js?v=61.12';
-import { fmtNum, fmtRate, fmtSci } from '../core/format.js?v=61.12';
-import { getPlanetInstance, tick, currentAccount, atmosphereOf, ownedOf} from '../core/state.js?v=61.12';
-import { computePower } from '../core/power.js?v=61.12';
-import { equipmentList } from '../core/shipyard.js?v=61.12';
-import { materialLabel, productionRates } from '../core/production.js?v=61.12';
-import { BUILDING_BY_ID } from '../data/buildings.js?v=61.12';
-import { NUTRIENT_NAMES, METABOLITE_NAMES, consumptionPerSec, metabolitePerSec } from '../core/population.js?v=61.12';
-import { esc } from './common.js?v=61.12';
+import { MATERIALS } from '../data/materials.js?v=62.13';
+import { fmtNum, fmtRate, fmtSci } from '../core/format.js?v=62.13';
+import { getPlanetInstance, tick, currentAccount, atmosphereOf, ownedOf} from '../core/state.js?v=62.13';
+import { computePower } from '../core/power.js?v=62.13';
+import { equipmentList } from '../core/shipyard.js?v=62.13';
+import { materialLabel, productionRates } from '../core/production.js?v=62.13';
+import { BUILDING_BY_ID } from '../data/buildings.js?v=62.13';
+import { NUTRIENT_NAMES, METABOLITE_NAMES, consumptionPerSec, metabolitePerSec } from '../core/population.js?v=62.13';
+import { esc, uiTick } from './common.js?v=62.13';
 
 // 分组顺序与中文标题
 // v0.0.91：同事把星球数据拆成 surface(地表) / underground(浅层) / deep(深层) / core(地核) / gas(气体) 五层。
@@ -65,7 +65,9 @@ function resolveInstance(planetOrCtx) {
 // 改用「模块级 active 记录正在显示的那个容器」，定时器只刷 active；面板被卸载
 // （isConnected 为 false）时把 active 置空，切回来重新 render 时再更新 active。
 let activeInventory = null;
-let invRefreshTimer = null;
+// v0.4.22：定时器句柄改挂在这个宿主对象上，交给 ui/common.js 的 uiTick 统一管理
+//   （后台跳过 + 停止条件收敛；原来这里与另外 13 个 UI 文件各写一份同样的守卫）
+const invHost = { t: null };
 
 // 丰度格式化：极小走科学记数法
 function fmtAbundance(a) {
@@ -312,14 +314,12 @@ export function renderInventory(container, planetOrCtx) {
   activeInventory = container;
   // v0.0.7：全局唯一 250ms 定时器，只刷 active 容器——
   // 玩家切到别的 tab 再切回来，active 已重新指向当前容器，数字继续更新。
-  if (!invRefreshTimer) {
-    invRefreshTimer = setInterval(() => {
-      // v0.4.21：后台标签页不刷新（页面不可见时重绘纯属浪费 CPU，回到前台 250ms 内即恢复）
-      if (typeof document !== 'undefined' && document.hidden) return;
+  if (!invHost.t) {
+    uiTick(invHost, 't', () => {
       const c = activeInventory;
       if (!c || !c.isConnected) { activeInventory = null; return; }
       if (c._invRefresh) c._invRefresh();
-    }, 250);
+    }, { ms: 250 });
   }
 }
 

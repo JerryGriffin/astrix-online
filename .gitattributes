@@ -30,3 +30,9 @@
 *.ttf   binary
 *.zip   binary
 
+# v0.4.22：内置的第三方云 SDK 是压缩产物，必须与 npm 发布包**逐字节一致**
+#   （cloud.js 里记录了对应的 sha256，用于升级时核验来源）。
+#   若按文本处理，Windows 上 checkout 会被换成 CRLF，哈希立刻对不上，
+#   「逐字节一致」这句话就失去了可验证性。故禁止一切行尾/内容转换。
+assets/vendor/*.js binary
+

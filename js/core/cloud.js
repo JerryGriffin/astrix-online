@@ -19,11 +19,24 @@
 //   → 「打别人 / 贸易别人」= 插入一条 target_uid 指向对方的事件；
 //     对方上线后在收件箱本地结算，并把回执（战报/贸易结算）作为新事件发回。
 
-import { CACHE_TAG } from '../version.js?v=61.12';
+import { CACHE_TAG } from '../version.js?v=62.13';
 
 const CLOUD_ENDPOINT = 'https://astrix.app.workbuddy.host';
 const CLOUD_PUBLISHABLE_KEY = 'wbpk_a83qn1S1YtnqmhL6Wb2oF3_dIuTVZ1qLa1Ph94JTqQhmspVf2q27z14';
-const SDK_URL = 'https://cdn.jsdelivr.net/npm/@tencent-ai/workbuddy-cloud-sdk@dev/lib/index.global.js';
+// v0.4.22：**版本必须三处一致**。此前主源用 `@dev` 浮动标签（构建不可复现：上游任意一次
+//   预发布都会静默改变线上行为），而兜底源与内置副本停在 0.1.3 —— 两条路径跨一个 minor，
+//   表现为「同一账号在不同网络环境下行为不同」，极难复现。
+//   现在三个来源统一钉在 0.1.4（最新稳定版）。升级时**必须同时改这三行 + 替换内置副本**，
+//   否则会重新分叉。内置副本应与 npm 发布产物**逐字节相同**：
+//     @tencent-ai/workbuddy-cloud-sdk@0.1.4 → lib/index.global.js
+//     sha256 = fd82877f6c3ac9836e604ad400ac5d84b26a39e98d1d871536781046a7ac3d27
+//     验证：`npm pack @tencent-ai/workbuddy-cloud-sdk@0.1.4` 解包后比对 sha256sum。
+//   选 0.1.4 而非回退 0.1.3 的理由：线上主路径此前一直跑 0.1.4-dev，
+//   钉到 0.1.4 稳定版是**保持既有行为**的最小改动；且 0.1.3/0.1.4 两个 bundle 都已
+//   核对过本项目用到的全部入口（createWorkBuddyCloud / auth.getSession /
+//   signInWithPassword / signUp / sendOtp / verifyOtp / signOut / database）。
+const SDK_VERSION = '0.1.4';
+const SDK_URL = `https://cdn.jsdelivr.net/npm/@tencent-ai/workbuddy-cloud-sdk@${SDK_VERSION}/lib/index.global.js`;
 
 // 原生/桥接通道判定（**调用时动态判定**，v0.2.8）
 //   * location.origin 与云端点同源 → 原生；
@@ -52,7 +65,7 @@ let _loadPromise = null;
 // 依次尝试：主 CDN → fastly 镜像 → 仓库内本地兜底副本（assets/vendor/，随发布更新）。
 const SDK_URLS = [
   SDK_URL,
-  'https://fastly.jsdelivr.net/npm/@tencent-ai/workbuddy-cloud-sdk@0.1.3/lib/index.global.js',
+  `https://fastly.jsdelivr.net/npm/@tencent-ai/workbuddy-cloud-sdk@${SDK_VERSION}/lib/index.global.js`,
   'assets/vendor/workbuddy-cloud-sdk.js?v=' + CACHE_TAG,
 ];
 

@@ -15,11 +15,14 @@
 // ============================================================================
 
 import { pathToFileURL } from 'node:url';
-import { dirname, join } from 'node:path';
+import { dirname, join, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { readFileSync, readdirSync, statSync } from 'node:fs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-const { CACHE_TAG } = await import(pathToFileURL(join(ROOT, 'js/version.js')).href);
+const { CACHE_TAG, VERSION, VERSION_NUM, REVISION } = await import(pathToFileURL(join(ROOT, 'js/version.js')).href);
+// v0.4.22：更新日志已拆到 data/changelog.js
+const { VERSIONS } = await import(pathToFileURL(join(ROOT, 'js/data/changelog.js')).href + `?v=${CACHE_TAG}`);
 
 const TH = await import(pathToFileURL(join(ROOT, 'js/core/theater.js')).href + `?v=${CACHE_TAG}`);
 const B = await import(pathToFileURL(join(ROOT, 'js/core/battle.js')).href + `?v=${CACHE_TAG}`);
@@ -271,6 +274,73 @@ section('P2 util 收敛：hash32 / mulberry32 与原实现逐位一致');
 
   ok(U.clamp(0.5, 0, 1) === 0.5 && U.clamp(-1, 0, 1) === 0 && U.clamp(2, 0, 1) === 1, 'clamp 边界正常');
   ok(Object.is(U.clamp(NaN, 0, 1), Math.max(0, Math.min(1, NaN))), 'clamp 保持 NaN 传播语义（收敛零副作用）');
+}
+
+// ============================================================================
+section('④ 版本元数据与缓存串自洽性（v0.4.22 新增）');
+// ============================================================================
+// 为什么要查这一组
+//   发版最脆的一步是「改完代码忘记跑 bump_imports」：版本号没变 → 静态部署
+//   不发 Cache-Control → 浏览器继续吃旧模块 → 新旧模块拼出
+//   "does not provide an export named" 的黑屏（v0.0.62 事故）。
+//   这里把「版本号三处自洽」与「全库 ?v= 必须全部等于当前 CACHE_TAG」变成断言，
+//   漏跑 bump 时自检会直接红，而不是等玩家报白屏。
+//   注：只在文本层面比对，不解析 AST；注释里的示例 import 会先被剥掉。
+{
+  const pkg = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8'));
+  ok(pkg.version === String(VERSION).replace(/^v/, ''), 'package.json version 与 VERSION 一致',
+     pkg.version + ' vs ' + VERSION);
+  ok(CACHE_TAG === VERSION_NUM + '.' + REVISION, 'CACHE_TAG = VERSION_NUM.REVISION', String(CACHE_TAG));
+  ok(Array.isArray(VERSIONS) && VERSIONS.length > 0 && VERSIONS[0][0] === VERSION,
+     '更新日志首条与 VERSION 一致', VERSIONS[0][0]);
+  ok(VERSIONS.every((v) => Array.isArray(v) && v.length === 3 && Array.isArray(v[2])),
+     '更新日志每项结构为 [版本, 日期, 条目数组]', 'n=' + VERSIONS.length);
+
+  // js/ 下的相对 .js 导入：必须带且仅带当前 CACHE_TAG
+  const jsFiles = [];
+  (function walk(dir) {
+    for (const name of readdirSync(dir)) {
+      const p = join(dir, name);
+      if (statSync(p).isDirectory()) walk(p);
+      else if (name.endsWith('.js')) jsFiles.push(p);
+    }
+  })(join(ROOT, 'js'));
+
+  const badImports = [];
+  let importTotal = 0;
+  for (const f of jsFiles) {
+    const src = readFileSync(f, 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '')      // 块注释
+      .replace(/^[ \t]*\/\/.*$/gm, '');      // 整行行注释
+    for (const m of src.matchAll(/(['"])(\.{1,2}\/[^'"]*?\.js)(\?v=([^'"]*))?\1/g)) {
+      importTotal++;
+      if (m[4] !== String(CACHE_TAG)) badImports.push(basename(f) + ' → ' + m[2] + ' (?v=' + (m[4] ?? '缺') + ')');
+    }
+  }
+  ok(importTotal > 0, '扫描到 js/ 的相对导入', 'n=' + importTotal);
+  ok(badImports.length === 0, 'js/ 全部相对导入的 ?v= 等于当前 CACHE_TAG',
+     badImports.length ? badImports.slice(0, 5).join('; ') + (badImports.length > 5 ? ' …' : '') : 'all ok');
+
+  // index.html 的 css / js 引用
+  const html = readFileSync(join(ROOT, 'index.html'), 'utf8');
+  const badHtml = [];
+  let htmlRefs = 0;
+  for (const m of html.matchAll(/(\?v=)([^"'>\s]*)(?=["'])/g)) {
+    htmlRefs++;
+    if (m[2] !== String(CACHE_TAG)) badHtml.push('?v=' + m[2]);
+  }
+  ok(htmlRefs > 0, 'index.html 含带版本串的引用', 'n=' + htmlRefs);
+  ok(badHtml.length === 0, 'index.html 全部 ?v= 等于当前 CACHE_TAG', badHtml.join(', ') || 'all ok');
+
+  // 云 SDK 三源版本必须一致（主 CDN / 备用 CDN / 内置副本）
+  const cloudSrc = readFileSync(join(ROOT, 'js/core/cloud.js'), 'utf8');
+  const sdkVers = [...cloudSrc.matchAll(/workbuddy-cloud-sdk@([\w.\-]+)/g)].map((m) => m[1]);
+  ok(sdkVers.length >= 2, 'cloud.js 声明了多个 CDN 源', 'n=' + sdkVers.length);
+  ok(new Set(sdkVers).size === 1, '云 SDK 各 CDN 源版本一致', [...new Set(sdkVers)].join(' / '));
+  ok(!sdkVers.includes('dev'), '云 SDK 不再使用浮动 dev 标签', sdkVers.join(','));
+  const vendored = join(ROOT, 'assets/vendor/workbuddy-cloud-sdk.js');
+  const vendoredSize = statSync(vendored).size;
+  ok(vendoredSize > 50000, '内置 SDK 副本存在且体积合理', vendoredSize + ' B');
 }
 
 // ============================================================================

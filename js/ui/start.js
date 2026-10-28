@@ -1,12 +1,13 @@
 // 开始界面：标题、离线/在线模式、账号选择、各次要入口模态层（Astrix）
-import {  STATE, createAccount, switchAccount, deleteAccount, currentAccount, START_MODES, switchPool  } from '../core/state.js?v=61.12';
+import {  STATE, createAccount, switchAccount, deleteAccount, currentAccount, START_MODES, switchPool  } from '../core/state.js?v=62.13';
 // v0.4.19：不再需要科幻势力表 —— 开局势力下拉框已整段移除（见下方 buildNewAccountForm）
-import { fmtNum, fmtTime } from '../core/format.js?v=61.12';
+import { fmtNum, fmtTime } from '../core/format.js?v=62.13';
 // 版本号与更新日志的唯一来源：任何地方要显示版本都从这里取，改版本只改 js/version.js 一处
-import { VERSION, VERSIONS } from '../version.js?v=61.12';
+// v0.4.22：VERSIONS 已拆到 data/changelog.js 并按需动态加载（体积原因，见 version.js 注释）
+import { VERSION, CACHE_TAG } from '../version.js?v=62.13';
 // v0.4.7：el() 收敛到 ui/common.js（此前本文件自带一份；全项目共 14 份、两种不兼容签名，
 //   v0.3.2「列强区块不显示」即源于把 A 型调用写进了 B 型文件）
-import { el, esc } from './common.js?v=61.12';
+import { el, esc } from './common.js?v=62.13';
 
 // 自定义二次确认弹层
 function confirmModal(ctx, title, msg, onYes) {
@@ -274,11 +275,23 @@ function renderNewSaveForm(body, ctx, pool) {
 }
 
 // ===== 次要入口内容 =====
-function openChangelog(ctx) {
+// v0.4.22：改为 async —— 更新日志已拆到 data/changelog.js，点开面板时才拉取
+//   （整份日志 gzip 后 64 KB，占全部 JS 压缩体积的 11.7%，不该进首屏）。
+//   动态 import 的路径必须自己拼 ?v=，且要用模板串：写成裸字符串字面量会被
+//   docs/bump_imports.mjs 的正则当成静态导入改写成一个固定版本串。
+async function openChangelog(ctx) {
+  ctx.openModal({ title: '更新日志', body: '加载中…' });
+  let versions = [];
+  try {
+    ({ VERSIONS: versions } = await import(`../data/changelog.js?v=${CACHE_TAG}`));
+  } catch (e) {
+    ctx.openModal({ title: '更新日志', body: '更新日志加载失败（可能是缓存不一致，刷新页面重试）。' });
+    return;
+  }
   const body = document.createElement('div');
-  // 更新日志来自 js/version.js（唯一来源），此处不再硬编码版本号与条目
+  // 更新日志来自 js/data/changelog.js（唯一来源），此处不再硬编码版本号与条目
   const parts = ['<div class="changelog">'];
-  for (const [verName, date, items] of VERSIONS) {
+  for (const [verName, date, items] of versions) {
     parts.push('<div class="cl-item">');
     parts.push('<div class="cl-ver">' + verName + ' <span class="muted">· ' + date + '</span></div>');
     parts.push('<ul class="cl-list">');

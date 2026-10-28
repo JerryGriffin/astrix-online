@@ -10,18 +10,18 @@
 // 全部公式集中在这里，方便策划调参
 // ============================================================================
 
-import { MATERIALS } from '../data/materials.js?v=61.12';
+import { MATERIALS } from '../data/materials.js?v=62.13';
 import {
   PART_BY_ID, HULLS, ENGINES, WEAPONS, FACILITIES, MARKS,
   MATERIAL_SLOTS, DEFAULT_MATERIAL, PART_CATEGORIES,
   craftableParts, isPartUnlocked,
-} from '../data/ship_parts.js?v=61.12';
+} from '../data/ship_parts.js?v=62.13';
 // 军用部件（ap_*）与舰船部件共用 inst.equipment 库存（key=partId@材料），
 // 装备清单/拍卖行列装备时必须两类都能解析出中文名（v0.2.8 修复：军用装备露出英文 id）
-import { ARMY_PART_BY_ID } from '../data/army_parts.js?v=61.12';
-import { POWER_FACILITY_BY_ID } from '../data/facilities.js?v=61.12';
-import { FUEL_BY_NAME } from '../data/fuels.js?v=61.12';
-import { PLANETS } from '../data/planets.js?v=61.12';
+import { ARMY_PART_BY_ID } from '../data/army_parts.js?v=62.13';
+import { POWER_FACILITY_BY_ID } from '../data/facilities.js?v=62.13';
+import { FUEL_BY_NAME } from '../data/fuels.js?v=62.13';
+import { PLANETS } from '../data/planets.js?v=62.13';
 
 // 自建材料中文名索引（materials.js 只导出 MATERIALS 数组）
 const MAT_BY_NAME = Object.fromEntries(MATERIALS.map((m) => [m.nameCn, m]));
@@ -764,7 +764,10 @@ export function createShip(bp, ctx = {}) {
       //   结论：保留副本。若日后存档体积真的成为瓶颈，正确做法是
       //   **把 acc.blueprints 抽成独立的全局蓝图库**（按 id 存一份），
       //   而不是在每艘船上挂副本。
-      blueprint: JSON.parse(JSON.stringify(bp)),
+      // v0.4.22：深拷贝手段从 JSON 往返换为 structuredClone —— 语义等价（都能剥掉
+      //   原型与不可序列化成员、都是纯数据快照），但省去一次字符串化 + 解析的
+      //   中间串分配，单张蓝图 380 字节级的拷贝在批量造船时会被调用几十次。
+      blueprint: structuredClone(bp),
       stats: {
         capacity: ev.capacity, footprint: ev.footprint, slots: ev.slots, slotsUsed: ev.slotsUsed,
         massT: ev.massT, thrust: ev.thrust, speed: ev.speed,

@@ -9,17 +9,17 @@
 // 「船上设施」已从科技树移到「设施」子分类，科技树里只保留解锁它们的节点。
 //
 // 研究点存放在账号对象上（acc.researchPoints / acc.tech / acc.upgrades）。
-import { TECHS, TECH_BY_ID, BRANCHES, techsByTier, canResearch, missingPrereqs, missingBuilding, facilityTechs } from '../data/techs.js?v=61.12';
-import { researchTech, buyUpgrade, currentAccount, getPlanetInstance, RESEARCH_UNIT } from '../core/state.js?v=61.12';
-import { UPGRADES, upgradeCost, upgradeMul, upgradeFactorAt } from '../data/upgrades.js?v=61.12';
-import { BUILDING_BY_ID } from '../data/buildings.js?v=61.12';
-import { FACILITIES, MATERIAL_SLOTS, DEFAULT_MATERIAL, isPartUnlocked } from '../data/ship_parts.js?v=61.12';
-import { materialMul, resolvePart } from '../core/shipyard.js?v=61.12';
-import { fmtNum, fmtTime, fmtRate } from '../core/format.js?v=61.12';
-import { jobsOfBuilding, jobOutput } from '../core/population.js?v=61.12';
+import { TECHS, TECH_BY_ID, BRANCHES, techsByTier, canResearch, missingPrereqs, missingBuilding, facilityTechs } from '../data/techs.js?v=62.13';
+import { researchTech, buyUpgrade, currentAccount, getPlanetInstance, RESEARCH_UNIT } from '../core/state.js?v=62.13';
+import { UPGRADES, upgradeCost, upgradeMul, upgradeFactorAt } from '../data/upgrades.js?v=62.13';
+import { BUILDING_BY_ID } from '../data/buildings.js?v=62.13';
+import { FACILITIES, MATERIAL_SLOTS, DEFAULT_MATERIAL, isPartUnlocked } from '../data/ship_parts.js?v=62.13';
+import { materialMul, resolvePart } from '../core/shipyard.js?v=62.13';
+import { fmtNum, fmtTime, fmtRate } from '../core/format.js?v=62.13';
+import { jobsOfBuilding, jobOutput } from '../core/population.js?v=62.13';
 // v0.4.7：el() 收敛到 ui/common.js（此前本文件自带一份；全项目共 14 份、两种不兼容签名，
 //   v0.3.2「列强区块不显示」即源于把 A 型调用写进了 B 型文件）
-import { el, esc } from './common.js?v=61.12';
+import { el, esc, uiTick } from './common.js?v=62.13';
 
 // 电力设施科技 id 末尾的档位号（t_fac_battery_1 → 1），用于同组内按档位排序
 function facTierNum(id) {
@@ -135,9 +135,10 @@ export function renderResearch(root, ctx) {
   //   研究完成（或离线结算里完成）后立刻整块重绘：卡片变绿色「已解锁」，
   //   以它为前置的后继科技立刻变为可研究，不需要玩家手动切页刷新。
   let _lastTechKey = (account.tech || []).join('|');
-  root._resTimer = setInterval(() => {
-    if (typeof document !== 'undefined' && document.hidden) return;   // v0.4.21：后台标签页不刷新
-    if (!root.querySelector('.research-wrap')) { clearInterval(root._resTimer); root._resTimer = null; return; }
+  // v0.4.22：改用 uiTick —— 顺带修掉一处定时器叠加：原写法**没有先清旧表**，
+  //   而下面「科技集合变化 → renderResearch 整块重绘」会在旧表还在跑时再建一个新表，
+  //   研究完成后旧表与新表同时存在（此后每完成一项科技就多一只），越玩越卡。
+  uiTick(root, '_resTimer', () => {
     const ts = new Set(account.tech);
     const key = (account.tech || []).join('|');
     if (key !== _lastTechKey) {          // 科技集合变了 → 立刻重绘
@@ -148,7 +149,7 @@ export function renderResearch(root, ctx) {
     pointsNode.textContent = fmtNum(account.researchPoints);
     techCountNode.textContent = techRegion.filter((t) => ts.has(t.id)).length + ' / ' + techTotal;
     updateGrowth();
-  }, 1000);
+  }, { alive: () => !!root.querySelector('.research-wrap') });
 
   // ===== 三大方向切换 =====
   const nav = el('div', 'res-nav');

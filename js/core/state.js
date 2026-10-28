@@ -15,8 +15,8 @@
 //    开局自带 1 座建筑工厂（设计者：「开局有一个建筑工厂」）。
 // 5. 施工队列由 tick 推进：速度 = 建筑工有效人力（受建筑工厂工位限制），无人则为 0。
 
-import { PLANETS } from '../data/planets.js?v=61.12';
-import { HOI_NATIONS, HOI_BY_ID, HOI_SCENARIO_ID } from '../data/hoi1936.js?v=61.12';   // v0.2.6 官方 mod 1936 剧本
+import { PLANETS } from '../data/planets.js?v=62.13';
+import { HOI_NATIONS, HOI_BY_ID, HOI_SCENARIO_ID } from '../data/hoi1936.js?v=62.13';   // v0.2.6 官方 mod 1936 剧本
 import {
   setHoiDeps, popOf, setupArmies, setupNavy, setupLines, setupBloc, setupFactories, setupColony, ensureShipNames, backgroundOf, repairScenarioEstates, setupGermanPuppets, tickWarsHoi4, tickJustify, tickDiploAI, staffBuildings, applyInfiniteReserve,
   ensureFocus, tickFocus, ensureSeas, scenarioDateOf, gameDaysOf,
@@ -25,58 +25,58 @@ import {
   // v0.4.9 修：`blocNameOf` 在下面第 1600 行拼「科幻开局简报」时用到，却**从未 import**，
   //   抛 ReferenceError 被 softFail 吞掉 —— 开局简报里的阵营一行永远出不来。
   blocNameOf,
-} from './hoi1936.js?v=61.12';
-import { SCI_SCENARIO_ID, SCI_NATIONS, sciPopOf} from '../data/scenario_sci.js?v=61.12';
-import { BUILDING_BY_ID, buildingCost } from '../data/buildings.js?v=61.12';
-import { TECH_BY_ID, canResearch, missingPrereqs} from '../data/techs.js?v=61.12';
-import { UPGRADES, upgradeCost } from '../data/upgrades.js?v=61.12';
+} from './hoi1936.js?v=62.13';
+import { SCI_SCENARIO_ID, SCI_NATIONS, sciPopOf} from '../data/scenario_sci.js?v=62.13';
+import { BUILDING_BY_ID, buildingCost } from '../data/buildings.js?v=62.13';
+import { TECH_BY_ID, canResearch, missingPrereqs} from '../data/techs.js?v=62.13';
+import { UPGRADES, upgradeCost } from '../data/upgrades.js?v=62.13';
 import {
   createPopulation, tickPopulation, getAvailable, gatherLaborByLayer, jobsOfBuilding, getIntensity,
   consumptionPerSec, jobOutput,
   JOBS, freeSlots,
-} from './population.js?v=61.12';
-import { buildRateOf, buildBlockReason } from './construction.js?v=61.12';
-import { tickShip, defaultBlueprints, createShip, shipBuildTick } from './shipyard.js?v=61.12';
+} from './population.js?v=62.13';
+import { buildRateOf, buildBlockReason } from './construction.js?v=62.13';
+import { tickShip, defaultBlueprints, createShip, shipBuildTick } from './shipyard.js?v=62.13';
 // v0.0.6：电力系统与配方生产。
 // 注意这两个模块**不反向 import 本文件**（否则形成循环依赖），
 // 它们只从传入的 inst 上读 buildings / pop / inventory / recipes。
-import { energyOf, computePower, tickPower } from './power.js?v=61.12';
+import { energyOf, computePower, tickPower } from './power.js?v=62.13';
 // v0.0.91：efficiencyBonus 由 production.js 导出（建筑总座数效率乘数），
 //   这里沿用既有的 state→production 单向边引入，不反向让 production import state，避免循环依赖。
-import { tickProduction, productionRates, ensureLines, lineWorkersTotal, efficiencyBonus, ensureEntry, addLine as addProductionLine, lineSlotInfo, freeLaborOf } from './production.js?v=61.12';
+import { tickProduction, productionRates, ensureLines, lineWorkersTotal, efficiencyBonus, ensureEntry, addLine as addProductionLine, lineSlotInfo, freeLaborOf } from './production.js?v=62.13';
 // v0.0.92：星际航行与殖民（管理模式 / 独立倾向 / 随机星球）
-import { tickIndependence, outputMulOf, happinessDeltaOf, ensureDiscoveredDefaults, discoverPlanet, capturePlanet, purgeShopColonies, tickManagedColonies, SHOP_PLANET_CODE } from './planetgen.js?v=61.12';
+import { tickIndependence, outputMulOf, happinessDeltaOf, ensureDiscoveredDefaults, discoverPlanet, capturePlanet, purgeShopColonies, tickManagedColonies, SHOP_PLANET_CODE } from './planetgen.js?v=62.13';
 // v0.1.2（需求 18/19）：永久升级的「效果」改乘方，唯一实现在 data/upgrades.js#upgradeMul
 // （UI 的 research.js 也用它，别在别处再写一套公式）。
 // 此前 upg_collect/refine/power/labor/research/build 六项付了钱却没有任何效果。
-import { upgradeMul } from '../data/upgrades.js?v=61.12';
+import { upgradeMul } from '../data/upgrades.js?v=62.13';
 // v0.4.7：softFail —— 心跳里被吞掉的异常改为「可观测」（同 tag+message 只报一次，
 //   避免每 tick 抛错把控制台刷爆）。此前 40 处空 catch 无一日志，
 //   是「界面不显示 / 功能没反应」类问题反复无法定位的共同根因。
-import { softFail } from './util.js?v=61.12';
-import { tickFleetMissions, ensureFleets } from './fleet.js?v=61.12';
+import { softFail } from './util.js?v=62.13';
+import { tickFleetMissions, ensureFleets } from './fleet.js?v=62.13';
 // v0.4.7：healArmyLineLabor —— 自愈「零人力」的军队组装线（见 advanceArmyLines 注释）
-import { ensureArmies, armyBuildTick, advanceTraining, healArmyLineLabor, recoverArmies} from './army.js?v=61.12';   // v0.2.0 军队
+import { ensureArmies, armyBuildTick, advanceTraining, healArmyLineLabor, recoverArmies} from './army.js?v=62.13';   // v0.2.0 军队
 // v0.3.4：战役系统（HOI4 式持续交战）。必须在 ensureArmies **之后**接线 ——
 //   战役结算要从真实 acc.armies 取师（兵员/攻防），否则打的是空数组。
-import { tickBattles, ensureBattles, orbitalControlOf, startBattle, BATTLE_MAX_PER_WAR, unshiftWarLog } from './battle.js?v=61.12';
+import { tickBattles, ensureBattles, orbitalControlOf, startBattle, BATTLE_MAX_PER_WAR, unshiftWarLog } from './battle.js?v=62.13';
 // v0.4.1：行星战区地图（战区归属 / 补给网络 / 战略打击 / 敌方 AI 战略层）
 import {
   ensureTheater, refreshSupply, decayStrikePressure, tickTheaterAI,
   tickRegions, regionYieldOf, colonySupportOf,
   regionsOf, treatyOutputMulOf, STRUCTURE_OUTPUT_MUL,
-} from './theater.js?v=61.12';
+} from './theater.js?v=62.13';
 // v0.4.7：附庸上贡的换算汇率也来自 treaty.js（此前这里是写死的 *1000）
-import { tickVassals, VASSAL_ASCOIN_RATE, VASSAL_RESEARCH_RATE } from './treaty.js?v=61.12';
+import { tickVassals, VASSAL_ASCOIN_RATE, VASSAL_RESEARCH_RATE } from './treaty.js?v=62.13';
 // 注：ensureEntry 已在上面从 ./production.js 一并导入，勿重复 import。
 // v0.1.0：电脑账号（离线存档里的 NPC 势力）与其交易池联动。
 //   注意 npc.js 是叶子模块（只 import 数据表），shop.js 与 state.js 互为函数级引用、无顶层副作用。
-import { ensureNpcs, tickNpcs } from './npc.js?v=61.12';
+import { ensureNpcs, tickNpcs } from './npc.js?v=62.13';
 import {
   priceOf as shopPriceOf, suggestPriceOf as shopSuggestPriceOf,
   tickShop as shopTick,
-} from './shop.js?v=61.12';
-import { tickAuctions, tickNpcAuctionSpawner } from './auction.js?v=61.12';   // v0.2.6 拍卖行；v0.2.10 NPC 挂单
+} from './shop.js?v=62.13';
+import { tickAuctions, tickNpcAuctionSpawner } from './auction.js?v=62.13';   // v0.2.6 拍卖行；v0.2.10 NPC 挂单
 
 const SAVE_PREFIX = 'astrix.save.';
 const INDEX_KEY = SAVE_PREFIX + 'index';
@@ -189,6 +189,8 @@ export function switchPool(mode) {
 }
 
 // 把 STATE 中的账号与索引写回适配器（v0.2.5：按 STATE.mode 写对应池）
+// ⚠️ 本函数是**同步**语义，调用方依赖它「返回时已落盘」（切档 / 切池 / 卸载前保存）。
+//   心跳里的自动存档不要直接调它，改用下面的 scheduleSave()。
 export function saveState() {
   const keys = poolKeys(STATE.mode === 'online' ? 'online' : 'offline');
   const idx = {
@@ -210,6 +212,34 @@ export function saveState() {
   if (STATE.currentAccountId) {
     adapter.set(keys.planets + STATE.currentAccountId, JSON.stringify(STATE.planets));
   }
+}
+
+// ============================================================================
+// 自动存档调度（v0.4.22 新增）
+// ============================================================================
+// 为什么要拆出「何时写」与「写什么」
+//   saveState() 一次要做 1+N 次 JSON.stringify（账号、每个存档、当前账号的全部星球实例）
+//   再走同步的 localStorage.setItem。存档随游戏进程单调增长（多星球 / 战区 / 舰队 /
+//   建筑实例），到中后期单次落盘可能在主线程上占掉几十毫秒 —— 而心跳恰好每 10 秒
+//   在玩家操作途中触发一次，表现为毫无规律的卡顿。
+//   现在心跳只「登记一次待写」，真正的序列化放到浏览器空闲期（最长等 2 秒）。
+// 两条路径必须并存：
+//   * 显式落盘（切档 / 切池 / 删档 / beforeunload）继续走同步 saveState()，
+//     语义不变 —— 卸载时 requestIdleCallback 根本不会被调度；
+//   * 心跳走 scheduleSave()，同一时刻只登记一次，避免连续多拍排队。
+let _saveScheduled = false;
+
+export function scheduleSave() {
+  if (_saveScheduled) return;
+  _saveScheduled = true;
+  const run = () => {
+    _saveScheduled = false;
+    try { saveState(); } catch (e) { softFail('定时存档', e); }
+  };
+  if (typeof requestIdleCallback === 'function') {
+    try { requestIdleCallback(run, { timeout: 2000 }); return; } catch (e) { /* 退化为宏任务 */ }
+  }
+  setTimeout(run, 0);
 }
 
 // 新建账号并切换为当前账号
@@ -1398,9 +1428,9 @@ export function tick(dt = 1) {
       try { tickShip(ship, dt, { acc }); } catch (e) { softFail('单艘船的异常不拖垮心跳', e); }
     }
   }
-  // 内置自动存档，累计到间隔就落盘一次
+  // 内置自动存档，累计到间隔就登记一次落盘（v0.4.22：改由 scheduleSave 放到空闲期执行）
   _sinceSave += dt;
-  if (_sinceSave >= AUTOSAVE_INTERVAL) { _sinceSave = 0; saveState(); }
+  if (_sinceSave >= AUTOSAVE_INTERVAL) { _sinceSave = 0; scheduleSave(); }
 }
 
 // ============================================================================

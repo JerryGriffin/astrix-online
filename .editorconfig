@@ -1,0 +1,25 @@
+# 编辑器统一约定（v0.4.22）
+# 与 .gitattributes 的 `* text=auto` 配套：入库一律 LF，Windows 工作区由 core.autocrlf 决定。
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 2
+
+[*.md]
+# Markdown 里行尾两个空格是换行语法，不能剪
+trim_trailing_whitespace = false
+
+[*.{jpg,jpeg,png,gif,ico,woff,woff2,ttf}]
+# 二进制不要做任何文本处理
+insert_final_newline = false
+
+# 内置的第三方 SDK 是压缩产物，逐字节对应 npm 发布包，禁止格式化/改行尾
+[assets/vendor/*.js]
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = false

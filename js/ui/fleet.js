@@ -3,33 +3,33 @@
 // 更新：v0.1.1 五指令改为持续任务（startMission，任务行显示倒计时），
 //       新增船载仓库面板；编队 / 五指令区块挂船坞门禁；交易池区 2s 心跳局部刷新。
 
-import { fmtNum, fmtTime} from '../core/format.js?v=61.12';
+import { fmtNum, fmtTime} from '../core/format.js?v=62.13';
 import {
   listFleets, createFleet, disbandFleet, addShipToFleet, removeShipFromFleet,
   fleetSpeedOf, fleetPowerOf, executeCommand,
   startMission, cancelMission, fleetMissionLabel, defenseBonusOf,
   shipCargoOf, loadShipCargo, unloadShipCargo,
   shipCargoMassOf, shipCargoCellsOf, shipCargoCellsMax, effectiveSpeedOf,
-} from '../core/fleet.js?v=61.12';
+} from '../core/fleet.js?v=62.13';
 import {
   MANAGEMENT_MODES, MANAGEMENT_BY_ID, modeOf, setManagement,
   TERRITORY_ASSIMILATE_SEC, TERRITORY_HAPPY_THRESHOLD,
-} from '../core/planetgen.js?v=61.12';
+} from '../core/planetgen.js?v=62.13';
 import {
   SHOP_PLANET, shopPrices, sell, pendingOrders, deliverOrder, ascoinBalance,
   shopStateOf, applySharedPrice,
   marketBuy, marketSell, warehouseOf, ensureShopWarehouse,
-} from '../core/shop.js?v=61.12';
+} from '../core/shop.js?v=62.13';
 import {
   createAuction, placeBid, activeAuctions, auctionLog,
   myAuctionableResources, myAuctionableEquipment, myAuctionableShips, ensureAuctions,
-} from '../core/auction.js?v=61.12';
-import { getPlanetInstance, currentAccount, ownedOf, STATE } from '../core/state.js?v=61.12';
-import { cloudUser, fetchSharedWarehouse, upsertSharedWarehouseRow, upsertSharedPriceRow } from '../core/cloud.js?v=61.12';
-import { MATERIALS } from '../data/materials.js?v=61.12';
+} from '../core/auction.js?v=62.13';
+import { getPlanetInstance, currentAccount, ownedOf, STATE } from '../core/state.js?v=62.13';
+import { cloudUser, fetchSharedWarehouse, upsertSharedWarehouseRow, upsertSharedPriceRow } from '../core/cloud.js?v=62.13';
+import { MATERIALS } from '../data/materials.js?v=62.13';
 // v0.4.7：el() 收敛到 ui/common.js（此前本文件自带一份；全项目共 14 份、两种不兼容签名，
 //   v0.3.2「列强区块不显示」即源于把 A 型调用写进了 B 型文件）
-import { el, esc } from './common.js?v=61.12';
+import { el, esc, uiTick, stopUiTick } from './common.js?v=62.13';
 
 // v0.4.20：本文件原有的本地 `esc()` 已删除，统一改用 ui/common.js#esc
 function btn(text, cls) {
@@ -59,21 +59,17 @@ const CMD_TIP = {
 //   不打断输入焦点；页面隐藏或面板未挂载时跳过 / 停表。
 // ============================================================================
 function startFleetHeartbeat(container, updaters) {
-  if (container._hbTimer) { clearInterval(container._hbTimer); container._hbTimer = null; }
-  if (!updaters.length) return;
-  container._hbTimer = setInterval(() => {
-    if (typeof document !== 'undefined' && document.hidden) return;
-    // 面板已被其它子页替换（无门牌）时自动停表
-    if (!container.querySelector('.fleet-page-root')) {
-      if (container._hbTimer) { clearInterval(container._hbTimer); container._hbTimer = null; }
-      return;
-    }
+  if (!updaters.length) { stopUiTick(container, '_hbTimer'); return; }
+  uiTick(container, '_hbTimer', () => {
     for (const fn of updaters) {
       // v0.3.3：留痕而非静默吞掉 —— 静默 catch 会让刷新缺陷表现为「界面不动且无报错」
       try { fn(); }
       catch (e) { if (typeof console !== 'undefined') console.error('[fleet heartbeat]', e); }
     }
-  }, 1000);
+  }, {
+    // 面板已被其它子页替换（无门牌）时自动停表
+    alive: () => !!container.querySelector('.fleet-page-root'),
+  });
 }
 
 export function renderShop(container, ctx) {
@@ -101,16 +97,11 @@ export function renderShop(container, ctx) {
   sharedWarehousePull(account);
 
   // 1s 心跳：实时刷新股价/仓库与拍卖倒计时（不打断输入焦点，面板被替换则自停）
-  container._shopTimer = setInterval(() => {
-    if (typeof document !== 'undefined' && document.hidden) return;
-    if (!container.querySelector('.shop-market-grid')) {
-      if (container._shopTimer) { clearInterval(container._shopTimer); container._shopTimer = null; }
-      return;
-    }
+  uiTick(container, '_shopTimer', () => {
     sharedWarehouseMaybePull(account);
     try { market.refresh(); } catch (e) { /* 忽略 */ }
     try { auction.refresh(); } catch (e) { /* 忽略 */ }
-  }, 1000);
+  }, { alive: () => !!container.querySelector('.shop-market-grid') });
 }
 
 // 趋势箭头 + 颜色（涨绿跌红，与物品栏配色一致）

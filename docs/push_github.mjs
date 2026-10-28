@@ -374,7 +374,9 @@ const argOf = (name) => {
   return i >= 0 && process.argv[i + 1] ? process.argv[i + 1] : null;
 };
 const V = await import(pathToFileURL(join(ROOT, 'js/version.js')).href + '?v=' + Date.now());
-const vEntry = V.VERSIONS[0] || [V.VERSION, V.VERSION_DATE, []];
+// v0.4.22：更新日志已拆到 data/changelog.js，提交信息仍取最新一条
+const CL = await import(pathToFileURL(join(ROOT, 'js/data/changelog.js')).href + '?v=' + Date.now());
+const vEntry = (CL.VERSIONS && CL.VERSIONS[0]) || [V.VERSION, V.VERSION_DATE, []];
 const vTitle = vEntry[0] || V.VERSION;
 const entries = Array.isArray(vEntry[2]) ? vEntry[2] : [];
 const body = entries.length

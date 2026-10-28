@@ -21,6 +21,7 @@ import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { homedir } from 'node:os';
 import { createRequire } from 'node:module';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -43,7 +44,9 @@ await new Promise((r) => server.listen(8797, '127.0.0.1', r));
 const PW_CANDIDATES = [
   () => createRequire(import.meta.url)('playwright-core'),
   () => createRequire(path.join(ROOT, 'package.json'))('playwright-core'),
-  () => createRequire('C:/Users/11603/.workbuddy/binaries/node/workspace/package.json')('playwright-core'),
+  // v0.4.22：原先硬编码开发机 C:/Users/11603/...，换机器必然失配 → 按主目录拼接，可环境变量覆盖
+  () => createRequire(process.env.ASTRIX_PW_WORKSPACE
+    || path.join(homedir(), '.workbuddy/binaries/node/workspace/package.json'))('playwright-core'),
 ];
 let playwright = null; let pwErr = null;
 for (const fn of PW_CANDIDATES) {
@@ -55,7 +58,7 @@ if (!playwright) {
 }
 const { chromium } = playwright;
 const browser = await chromium.launch({
-  executablePath: 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe',
+  executablePath: process.env.ASTRIX_BROWSER || 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe',
   headless: true, args: ['--no-sandbox'],
 });
 const page = await (await browser.newContext()).newPage();

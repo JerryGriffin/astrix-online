@@ -15,6 +15,7 @@
 
 import { pathToFileURL, fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import { homedir } from 'node:os';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const { CACHE_TAG } = await import(pathToFileURL(join(ROOT, 'js/version.js')).href);
@@ -77,7 +78,10 @@ section('Bug A：renderArmyDesigner 里的 inst 必须有声明（不能是自�
     const candidates = [
       () => req('playwright-core'),
       () => createRequire(join(ROOT, 'package.json'))('playwright-core'),
-      () => createRequire('C:/Users/11603/.workbuddy/binaries/node/workspace/package.json')('playwright-core'),
+      // v0.4.22：原先这里硬编码了开发机的 C:/Users/11603/...，换机器必然失配。
+      // 改为按当前用户主目录拼接；仍可用 ASTRIX_PW_WORKSPACE 显式覆盖。
+      () => createRequire(process.env.ASTRIX_PW_WORKSPACE
+        || join(homedir(), '.workbuddy/binaries/node/workspace/package.json'))('playwright-core'),
     ];
     let lastErr = null;
     for (const fn of candidates) {
@@ -99,7 +103,7 @@ section('Bug A：renderArmyDesigner 里的 inst 必须有声明（不能是自�
   });
   await new Promise((r) => server.listen(8790, '127.0.0.1', r));
   const browser = await chromium.launch({
-    executablePath: 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe',
+    executablePath: process.env.ASTRIX_BROWSER || 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe',
     headless: true, args: ['--no-sandbox'],
   });
   const page = await (await browser.newContext()).newPage();

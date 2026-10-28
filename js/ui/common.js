@@ -155,3 +155,42 @@ export function removeButton(onClick) {
   b.onclick = onClick;
   return b;
 }
+
+// ============================================================================
+// 界面刷新定时器（v0.4.22 新增）
+// ============================================================================
+// 为什么抽出来
+//   v0.4.21 之前，13 个 UI 页各自复制粘贴同一段 setInterval：
+//     ① 先 clearInterval 旧表 —— 否则每次重绘就叠一个新表（army 页曾泄漏）；
+//     ② 回调开头挡后台标签页（document.hidden）—— 否则每秒白刷看不见的界面；
+//     ③ 再判断本页是否还挂着 —— 但**不能用 isConnected**：planet.js 切 tab 时
+//        复用同一个 contentInner，isConnected 恒为 true，旧表会把新 tab 盖回去
+//        （v0.2.0 冒烟抓到的真实事故），所以各页只能写「查自己的门牌类名」。
+//   三段逻辑一模一样地散在 14 个文件里，改一处口径要改 14 遍。这里收敛成两个函数。
+//
+// 用法（与旧写法等价）：
+//   uiTick(root, '_armyTimer', () => renderArmyPage(root, ctx), {
+//     alive: () => root.querySelector('.page-title')?.textContent === '军队',
+//   });
+//   stopUiTick(root, '_armyTimer');   // 需要提前停表时
+//
+// 注意：
+//   * `alive` 返回 false 时**自动停表**，不需要在回调里再 clearInterval；
+//   * 定时器句柄仍挂在 host[key] 上，方便调试与兼容既有代码；
+//   * 页面不可见时只是「跳过本次」，不停表 —— 回到前台立刻恢复。
+export function stopUiTick(host, key) {
+  if (host && host[key]) { clearInterval(host[key]); host[key] = null; }
+}
+
+export function uiTick(host, key, step, opts = {}) {
+  const ms = opts.ms || 1000;
+  const alive = typeof opts.alive === 'function' ? opts.alive : null;
+  stopUiTick(host, key);
+  host[key] = setInterval(() => {
+    // 后台标签页不刷新：不可见的界面重绘纯属浪费 CPU，回到前台后下一拍即恢复
+    if (typeof document !== 'undefined' && document.hidden) return;
+    if (alive && !alive()) { stopUiTick(host, key); return; }
+    step();
+  }, ms);
+  return host[key];
+}
