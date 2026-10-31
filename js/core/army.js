@@ -12,9 +12,9 @@
 
 import {
   ARMY_BP_BY_ID, ARMY_PART_BY_ID, ARMY_SLOT_BY_CAT, armyBpPartNeeds,
-} from '../data/army_parts.js?v=64.15';
-import { materialMul, materialOptionsFor } from './shipyard.js?v=64.15';   // 无循环：shipyard 不依赖本模块
-import { mulberry32 } from './util.js?v=64.15';
+} from '../data/army_parts.js?v=65.16';
+import { materialMul, materialOptionsFor } from './shipyard.js?v=65.16';   // 无循环：shipyard 不依赖本模块
+import { mulberry32 } from './util.js?v=65.16';
 
 // ============================================================================
 // 一、账号军队列表（迁移 + 查询）

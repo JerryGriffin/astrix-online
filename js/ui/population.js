@@ -13,29 +13,29 @@
 // 3. **新增人数输入栏**：每行都有 −/输入框/＋/满员，方便大规模分配（人数很多时不用点几百次）。
 // 4. 顶部营养区改为 3 消耗（氧气/有机质/水）+ 3 产出（二氧化碳/甲烷/氨气）。
 
-import { fmtNum, fmtRate } from '../core/format.js?v=64.15';
-import { BUILDINGS, BUILDING_BY_ID } from '../data/buildings.js?v=64.15';
+import { fmtNum, fmtRate } from '../core/format.js?v=65.16';
+import { BUILDINGS, BUILDING_BY_ID } from '../data/buildings.js?v=65.16';
 import {
   createPopulation, assignWorkers, setJobIntensity, getIntensity,
   getTotalLabor, getAssigned, getAvailable, consumptionPerSec, metabolitePerSec,
   JOBS, JOBS_BY_BUILDING, WORK_INTENSITY,
   assignedToBuilding, freeSlots, jobCapacity, hiddenJobCount, getJobCount,
   MANAGE_MODES, manageModeOf,
-} from '../core/population.js?v=64.15';
-import { getBuildingCounts, currentAccount, popCapOf, totalShelter } from '../core/state.js?v=64.15';
-import { ARMY_BP_BY_ID } from '../data/army_parts.js?v=64.15';   // v0.2.0 军队组装线命名
+} from '../core/population.js?v=65.16';
+import { getBuildingCounts, currentAccount, popCapOf, totalShelter } from '../core/state.js?v=65.16';
+import { ARMY_BP_BY_ID } from '../data/army_parts.js?v=65.16';   // v0.2.0 军队组装线命名
 // v0.1.1（需求 20）：殖民管理模式——判断本星球是否由电脑接管发展
-import { modeOf } from '../core/planetgen.js?v=64.15';
+import { modeOf } from '../core/planetgen.js?v=65.16';
 // v0.2.3（需求）：殖民地报告历史已从人力页移除 —— 报告只在「星球选择 / 星际」的
 //   每颗星球行内联展示（colony.js），不再在人力页保留历史副本。
 // v0.0.7：生产线接口（核心模块正在实现中）。用命名空间导入 + 函数存在性守卫，
 //   若接口尚未落地（addLine 等不是函数），本文件不会报错，也不渲染生产线区块。
-import * as PR from '../core/production.js?v=64.15';
+import * as PR from '../core/production.js?v=65.16';
 // v0.4.6 需求 12：自定义化工厂（定义合金）的界面 —— 此前 UI 层完全没有这个入口
-import { renderAlloyForge } from './alloy.js?v=64.15';
+import { renderAlloyForge } from './alloy.js?v=65.16';
 // v0.4.7：el() 收敛到 ui/common.js（此前本文件自带一份；全项目共 14 份、两种不兼容签名，
 //   v0.3.2「列强区块不显示」即源于把 A 型调用写进了 B 型文件）
-import { el, ensureStyle, uiTick } from './common.js?v=64.15';
+import { el, esc, ensureStyle, uiTick, mdInline } from './common.js?v=65.16';
 
 // 取/建星球上的人口对象（挂在 planet.pop，首次访问惰性创建）
 function ensurePop(planet) {
@@ -141,7 +141,9 @@ export function renderPopulation(root, planet) {
     for (const m of MANAGE_MODES) {
       const line = el('div', { class: m.id === cur.id ? 'cur' : '' });
       line.appendChild(el('b', { text: m.icon + ' ' + m.nameCn }));
-      line.appendChild(document.createTextNode('　' + m.desc + (m.id === cur.id ? '　◀ 当前' : '')));
+      // v0.4.25：desc 里的 **强调** 要渲染成粗体，此前是字面星号
+      const tail = (m.id === cur.id ? '　◀ 当前' : '');
+      line.insertAdjacentHTML('beforeend', '　' + mdInline(m.desc) + esc(tail));
       list.appendChild(line);
     }
     box.appendChild(list);
@@ -209,7 +211,14 @@ export function renderPopulation(root, planet) {
       el('span', { class: 'pos', text: `二氧化碳 ${fmtRate(prod.co2)} · 甲烷 ${fmtRate(prod.methane)} · 氨气 ${fmtRate(prod.ammonia)}` }),
     ]),
     el('div', { class: 'k', text: '呼吸产物会积存在星球大气层里，可以用大气收集器重新采回来（进「物品栏」的星球储藏栏查看）。' }),
-    el('div', { class: 'k', text: '工作强度**同时**放大消耗与产出，且档位越高越「划算」——产出涨幅略大于消耗涨幅（极限档：产出 ×2.40 / 消耗 ×5.00）。' }),
+    // v0.4.25：**同时** 之前是字面星号；倍率也不再硬编码（写死 2.40/5.00 会与
+    //   population.js#WORK_INTENSITY 悄悄失配，改档位数值时界面会继续说旧话）。
+    el('div', { class: 'k', html: (() => {
+      const ex = getIntensity('extreme');
+      return mdInline('工作强度**同时**放大消耗与产出，且档位越高越「划算」'
+        + '——产出涨幅略大于消耗涨幅（极限档：产出 ×' + Number(ex.outputMul).toFixed(2)
+        + ' / 消耗 ×' + Number(ex.consumeMul).toFixed(2) + '）。');
+    })() }),
   ]));
 
   // ---- 分组：先「无需建筑」，再按建筑（只显示已建成的） ----
@@ -298,7 +307,7 @@ export function renderPopulation(root, planet) {
       wrap.appendChild(el('div', { class: 'pop-job' }, [
         el('div', { class: 'name' }, [
           el('div', { text: job.nameCn }),
-          el('div', { class: 'd', text: job.desc }),
+          el('div', { class: 'd', html: mdInline(job.desc) }),
         ]),
         minus, input, plus, full, sel,
       ]));

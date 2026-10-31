@@ -8,16 +8,16 @@ import {
   computePower, energyOf,
   installedFacilities, installFacility, uninstallFacility, facilityStockOf,
   panelEffOf, facilityFuelOf, buildingCountBonus,
-} from '../core/power.js?v=64.15';
-import { POWER_FACILITIES, POWER_FACILITY_BY_ID } from '../data/facilities.js?v=64.15';
-import { BUILDING_BY_ID } from '../data/buildings.js?v=64.15';
-import { RECIPES } from '../data/recipes.js?v=64.15';
-import { linesOf } from '../core/production.js?v=64.15';
-import { jobsOfBuilding, jobOutput, assignedToBuilding, buildingSlots } from '../core/population.js?v=64.15';
-import { fmtNum, fmtRate, fmtRateBody } from '../core/format.js?v=64.15';
+} from '../core/power.js?v=65.16';
+import { POWER_FACILITIES, POWER_FACILITY_BY_ID } from '../data/facilities.js?v=65.16';
+import { BUILDING_BY_ID } from '../data/buildings.js?v=65.16';
+import { RECIPES } from '../data/recipes.js?v=65.16';
+import { linesOf } from '../core/production.js?v=65.16';
+import { jobsOfBuilding, jobOutput, assignedToBuilding, buildingSlots } from '../core/population.js?v=65.16';
+import { fmtNum, fmtRate, fmtRateBody } from '../core/format.js?v=65.16';
 // v0.4.7：el() 收敛到 ui/common.js（此前本文件自带一份；全项目共 14 份、两种不兼容签名，
 //   v0.3.2「列强区块不显示」即源于把 A 型调用写进了 B 型文件）
-import { el, ensureStyle, uiTick } from './common.js?v=64.15';
+import { el, ensureStyle, uiTick, mdInline } from './common.js?v=65.16';
 
 const CSS = `
   .pwr-panel { font-family: system-ui, sans-serif; color: #e8eef2; padding: 12px; box-sizing: border-box; }
@@ -332,7 +332,7 @@ export function renderPower(root, ctx) {
         head.querySelector('.p-name').addEventListener('click', () => openDetail(f, openModal));
         card.appendChild(head);
 
-        card.appendChild(el('div', { class: 'p-sub', text: f.desc || '' }));
+        card.appendChild(el('div', { class: 'p-sub', html: mdInline(f.desc || '') }));
         card.appendChild(el('div', { class: 'p-line', text: '造价 ' + costText(f.baseCost) + '　工作量 ' + fmtNum(f.work) }));
         card.appendChild(el('div', { class: 'p-line', text: '效果 ' + effectText(f) }));
         card.appendChild(el('div', { class: 'p-line', text: '已装 ' + fmtNum(cnt) + ' 座' }));
@@ -378,7 +378,7 @@ export function renderPower(root, ctx) {
   function openDetail(f, openModal) {
     const body =
       '<div class="pwr-panel">' +
-      '<p class="p-sub">' + (f.desc || '') + '</p>' +
+      '<p class="p-sub">' + mdInline(f.desc || '') + '</p>' +
       '<p class="p-line"><b>类型</b>：' + ({ storage: '储电', solar: '太阳能', wind: '风力', thermal: '火力' })[f.kind] + '（' + f.sizeLabel + '）</p>' +
       '<p class="p-line"><b>造价</b>：' + costText(f.baseCost) + '</p>' +
       '<p class="p-line"><b>工作量</b>：' + fmtNum(f.work) + '</p>' +

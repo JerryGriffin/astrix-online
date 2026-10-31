@@ -14,10 +14,10 @@
 //   本文件被 40 个模块与 cloud.js 引用，必须保持「几 KB」；日志 150 KB 留在
 //   这里等于让每个玩家开机就下载全部历史更新说明。
 
-export const VERSION = 'v0.4.24';
+export const VERSION = 'v0.4.25';
 
 // 版本号数字形式（用于存档迁移判断）
-export const VERSION_NUM = 64;   // v0.4.10 → 50（十位进位，见 selfcheck_v005 的版本号一致性断言）
+export const VERSION_NUM = 65;   // v0.4.10 → 50（十位进位，见 selfcheck_v005 的版本号一致性断言）
 
 export const VERSION_DATE = '2026-10-31';
 
@@ -30,7 +30,7 @@ export const VERSION_DATE = '2026-10-31';
 //   VERSION     —— 玩家看到的版本（设计者说不变就不变）
 //   REVISION    —— 只要改了 css/ 或 js/，这里就 +1
 //   CACHE_TAG   —— 实际写进 index.html 的 ?v= 串
-export const REVISION = 15;
+export const REVISION = 16;
 // index.html 里所有 css 链接与 js/main.js 入口都用它；改代码后记得 +1
 export const CACHE_TAG = VERSION_NUM + '.' + REVISION;
 

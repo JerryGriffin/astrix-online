@@ -47,14 +47,14 @@
 // 需要读写星球物品栏时由调用方通过 ctx 注入（见 repairFleet 的 ctx）。
 // ============================================================================
 
-import { hash32, mulberry32, clamp } from './util.js?v=64.15';
-import { listFleets, fleetPowerOf, resolveFleetRef, fleetMissionLabel } from './fleet.js?v=64.15';
-import { HOI_BY_ID } from '../data/hoi1936.js?v=64.15';
-import { factionPower, factionNameCn } from '../data/factions.js?v=64.15';
+import { hash32, mulberry32, clamp } from './util.js?v=65.16';
+import { listFleets, fleetPowerOf, resolveFleetRef, fleetMissionLabel } from './fleet.js?v=65.16';
+import { HOI_BY_ID } from '../data/hoi1936.js?v=65.16';
+import { factionPower, factionNameCn } from '../data/factions.js?v=65.16';
 import {
   addWarScore, navalEdgeOf, addNavalEdge, ensureNaval,
   NAVY_TO_SHIP_POWER, FLEET_EDGE_MAX,
-} from './war.js?v=64.15';
+} from './war.js?v=65.16';
 
 // ============================================================================
 // 可调常量

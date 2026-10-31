@@ -24,15 +24,15 @@
 // 所有数字显示一律走 format.js 的 fmtNum / fmtRate / fmtRateBody / fmtSci。
 // 样式集中在 css/planet.css。
 
-import { MATERIALS } from '../data/materials.js?v=64.15';
-import { fmtNum, fmtRate, fmtSci } from '../core/format.js?v=64.15';
-import { getPlanetInstance, tick, currentAccount, atmosphereOf, ownedOf} from '../core/state.js?v=64.15';
-import { computePower } from '../core/power.js?v=64.15';
-import { equipmentList } from '../core/shipyard.js?v=64.15';
-import { materialLabel, productionRates } from '../core/production.js?v=64.15';
-import { BUILDING_BY_ID } from '../data/buildings.js?v=64.15';
-import { NUTRIENT_NAMES, METABOLITE_NAMES, consumptionPerSec, metabolitePerSec } from '../core/population.js?v=64.15';
-import { esc, uiTick } from './common.js?v=64.15';
+import { MATERIALS } from '../data/materials.js?v=65.16';
+import { fmtNum, fmtRate, fmtSci } from '../core/format.js?v=65.16';
+import { getPlanetInstance, tick, currentAccount, atmosphereOf, ownedOf} from '../core/state.js?v=65.16';
+import { computePower } from '../core/power.js?v=65.16';
+import { equipmentList } from '../core/shipyard.js?v=65.16';
+import { materialLabel, productionRates } from '../core/production.js?v=65.16';
+import { BUILDING_BY_ID } from '../data/buildings.js?v=65.16';
+import { NUTRIENT_NAMES, METABOLITE_NAMES, consumptionPerSec, metabolitePerSec } from '../core/population.js?v=65.16';
+import { esc, uiTick } from './common.js?v=65.16';
 
 // 分组顺序与中文标题
 // v0.0.91：同事把星球数据拆成 surface(地表) / underground(浅层) / deep(深层) / core(地核) / gas(气体) 五层。
@@ -303,7 +303,10 @@ export function renderInventory(container, planetOrCtx) {
     pwr.className = 'inv-power';
     pwr.setAttribute('style', 'color:' + (net < -1e-9 ? NET_NEG : NET_POS));
     pwr.textContent = ' · 净产电 ' + fmtRate(net)
-      + ' · 储电 ' + fmtNum(pw.storage) + ' / ' + fmtNum(pw.storageMax);
+      // v0.4.25：没建储电站时不再显示「储电 0 / 0」——那读起来像「有储电站但空了」
+      + (Number(pw.storageMax) > 0
+        ? ' · 储电 ' + fmtNum(pw.storage) + ' / ' + fmtNum(pw.storageMax)
+        : ' · 无储电站');
     overview.appendChild(pwr);
     buildEquipRows();
   }

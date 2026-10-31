@@ -98,7 +98,11 @@ section('Bug A：renderArmyDesigner 里的 inst 必须有声明（不能是自�
     if (p === '/') p = '/index.html';
     const f = path.join(ROOT, p);
     if (!f.startsWith(ROOT) || !fs.existsSync(f) || fs.statSync(f).isDirectory()) { res.writeHead(404); res.end(); return; }
-    res.writeHead(200, { 'Content-Type': /\.js$/.test(p) ? 'text/javascript' : 'text/html' });
+    // v0.4.25：按扩展名给 Content-Type。此前 css 一律按 text/html 发，Chrome 会拒绝加载样式表，
+  //   于是这类浏览器自检实际上是在**没有任何 CSS** 的页面上跑的（断言碰巧只看文本，掩盖了布局）。
+  const _ext = path.extname(p).toLowerCase();
+  const _CT = { '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.html': 'text/html' };
+  res.writeHead(200, { 'Content-Type': _CT[_ext] || 'text/html' });
     fs.createReadStream(f).pipe(res);
   });
   await new Promise((r) => server.listen(8790, '127.0.0.1', r));

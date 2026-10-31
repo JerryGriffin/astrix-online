@@ -115,6 +115,26 @@ export function esc(s) {
     .replace(/'/g, '&#39;');
 }
 
+/**
+ * 说明文本的「行内标记」渲染（v0.4.25）。
+ *
+ * 背景：`js/data/*.js` 里的 desc 长期用 `**强调**` 写重点（buildings 14 处、
+ * techs 8 处、recipes 4 处），但 UI 一侧一直用 `text:` / `esc()` 直接输出，
+ * 玩家看到的是字面星号（如「庇护总量决定**居住容量**」）。
+ *
+ * 约定：说明文本**只允许一种标记** —— `**粗体**`，其余字符一律转义，
+ * 因此不存在注 HTML 的风险（先 escape 再替换，顺序不能反）。
+ * 纯文本场景（写进 textContent / title / alert）用 stripMdInline。
+ */
+export function mdInline(s) {
+  return esc(s).replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+}
+
+/** 去掉 `**` 但保留纯文本（textContent / title / alert 场景） */
+export function stripMdInline(s) {
+  return String(s == null ? '' : s).replace(/\*\*/g, '');
+}
+
 /** 按钮：与各 UI 文件里重复的 btn() 一致 */
 export function btn(text, cls) {
   const b = document.createElement('button');

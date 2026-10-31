@@ -110,6 +110,8 @@
 }
 .acc-new-form .btn { flex: 0 0 auto; }
 .acc-new-tip { flex-basis: 100%; margin: 2px 0 0; color: var(--danger); min-height: 1.1em; }
+/* v0.4.25：开局模式说明是纯信息，不该用错误色（原本复用了 acc-new-tip → 整句红字） */
+.acc-mode-tip { flex-basis: 100%; margin: 2px 0 0; color: var(--muted); min-height: 1.1em; font-size: 13px; }
 .mod-offline-only {
   color: #ffd479;
   background: rgba(255, 212, 121, 0.08);
