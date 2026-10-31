@@ -33,8 +33,8 @@
 // 人口变化：H > 0.5 增长、H < 0.3 下降，否则持平。
 // 各项系数都在下方常量区，改一个数就能调平衡。
 
-import { BUILDING_BY_ID } from '../data/buildings.js?v=62.13';
-import { clamp } from './util.js?v=62.13';
+import { BUILDING_BY_ID } from '../data/buildings.js?v=63.14';
+import { clamp } from './util.js?v=63.14';
 
 // ============================================================================
 // 可调常量（集中放这里，方便策划调参）

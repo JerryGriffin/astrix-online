@@ -1,6 +1,6 @@
 {
   "name": "astrix-online",
-  "version": "0.4.22",
+  "version": "0.4.23",
   "description": "Astrix · 太空殖民 —— 零构建（原生 HTML/CSS/JS + ES Modules）太空殖民模拟游戏",
   "license": "MIT",
   "author": "JerryGriffin",
@@ -15,8 +15,8 @@
     "node": ">=20"
   },
   "scripts": {
-    "check:logic": "node docs/selfcheck_materials.mjs && node docs/selfcheck_theater.mjs && node docs/selfcheck_battle.mjs && node docs/selfcheck_fixes.mjs && node docs/selfcheck_render.mjs && node docs/selfcheck_v005.mjs && node docs/selfcheck_v006.mjs && node docs/selfcheck_v045.mjs && node docs/selfcheck_v046.mjs && node docs/selfcheck_v047.mjs",
-    "check:browser": "node docs/selfcheck_v048.mjs && node docs/selfcheck_v049.mjs && node docs/selfcheck_smoke_browser.mjs",
+    "check:logic": "node docs/selfcheck_materials.mjs && node docs/selfcheck_theater.mjs && node docs/selfcheck_battle.mjs && node docs/selfcheck_fixes.mjs && node docs/selfcheck_render.mjs && node docs/selfcheck_v005.mjs && node docs/selfcheck_v006.mjs && node docs/selfcheck_v045.mjs && node docs/selfcheck_v046.mjs && node docs/selfcheck_v047.mjs && node docs/selfcheck_v050.mjs",
+    "check:browser": "node docs/selfcheck_v048.mjs && node docs/selfcheck_v049.mjs && node docs/selfcheck_smoke_browser.mjs && node docs/selfcheck_v050_e2e.mjs",
     "check": "npm run check:logic && npm run check:browser",
     "bump": "node docs/bump_imports.mjs",
     "release": "npm run bump && npm run check"

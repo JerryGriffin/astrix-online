@@ -91,6 +91,9 @@ a { color: var(--cyan); }
 }
 .modal-overlay.open { opacity: 1; }
 
+/* v0.4.23：弹窗打开时锁住页面滚动（移动端手指划过弹窗不再带动背后的列表） */
+html.modal-open, html.modal-open body { overflow: hidden; }
+
 .modal-panel {
   width: min(560px, 100%);
   max-height: 85vh;
@@ -104,6 +107,8 @@ a { color: var(--cyan); }
   transition: transform 0.18s ease;
   overflow: hidden;
 }
+/* 面板自身可被聚焦（空内容时兜底），但不该画出焦点框 */
+.modal-panel:focus { outline: none; }
 .modal-overlay.open .modal-panel { transform: none; }
 
 .modal-header {

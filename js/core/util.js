@@ -57,6 +57,87 @@ export function hash32(str) {
   return h >>> 0;
 }
 
+/**
+ * 把「距上一拍的真实经过秒数」换算成应当计入积压的秒数（v0.4.23）。
+ *
+ * 为什么需要它
+ *   游戏心跳原来是「每触发一次推进 1 秒」。可是浏览器会对**后台标签页**的定时器
+ *   节流：隐藏超过 5 分钟后，Chrome 只保证每分钟唤醒一次。于是玩家切去别的窗口
+ *   十分钟再回来，游戏只走了 10 秒 —— 产出、施工、船只建造全部停摆，且没有任何提示。
+ *   改成按 Date.now() 的真实差值推进即可：被节流的一次唤醒补回整段空白。
+ *
+ * 两个必须有的保护
+ *   ① 余量 carry：真实间隔几乎不会是整数秒（1000ms 的定时器实测 1002ms），
+ *      丢掉小数会每秒少算一点、越玩越慢；所以小数部分留到下一拍累加。
+ *   ② 上限 cap：合上笔记本电脑三小时再打开，一次补算 10800 秒会把页面卡死。
+ *      超出上限的部分直接丢弃 —— 让「回来就能立刻操作」优先于毫秒级准确。
+ *
+ * @param {number} elapsedSec 距上一拍的真实秒数
+ * @param {number} carry 上一拍留下的不足 1 秒的余量
+ * @param {number} cap 最多计入多少秒（<=0 表示不封顶）
+ * @returns {{steps:number, carry:number}} steps 为整秒，carry 为不足 1 秒的余量
+ */
+export function splitBeat(elapsedSec, carry, cap) {
+  const e = Number(elapsedSec);
+  let c = Number(carry);
+  if (!Number.isFinite(c) || c < 0) c = 0;
+  if (!Number.isFinite(e) || e <= 0) return { steps: 0, carry: c };
+  c += e;
+  let steps = Math.floor(c);
+  if (steps <= 0) return { steps: 0, carry: c };
+  c -= steps;
+  const max = Number(cap);
+  if (Number.isFinite(max) && max > 0 && steps > max) {
+    steps = Math.floor(max);
+    c = 0;                       // 丢弃超出的时间，避免余量把下一拍又顶到上限
+  }
+  return { steps, carry: c };
+}
+
+/**
+ * 从积压秒数里「按 1 秒一步」补算，受**时间预算**与**单拍步数**双重限制（v0.4.23）。
+ *
+ * 为什么不直接用 tick(60) 一次结算
+ *   状态推进里存在**按 dt 线性松弛**的量（例如幸福度
+ *   `h + (target - h) * 恢复率 * dt`）。dt=60 会让它一步冲过目标值再被夹到 1，
+ *   数值看着就疯了。逐秒步进与正常游玩完全同构，只是把这些步压在同一拍里跑完。
+ *
+ * 为什么还要限量
+ *   后台挂了一小时再回来，积压可能有 3600 秒 = 3600 次结算。一次性跑完会明显卡顿，
+ *   所以每拍只花一小段时间预算（默认 50ms）、并限制最多多少步，
+ *   剩下的留到下一拍继续 —— 表现为「回来后半秒到几秒内追上进度」，而不是冻住。
+ *
+ * @param {number} backlog 积压秒数
+ * @param {object} [opts]
+ * @param {() => void} opts.step 每步调用的函数（通常就是 tick(1)）
+ * @param {() => number} [opts.now] 取当前毫秒时间（便于测试注入）
+ * @param {number} [opts.budgetMs=50] 本拍允许花在补算上的毫秒数
+ * @param {number} [opts.maxSteps=120] 本拍最多补多少步（兜底，防止 now 被冻结）
+ * @returns {{done:number, rest:number}} 本次补了几步、还剩多少积压
+ */
+export function drainBacklog(backlog, opts = {}) {
+  const step = typeof opts.step === 'function' ? opts.step : () => {};
+  const now = typeof opts.now === 'function' ? opts.now : Date.now;
+  const budget = Number(opts.budgetMs);
+  const budgetMs = Number.isFinite(budget) && budget > 0 ? budget : 50;
+  const capSteps = Number(opts.maxSteps);
+  const maxSteps = Number.isFinite(capSteps) && capSteps > 0 ? Math.floor(capSteps) : 120;
+
+  let rest = Number(backlog);
+  if (!Number.isFinite(rest) || rest <= 0) return { done: 0, rest: 0 };
+
+  const start = now();
+  let done = 0;
+  while (rest >= 1 && done < maxSteps) {
+    step();
+    rest -= 1;
+    done++;
+    // 先跑一步再检查预算：预算再小也要推进，否则积压永远清不掉
+    if (done > 0 && now() - start >= budgetMs) break;
+  }
+  return { done, rest };
+}
+
 // ---------------------------------------------------------------------------
 // softFail：静默失败的「可观测化」
 //

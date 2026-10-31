@@ -1,29 +1,67 @@
 // 应用入口：路由、全局模态层与启动（Astrix）
-import { STATE, loadState, createAccount, currentAccount, saveState, tick, settleOffline, OFFLINE_RATIO } from './core/state.js?v=62.13';
-import { renderStart, openAccountPicker } from './ui/start.js?v=62.13';
-import { renderPlanet } from './ui/planet.js?v=62.13';
+import { STATE, loadState, createAccount, currentAccount, saveState, tick, settleOffline, OFFLINE_RATIO } from './core/state.js?v=63.14';
+import { renderStart, openAccountPicker } from './ui/start.js?v=63.14';
+import { renderPlanet } from './ui/planet.js?v=63.14';
 // v0.4.16：本文件原先自带一份 el()，与 ui/common.js 的 el 并存 ——
 //   两种不兼容签名正是 v0.3.2「列强区块不显示」的根因（全库曾有 14 份 el）。
 //   本文件只用三参数位置式，与 common 版兼容，故统一从 common 引入。
-import { el } from './ui/common.js?v=62.13';
+import { el } from './ui/common.js?v=63.14';
 // v0.2.1：在线模式前置 —— 进入游戏前必须先绑定邮箱（验证码登录 / 注册）
-import { cloudUser, loginWithName, registerWithName, ensureReady } from './core/cloud.js?v=62.13';
+import { cloudUser, loginWithName, registerWithName, ensureReady } from './core/cloud.js?v=63.14';
+// v0.4.23：心跳按真实经过时间推进（后台标签页被节流时不再丢进度），见下方 startLoop
+import { splitBeat, drainBacklog } from './core/util.js?v=63.14';
 
 const root = document.getElementById('app');
 const modalRoot = document.getElementById('modal-root');
 
 // ===== 全局模态层 =====
 let currentModal = null;
+let _modalSeq = 0;
+let _lastFocused = null;          // 打开弹窗前焦点所在的元素，关闭后还原
+
+// v0.4.23：键盘可达性 —— Tab 必须被关在弹窗内，否则焦点会跑到被遮住的背景页面上，
+//   键盘用户（以及读屏软件）会在「看不见的地方」操作，看起来像界面卡死。
+const FOCUSABLE_SELECTOR = 'button:not([disabled]), [href], input:not([disabled]), '
+  + 'select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+function focusablesIn(host) {
+  if (!host || typeof host.querySelectorAll !== 'function') return [];
+  return Array.prototype.slice.call(host.querySelectorAll(FOCUSABLE_SELECTOR))
+    .filter((n) => {
+      if (!n || n.disabled || n.hidden) return false;
+      // display:none 的控件（如存档导入用的隐藏 file input）能被选中但聚焦无效，
+      //   会让「焦点交给弹窗」变成「焦点掉回 body」，必须排除
+      try { return typeof n.getClientRects === 'function' ? n.getClientRects().length > 0 : true; }
+      catch (e) { return true; }
+    });
+}
+
+// 滚动锁：弹窗打开时锁住页面滚动（移动端尤其明显 —— 否则手指划过弹窗会滚动背后的列表）
+function setPageScrollLocked(on) {
+  const el = typeof document !== 'undefined' ? document.documentElement : null;
+  if (!el || !el.classList) return;
+  if (on) el.classList.add('modal-open');
+  else el.classList.remove('modal-open');
+}
 
 function closeModal() {
   if (currentModal) {
     currentModal.remove();
     currentModal = null;
   }
-  // v0.4.21（内存泄漏修复）：escClose 挂在 document 上，此前只有按 Esc 关闭才会摘除；
+  // v0.4.21（内存泄漏修复）：监听器挂在 document 上，此前只有按 Esc 关闭才会摘除；
   //   点 × 、点遮罩、或代码里直接调 closeModal()（切视图前清理弹窗到处都是）时
   //   监听器永久残留 —— 开 N 个弹窗就漏 N 个 keydown 闭包，长会话下越积越多。
-  document.removeEventListener('keydown', escClose);
+  // v0.4.23：同一个监听器现在同时负责 Esc 与 Tab 焦点环，仍在关闭时统一摘除。
+  document.removeEventListener('keydown', onModalKeydown);
+  setPageScrollLocked(false);
+  // 焦点还原：弹窗是从某个按钮打开的，关掉后焦点回到那个按钮，
+  //   否则会掉到 <body> 上，键盘用户得从头 Tab 一遍。
+  const back = _lastFocused;
+  _lastFocused = null;
+  if (back && back.isConnected && typeof back.focus === 'function') {
+    try { back.focus(); } catch (e) { /* 元素已不可聚焦，忽略 */ }
+  }
 }
 
 // 打开一个模态层。opts: { title, body(DOM 或字符串), sheet(移动端是否从底部滑出) }
@@ -34,6 +72,7 @@ function openModal(opts) {
 
   const panel = document.createElement('div');
   panel.className = 'modal-panel';
+  panel.tabIndex = -1;                       // 没有任何可聚焦控件时把焦点放在面板上
 
   const header = document.createElement('div');
   header.className = 'modal-header';
@@ -59,18 +98,54 @@ function openModal(opts) {
   overlay.appendChild(panel);
   modalRoot.appendChild(overlay);
 
+  // 语义化：role=dialog + aria-modal 让读屏软件把它当成独立对话框，
+  //   aria-labelledby 把标题与对话框关联起来（否则只念「对话框」，不念标题）
+  const titleId = 'modal-title-' + (++_modalSeq);
+  h.id = titleId;
+  overlay.setAttribute('role', 'dialog');
+  overlay.setAttribute('aria-modal', 'true');
+  overlay.setAttribute('aria-labelledby', titleId);
+
+  _lastFocused = document.activeElement && document.activeElement !== document.body
+    ? document.activeElement
+    : null;
+
   close.addEventListener('click', closeModal);
   overlay.addEventListener('click', (e) => { if (e.target === overlay) closeModal(); });
-  document.addEventListener('keydown', escClose);
+  document.addEventListener('keydown', onModalKeydown);
+  setPageScrollLocked(true);
 
-  // 触发进场动画
-  requestAnimationFrame(() => overlay.classList.add('open'));
+  // 触发进场动画，并把焦点交给弹窗内容
+  requestAnimationFrame(() => {
+    overlay.classList.add('open');
+    const list = focusablesIn(body);
+    const target = list[0] || (focusablesIn(panel)[0] || panel);
+    try { target.focus(); } catch (e) { /* 忽略 */ }
+  });
   currentModal = overlay;
   return closeModal;
 }
 
-function escClose(e) {
-  if (e.key === 'Escape') { closeModal(); document.removeEventListener('keydown', escClose); }
+// 弹窗内的全局键盘处理：Esc 关闭、Tab 焦点环
+function onModalKeydown(e) {
+  if (!currentModal) return;
+  if (e.key === 'Escape') {
+    // 中文输入法组词时按 Esc 是「取消候选」，不能顺手把弹窗也关掉
+    if (e.isComposing) return;
+    closeModal();
+    return;
+  }
+  if (e.key !== 'Tab') return;
+  const panel = currentModal.querySelector('.modal-panel');
+  if (!panel) return;
+  const list = focusablesIn(panel);
+  if (!list.length) { e.preventDefault(); return; }
+  const first = list[0];
+  const last = list[list.length - 1];
+  const active = document.activeElement;
+  if (!panel.contains(active)) { e.preventDefault(); first.focus(); return; }
+  if (e.shiftKey && active === first) { e.preventDefault(); last.focus(); }
+  else if (!e.shiftKey && active === last) { e.preventDefault(); first.focus(); }
 }
 
 // 把离线秒数翻译成中文时长（如「1 小时 20 分」），用于离线结算面板。
@@ -238,14 +313,49 @@ function openOnlineBindModal(onBound) {
 // 之前 tick 只由物品栏内部定时器驱动，切到别的 tab 或返回主界面后产出就停了、
 // 进度也从不落盘。这里统一用 1 秒心跳推进，任何界面下资源都在增长；
 // state.js 的 tick 内置自动存档（每 AUTOSAVE_INTERVAL 秒写一次）。
+//
+// v0.4.23：心跳改成**按真实经过时间**推进，而不是「每触发一次算 1 秒」。
+//   原因：浏览器会对后台标签页的定时器节流 —— 隐藏超过 5 分钟后，
+//   Chrome 保证的唤醒频率只有**每分钟一次**。旧写法于是在挂后台时
+//   只按 1 秒/分钟的速度推进（实际速率约 1.7%），玩家切回来发现
+//   产出 / 施工 / 造船几乎没动，且界面上没有任何提示。
+//
+//   实现分两步（都在 core/util.js，可单测）：
+//     ① splitBeat：把真实间隔换成「该记多少秒」（不足 1 秒的余量留到下一拍），
+//        并给积压设上限 —— 合盖三小时再打开，不能要求补算一万秒；
+//     ② drainBacklog：从积压里**按 1 秒一步**补算，受时间预算与步数双重限制。
+//   不用 tick(300) 一把结算，是因为状态里有按 dt 线性松弛的量（幸福度），
+//   dt 给大会一步冲过目标值再被夹到 1，数值直接失真。
+//   后台时给更宽的预算（反正看不见，不怕卡），回到前台只做轻量补算，
+//   保证「切回来就能操作」。
+const MAX_BACKLOG = 1800;               // 积压上限 30 分钟，超出丢弃
+const CATCHUP_VISIBLE = { budgetMs: 60, maxSteps: 120 };
+const CATCHUP_HIDDEN = { budgetMs: 800, maxSteps: 900 };
 let _heartbeat = null;
+let _beatAt = 0;                        // 上一拍的时间戳（ms）
+let _beatCarry = 0;                     // 不足 1 秒的余量，累加到下一拍
+let _backlog = 0;                       // 尚未补算的游戏秒数
 function startLoop() {
   if (_heartbeat) return;
+  _beatAt = Date.now();
   _heartbeat = setInterval(() => {
+    const now = Date.now();
+    const beat = splitBeat((now - _beatAt) / 1000, _beatCarry, MAX_BACKLOG);
+    _beatAt = now;
+    _beatCarry = beat.carry;
+    _backlog += beat.steps;
     const acc = currentAccount();
-    if (!acc) return;
-    acc.stats.playTimeSec = (acc.stats.playTimeSec || 0) + 1;
-    tick(1);
+    // 还没有存档（开始界面）时不累计：否则新建存档的第一拍会凭空补上一大段
+    if (!acc) { _backlog = 0; return; }
+    if (_backlog < 1) return;
+    const budget = (typeof document !== 'undefined' && document.hidden) ? CATCHUP_HIDDEN : CATCHUP_VISIBLE;
+    const r = drainBacklog(_backlog, {
+      step: () => tick(1),
+      budgetMs: budget.budgetMs,
+      maxSteps: budget.maxSteps,
+    });
+    _backlog = r.rest;
+    if (r.done > 0) acc.stats.playTimeSec = (acc.stats.playTimeSec || 0) + r.done;
   }, 1000);
 }
 

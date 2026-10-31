@@ -15,8 +15,11 @@
 //    开局自带 1 座建筑工厂（设计者：「开局有一个建筑工厂」）。
 // 5. 施工队列由 tick 推进：速度 = 建筑工有效人力（受建筑工厂工位限制），无人则为 0。
 
-import { PLANETS } from '../data/planets.js?v=62.13';
-import { HOI_NATIONS, HOI_BY_ID, HOI_SCENARIO_ID } from '../data/hoi1936.js?v=62.13';   // v0.2.6 官方 mod 1936 剧本
+import { PLANETS } from '../data/planets.js?v=63.14';
+// v0.4.23：导出存档时把当时游戏的版本号一并写进文件，便于跨版本排查
+//   （importAccount 只校验**格式**版本 schema，不因游戏版本不同而拒绝导入）
+import { VERSION } from '../version.js?v=63.14';
+import { HOI_NATIONS, HOI_BY_ID, HOI_SCENARIO_ID } from '../data/hoi1936.js?v=63.14';   // v0.2.6 官方 mod 1936 剧本
 import {
   setHoiDeps, popOf, setupArmies, setupNavy, setupLines, setupBloc, setupFactories, setupColony, ensureShipNames, backgroundOf, repairScenarioEstates, setupGermanPuppets, tickWarsHoi4, tickJustify, tickDiploAI, staffBuildings, applyInfiniteReserve,
   ensureFocus, tickFocus, ensureSeas, scenarioDateOf, gameDaysOf,
@@ -25,58 +28,58 @@ import {
   // v0.4.9 修：`blocNameOf` 在下面第 1600 行拼「科幻开局简报」时用到，却**从未 import**，
   //   抛 ReferenceError 被 softFail 吞掉 —— 开局简报里的阵营一行永远出不来。
   blocNameOf,
-} from './hoi1936.js?v=62.13';
-import { SCI_SCENARIO_ID, SCI_NATIONS, sciPopOf} from '../data/scenario_sci.js?v=62.13';
-import { BUILDING_BY_ID, buildingCost } from '../data/buildings.js?v=62.13';
-import { TECH_BY_ID, canResearch, missingPrereqs} from '../data/techs.js?v=62.13';
-import { UPGRADES, upgradeCost } from '../data/upgrades.js?v=62.13';
+} from './hoi1936.js?v=63.14';
+import { SCI_SCENARIO_ID, SCI_NATIONS, sciPopOf} from '../data/scenario_sci.js?v=63.14';
+import { BUILDING_BY_ID, buildingCost } from '../data/buildings.js?v=63.14';
+import { TECH_BY_ID, canResearch, missingPrereqs} from '../data/techs.js?v=63.14';
+import { UPGRADES, upgradeCost } from '../data/upgrades.js?v=63.14';
 import {
   createPopulation, tickPopulation, getAvailable, gatherLaborByLayer, jobsOfBuilding, getIntensity,
   consumptionPerSec, jobOutput,
   JOBS, freeSlots,
-} from './population.js?v=62.13';
-import { buildRateOf, buildBlockReason } from './construction.js?v=62.13';
-import { tickShip, defaultBlueprints, createShip, shipBuildTick } from './shipyard.js?v=62.13';
+} from './population.js?v=63.14';
+import { buildRateOf, buildBlockReason } from './construction.js?v=63.14';
+import { tickShip, defaultBlueprints, createShip, shipBuildTick } from './shipyard.js?v=63.14';
 // v0.0.6：电力系统与配方生产。
 // 注意这两个模块**不反向 import 本文件**（否则形成循环依赖），
 // 它们只从传入的 inst 上读 buildings / pop / inventory / recipes。
-import { energyOf, computePower, tickPower } from './power.js?v=62.13';
+import { energyOf, computePower, tickPower } from './power.js?v=63.14';
 // v0.0.91：efficiencyBonus 由 production.js 导出（建筑总座数效率乘数），
 //   这里沿用既有的 state→production 单向边引入，不反向让 production import state，避免循环依赖。
-import { tickProduction, productionRates, ensureLines, lineWorkersTotal, efficiencyBonus, ensureEntry, addLine as addProductionLine, lineSlotInfo, freeLaborOf } from './production.js?v=62.13';
+import { tickProduction, productionRates, ensureLines, lineWorkersTotal, efficiencyBonus, ensureEntry, addLine as addProductionLine, lineSlotInfo, freeLaborOf } from './production.js?v=63.14';
 // v0.0.92：星际航行与殖民（管理模式 / 独立倾向 / 随机星球）
-import { tickIndependence, outputMulOf, happinessDeltaOf, ensureDiscoveredDefaults, discoverPlanet, capturePlanet, purgeShopColonies, tickManagedColonies, SHOP_PLANET_CODE } from './planetgen.js?v=62.13';
+import { tickIndependence, outputMulOf, happinessDeltaOf, ensureDiscoveredDefaults, discoverPlanet, capturePlanet, purgeShopColonies, tickManagedColonies, SHOP_PLANET_CODE } from './planetgen.js?v=63.14';
 // v0.1.2（需求 18/19）：永久升级的「效果」改乘方，唯一实现在 data/upgrades.js#upgradeMul
 // （UI 的 research.js 也用它，别在别处再写一套公式）。
 // 此前 upg_collect/refine/power/labor/research/build 六项付了钱却没有任何效果。
-import { upgradeMul } from '../data/upgrades.js?v=62.13';
+import { upgradeMul } from '../data/upgrades.js?v=63.14';
 // v0.4.7：softFail —— 心跳里被吞掉的异常改为「可观测」（同 tag+message 只报一次，
 //   避免每 tick 抛错把控制台刷爆）。此前 40 处空 catch 无一日志，
 //   是「界面不显示 / 功能没反应」类问题反复无法定位的共同根因。
-import { softFail } from './util.js?v=62.13';
-import { tickFleetMissions, ensureFleets } from './fleet.js?v=62.13';
+import { softFail } from './util.js?v=63.14';
+import { tickFleetMissions, ensureFleets } from './fleet.js?v=63.14';
 // v0.4.7：healArmyLineLabor —— 自愈「零人力」的军队组装线（见 advanceArmyLines 注释）
-import { ensureArmies, armyBuildTick, advanceTraining, healArmyLineLabor, recoverArmies} from './army.js?v=62.13';   // v0.2.0 军队
+import { ensureArmies, armyBuildTick, advanceTraining, healArmyLineLabor, recoverArmies} from './army.js?v=63.14';   // v0.2.0 军队
 // v0.3.4：战役系统（HOI4 式持续交战）。必须在 ensureArmies **之后**接线 ——
 //   战役结算要从真实 acc.armies 取师（兵员/攻防），否则打的是空数组。
-import { tickBattles, ensureBattles, orbitalControlOf, startBattle, BATTLE_MAX_PER_WAR, unshiftWarLog } from './battle.js?v=62.13';
+import { tickBattles, ensureBattles, orbitalControlOf, startBattle, BATTLE_MAX_PER_WAR, unshiftWarLog } from './battle.js?v=63.14';
 // v0.4.1：行星战区地图（战区归属 / 补给网络 / 战略打击 / 敌方 AI 战略层）
 import {
   ensureTheater, refreshSupply, decayStrikePressure, tickTheaterAI,
   tickRegions, regionYieldOf, colonySupportOf,
   regionsOf, treatyOutputMulOf, STRUCTURE_OUTPUT_MUL,
-} from './theater.js?v=62.13';
+} from './theater.js?v=63.14';
 // v0.4.7：附庸上贡的换算汇率也来自 treaty.js（此前这里是写死的 *1000）
-import { tickVassals, VASSAL_ASCOIN_RATE, VASSAL_RESEARCH_RATE } from './treaty.js?v=62.13';
+import { tickVassals, VASSAL_ASCOIN_RATE, VASSAL_RESEARCH_RATE } from './treaty.js?v=63.14';
 // 注：ensureEntry 已在上面从 ./production.js 一并导入，勿重复 import。
 // v0.1.0：电脑账号（离线存档里的 NPC 势力）与其交易池联动。
 //   注意 npc.js 是叶子模块（只 import 数据表），shop.js 与 state.js 互为函数级引用、无顶层副作用。
-import { ensureNpcs, tickNpcs } from './npc.js?v=62.13';
+import { ensureNpcs, tickNpcs } from './npc.js?v=63.14';
 import {
   priceOf as shopPriceOf, suggestPriceOf as shopSuggestPriceOf,
   tickShop as shopTick,
-} from './shop.js?v=62.13';
-import { tickAuctions, tickNpcAuctionSpawner } from './auction.js?v=62.13';   // v0.2.6 拍卖行；v0.2.10 NPC 挂单
+} from './shop.js?v=63.14';
+import { tickAuctions, tickNpcAuctionSpawner } from './auction.js?v=63.14';   // v0.2.6 拍卖行；v0.2.10 NPC 挂单
 
 const SAVE_PREFIX = 'astrix.save.';
 const INDEX_KEY = SAVE_PREFIX + 'index';
@@ -323,6 +326,130 @@ export function deleteAccount(id) {
 // 取当前账号对象
 export function currentAccount() {
   return STATE.accounts.find((a) => a.id === STATE.currentAccountId) || null;
+}
+
+// ============================================================================
+// 存档导出 / 导入（v0.4.23 新增）
+// ============================================================================
+// 为什么需要
+//   离线存档只存在浏览器的 localStorage 里：清一次站点数据、换一台机器、或换一个
+//   浏览器，几十小时的进度就没了，而且没有任何补救手段。这里提供一份**自包含的
+//   JSON 存档文件**（账号 + 它的全部星球实例），玩家可以自己留备份、也可以搬到
+//   另一台设备上继续玩。
+//
+// 三条硬约定
+//   ① 导入**永远生成新 id**：同源存档可以被反复导入而不覆盖任何现有存档 ——
+//      「导入」是加法，不是恢复/替换。要替换请自行删除旧档。
+//   ② 导入**不切换当前存档**：玩家仍在原来的档里，新档只是出现在列表里，
+//      避免「点了一下导入，游戏进度突然换了一个」的惊吓。
+//   ③ 导入时把 lastSeen 重置为现在：否则一份三天前导出的存档会在下次载入时
+//      被 settleOffline 当成「你离线了三天」，凭空结算一笔离线收益。
+//
+// 格式：{ tag, schema, gameVersion, exportedAt, account, planets }
+//   tag 是固定串，用来挡住「随便选了个 JSON 文件」；schema 是**格式**版本，
+//   与游戏版本 gameVersion 分开 —— 前者决定能不能读，后者只作排查线索。
+export const SAVE_FILE_TAG = 'astrix.savefile';
+export const SAVE_FILE_SCHEMA = 1;
+export const SAVE_IMPORT_MAX_BYTES = 8 * 1024 * 1024;   // 8 MB：正常存档远小于此
+
+function cloneJson(value) {
+  try { return JSON.parse(JSON.stringify(value)); } catch (e) { return null; }
+}
+
+/**
+ * 把一个存档导出成可下载的普通对象（不触碰 localStorage，不改变当前账号）。
+ * @param {object} [acc] 目标账号；省略则导出当前账号
+ * @returns {object|null} 无账号时返回 null
+ */
+export function exportAccount(acc) {
+  const account = acc || currentAccount();
+  if (!account) return null;
+  const keys = poolKeys(STATE.mode);
+  // 非当前账号的星球实例不在内存里，必须从对应的存档键读回来
+  const planets = account.id === STATE.currentAccountId
+    ? STATE.planets
+    : loadPlanets(account.id, keys.planets);
+  const accountCopy = cloneJson(account);
+  if (!accountCopy) return null;                        // 存档里出现循环引用时放弃导出
+  return {
+    tag: SAVE_FILE_TAG,
+    schema: SAVE_FILE_SCHEMA,
+    gameVersion: VERSION,
+    exportedAt: Date.now(),
+    account: accountCopy,
+    planets: cloneJson(Array.isArray(planets) ? planets : []) || [],
+  };
+}
+
+/**
+ * 校验一份导入数据的结构。通过返回 null，否则返回**给玩家看的中文原因**。
+ * 只校验「能不能安全地塞进存档系统」，不校验游戏内容是否合理。
+ */
+export function validateSaveFile(data) {
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return '文件内容不是存档对象';
+  if (data.tag !== SAVE_FILE_TAG) return '不是 Astrix 存档文件（缺少标识）';
+  const schema = Number(data.schema);
+  if (!Number.isFinite(schema) || schema < 1) return '存档格式版本号非法';
+  if (schema > SAVE_FILE_SCHEMA) return '存档来自更新版本的游戏（格式 ' + schema + '），请先更新游戏后再导入';
+  const a = data.account;
+  if (!a || typeof a !== 'object' || Array.isArray(a)) return '存档缺少账号数据';
+  if (typeof a.id !== 'string' || !a.id) return '存档缺少账号 id';
+  if (typeof a.name !== 'string' || !a.name.trim()) return '存档缺少名称';
+  if (!Array.isArray(a.planetsOwned) || a.planetsOwned.some((c) => typeof c !== 'string')) {
+    return '存档的殖民地列表损坏';
+  }
+  if (data.planets != null && !Array.isArray(data.planets)) return '星球实例数据损坏';
+  return null;
+}
+
+// 重名时自动加后缀，避免列表里出现两个一模一样的名字（玩家无法分辨）
+function uniqueSaveName(name) {
+  const base = String(name || '').trim() || '导入的存档';
+  const taken = new Set(STATE.accounts.map((a) => a.name));
+  if (!taken.has(base)) return base;
+  if (!taken.has(base + '（导入）')) return base + '（导入）';
+  for (let i = 2; i < 1000; i++) {
+    const cand = base + '（导入 ' + i + '）';
+    if (!taken.has(cand)) return cand;
+  }
+  return base + '（导入）';
+}
+
+/**
+ * 导入一份存档（见上方三条硬约定）。返回 { ok, reason } 或
+ * { ok: true, id, name, planets }。
+ */
+export function importAccount(data) {
+  const bad = validateSaveFile(data);
+  if (bad) return { ok: false, reason: bad };
+
+  const acc = cloneJson(data.account) || {};
+  // 以默认结构兜底：导入文件可能来自旧版本，缺字段时不能让后续 UI / tick 崩掉
+  const base = defaultAccount('导入的存档');
+  for (const k in base) if (!(k in acc)) acc[k] = base[k];
+  if (!Array.isArray(acc.tech)) acc.tech = [];
+  if (!acc.resources || typeof acc.resources !== 'object' || Array.isArray(acc.resources)) acc.resources = {};
+  if (!acc.upgrades || typeof acc.upgrades !== 'object' || Array.isArray(acc.upgrades)) acc.upgrades = {};
+  if (!Array.isArray(acc.ships)) acc.ships = [];
+  if (!Array.isArray(acc.buildings)) acc.buildings = [];
+  if (!acc.stats || typeof acc.stats !== 'object' || Array.isArray(acc.stats)) acc.stats = {};
+
+  acc.id = genId();                                     // 约定 ①：永远新 id
+  acc.name = uniqueSaveName(acc.name);
+  const home = typeof acc.homePlanetCode === 'string' && acc.homePlanetCode ? acc.homePlanetCode : 'syl';
+  acc.homePlanetCode = home;
+  if (!acc.planetsOwned.length) acc.planetsOwned = [home + '1'];
+  acc.createdAt = Number(acc.createdAt) || Date.now();
+  acc.stats.lastSeen = Date.now();                      // 约定 ③：不补假离线收益
+
+  const planets = (Array.isArray(data.planets) ? data.planets : [])
+    .filter((p) => p && typeof p === 'object' && !Array.isArray(p));
+
+  // 约定 ②：只追加，不动 currentAccountId
+  STATE.accounts.push(acc);
+  adapter.set(poolKeys(STATE.mode).planets + acc.id, JSON.stringify(planets));
+  saveState();
+  return { ok: true, id: acc.id, name: acc.name, planets: planets.length };
 }
 
 // ============================================================================

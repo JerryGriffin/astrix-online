@@ -1,13 +1,55 @@
 // 开始界面：标题、离线/在线模式、账号选择、各次要入口模态层（Astrix）
-import {  STATE, createAccount, switchAccount, deleteAccount, currentAccount, START_MODES, switchPool  } from '../core/state.js?v=62.13';
+import {  STATE, createAccount, switchAccount, deleteAccount, currentAccount, START_MODES, switchPool,
+  exportAccount, importAccount, SAVE_IMPORT_MAX_BYTES  } from '../core/state.js?v=63.14';
 // v0.4.19：不再需要科幻势力表 —— 开局势力下拉框已整段移除（见下方 buildNewAccountForm）
-import { fmtNum, fmtTime } from '../core/format.js?v=62.13';
+import { fmtNum, fmtTime } from '../core/format.js?v=63.14';
 // 版本号与更新日志的唯一来源：任何地方要显示版本都从这里取，改版本只改 js/version.js 一处
 // v0.4.22：VERSIONS 已拆到 data/changelog.js 并按需动态加载（体积原因，见 version.js 注释）
-import { VERSION, CACHE_TAG } from '../version.js?v=62.13';
+import { VERSION, CACHE_TAG } from '../version.js?v=63.14';
 // v0.4.7：el() 收敛到 ui/common.js（此前本文件自带一份；全项目共 14 份、两种不兼容签名，
 //   v0.3.2「列强区块不显示」即源于把 A 型调用写进了 B 型文件）
-import { el, esc } from './common.js?v=62.13';
+import { el, esc } from './common.js?v=63.14';
+
+// ============================================================================
+// 存档文件下载 / 读取（v0.4.23）
+// ============================================================================
+// 为什么用 Blob + <a download> 而不是让玩家「复制一段 JSON」
+//   一份中后期存档动辄几 MB，肉眼看不出是否复制完整；文件下载是唯一能让玩家
+//   自己校验（大小、能再导入回来）的方式。
+function saveFileStamp(d) {
+  const t = d || new Date();
+  const p = (n) => String(n).padStart(2, '0');
+  return t.getFullYear() + p(t.getMonth() + 1) + p(t.getDate())
+    + '-' + p(t.getHours()) + p(t.getMinutes());
+}
+
+function downloadSaveFile(data, accountName) {
+  // 文件名只留安全字符：存档名允许中文，但 \ / : * ? " < > | 在 Windows 上非法
+  const safe = String(accountName || 'save').replace(/[\\/:*?"<>|\s]+/g, '_').slice(0, 24) || 'save';
+  const text = JSON.stringify(data, null, 2);
+  const blob = new Blob([text], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'astrix-save-' + safe + '-' + saveFileStamp() + '.json';
+  a.style.display = 'none';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  // 立刻 revoke 会让部分浏览器（Safari）来不及取数据，留 4 秒
+  setTimeout(() => { try { URL.revokeObjectURL(url); } catch (e) { /* 忽略 */ } }, 4000);
+}
+
+// File.text() 在老 WebView 上不存在，退回 FileReader
+function readFileText(file) {
+  if (typeof file.text === 'function') return file.text();
+  return new Promise((resolve, reject) => {
+    const fr = new FileReader();
+    fr.onload = () => resolve(String(fr.result || ''));
+    fr.onerror = () => reject(fr.error || new Error('读取失败'));
+    fr.readAsText(file);
+  });
+}
 
 // 自定义二次确认弹层
 function confirmModal(ctx, title, msg, onYes) {
@@ -124,6 +166,14 @@ function renderAccountList(body, ctx, pool) {
     // 当前存档显示「进入」（续玩）；其它存档显示「切换」后进入
     const enter = el('button', 'btn btn-sm' + (isCurrent ? ' btn-primary' : ''), isCurrent ? '进入' : '切换');
     enter.onclick = () => { if (!isCurrent) switchAccount(acc.id); enterGame(); };
+    // v0.4.23：导出存档 —— 把这一档（账号 + 全部星球实例）存成 JSON 文件
+    const exp = el('button', 'btn btn-sm', '导出');
+    exp.title = '把该存档保存为 JSON 文件（可备份或搬到别的设备）';
+    exp.onclick = () => {
+      const data = exportAccount(acc);
+      if (!data) { return; }
+      downloadSaveFile(data, acc.name);
+    };
     const del = el('button', 'btn btn-sm btn-danger', '删除');
     del.onclick = () => {
       actions.innerHTML = '';
@@ -146,11 +196,62 @@ function renderAccountList(body, ctx, pool) {
       no.onclick = () => renderAccountList(body, ctx, pool);
       actions.append(yes, no);
     };
-    actions.append(enter, del);
+    actions.append(enter, exp, del);
     row.append(info, actions);
     body.appendChild(row);
   });
   renderNewSaveForm(body, ctx, pool);
+  renderImportRow(body, ctx, pool);
+}
+
+// ============================================================================
+// 导入存档（v0.4.23）
+// ============================================================================
+// 只出现在**离线池**：在线存档由云端按账号托管，本地导入的一份会被云端覆盖，
+// 说清楚比给一个「导入成功但下次登录就没了」的按钮要好。
+function renderImportRow(body, ctx, pool) {
+  const row = el('div', 'acc-import-row');
+  const note = el('p', 'acc-new-tip muted', '');
+  if (pool === 'online') {
+    note.textContent = '在线存档由云端托管，不支持导入；如需导入请在「离线模式」的存档列表操作。';
+    row.appendChild(note);
+    body.appendChild(row);
+    return;
+  }
+  const file = document.createElement('input');
+  file.type = 'file';
+  file.accept = '.json,application/json';
+  file.style.display = 'none';
+  const btn = el('button', 'btn', '导入存档文件');
+  btn.type = 'button';
+  btn.title = '选择之前导出的 astrix-save-*.json，会作为**新存档**加入列表，不会覆盖现有存档';
+  btn.onclick = () => file.click();
+  file.onchange = async () => {
+    const f = file.files && file.files[0];
+    file.value = '';                                    // 清空，允许连续选同一个文件
+    if (!f) return;
+    if (f.size > SAVE_IMPORT_MAX_BYTES) {
+      note.textContent = '导入失败：文件超过 8 MB，正常存档不会这么大。';
+      return;
+    }
+    let data = null;
+    try { data = JSON.parse(await readFileText(f)); } catch (e) {
+      note.textContent = '导入失败：这不是合法的 JSON 文件。';
+      return;
+    }
+    const r = importAccount(data);
+    if (!r || !r.ok) {
+      note.textContent = '导入失败：' + ((r && r.reason) || '未知错误');
+      return;
+    }
+    // 重绘列表（新档在末尾），并在顶部告诉玩家导入了什么 —— 重绘会丢掉旧 note 节点
+    renderAccountList(body, ctx, pool);
+    const ok = el('p', 'acc-import-ok',
+      '已导入「' + r.name + '」（' + r.planets + ' 个星球）。在列表里点「进入」即可开始。');
+    body.insertBefore(ok, body.firstChild);
+  };
+  row.append(btn, file, note);
+  body.appendChild(row);
 }
 
 // 新建存档：用模态内联表单替代 window.prompt（更稳健、可被自动化驱动）

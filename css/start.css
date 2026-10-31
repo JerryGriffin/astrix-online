@@ -156,6 +156,27 @@
 .btn-sm { min-height: 36px; padding: 6px 12px; font-size: 0.85rem; }
 .acc-new { width: 100%; margin-top: 4px; }
 
+/* v0.4.23：存档导入区（位于新建存档表单之后，视觉上弱于「新建」，避免喧宾夺主） */
+.acc-import-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-top: 6px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--border);
+}
+.acc-import-row .acc-new-tip { flex-basis: 100%; margin: 0; }
+.acc-import-ok {
+  margin: 0 0 10px;
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(124, 215, 255, 0.3);
+  background: rgba(124, 215, 255, 0.08);
+  color: var(--cyan);
+  font-size: 0.85rem;
+}
+
 /* ===== 模态内容：更新日志 / 玩法 / 统计 / 设置 ===== */
 .changelog .cl-ver { font-weight: 600; margin-bottom: 8px; }
 .cl-list, .tip-list { padding-left: 20px; }
