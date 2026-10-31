@@ -34,6 +34,18 @@
 //
 // 价格规则：第 n+1 座建筑的价格 = baseCost 每项 × growth^n（n = 已拥有数量），向上取整。
 //
+// 【v0.4.24：建筑前置 reqBuilding】
+//   科技只决定「知不知道怎么造」，`reqBuilding` 决定「有没有造它的条件」——
+//   两者是不同性质的墙：
+//     · unlockTech  未研究 → 整条建筑在面板上**不显示**（玩家还不知道有这东西）
+//     · reqBuilding 未建成 → 建筑**显示但不可建**，并说明缺哪一座
+//   口径：**帝国内任一星球**已建成该建筑即算满足（与 data/techs.js#reqBuilding 一致），
+//     不要求同一颗星球 —— 否则每颗殖民地都得先造一座船坞，是把前置税重复收 N 次。
+//   约束：reqBuilding 只能指向「层级更低、且自身不依赖本建筑」的对象，否则形成死锁。
+//     当前链条：gas_collector←blast_furnace、bio/electrolyzer/chem_lab←dock、
+//     mine_deep←mine_shallow、mine_core←electrolyzer、combustion_chamber←thermal_plant、
+//     refinery←chem_lab、custom_chem←refinery、fabricator←repair_bay、training_ground←barracks。
+//
 // 【建材可获得性铁律】
 //   一座建筑只能用「解锁它的科技层级或更低」的材料，否则会死锁。
 //   各材料的首次可获得层级（T0 最低）：
@@ -85,6 +97,7 @@ export const BUILDINGS = [
     powerOut: 6,
     shelter: 40,      // ★ 每栋 40 点庇护
     desc: '低成本居住建筑，每栋提供 40 点庇护。开局自带 5 座。每座提供 6 电力。'
+        + '庇护总量决定**居住容量**（= 庇护 × 1.2，至少 20 人）：人口到达容量后就不再增长。'
         + '庇护不足会拉低幸福度、进而拖慢人口增长——想让人丁兴旺就得先住房产。',
   },
   {
@@ -126,6 +139,7 @@ export const BUILDINGS = [
     id: 'gas_collector',
     nameCn: '大气收集器',
     unlockTech: 't_a4',
+    reqBuilding: 'blast_furnace',   // v0.4.24：收集器的金属壳体必须在高炉炼出来
     category: 'collect',
     baseCost: { '石英': 400, '石头': 300, '陶瓷': 80 },        // 粘土 200→陶瓷 80（T2；t_a4 前置含 B2，安全）
     growth: 1.15,
@@ -140,6 +154,7 @@ export const BUILDINGS = [
     id: 'bio_factory',
     nameCn: '生物工厂',
     unlockTech: 't_a3',
+    reqBuilding: 'dock',            // v0.4.24：太空级生物工程，必须先有船坞
     category: 'industry',
     baseCost: { '有机质': 200, '泥土': 100, '水': 50, '钢': 300 },
     growth: 1.15,
@@ -186,6 +201,7 @@ export const BUILDINGS = [
     id: 'electrolyzer',
     nameCn: '电解池',
     unlockTech: 't_b3',
+    reqBuilding: 'dock',            // v0.4.24：电解提纯线由船坞工程队架设
     category: 'refine',
     baseCost: { '石英': 300, '石墨': 300, '铜': 250, '铁': 200 },
     growth: 1.15,
@@ -235,6 +251,7 @@ export const BUILDINGS = [
     id: 'combustion_chamber',
     nameCn: '综合燃烧室',
     unlockTech: 't_b6',
+    reqBuilding: 'thermal_plant',   // v0.4.24：燃烧室是火力发电厂的放大版，先在火电上跑通燃烧控制
     category: 'power',
     baseCost: { '石头': 2000, '陶瓷': 180, '钢': 600, '钛合金': 150 },   // 陶瓷下调 ×0.6（300→180）
     growth: 1.12,
@@ -302,6 +319,7 @@ export const BUILDINGS = [
     id: 'mine_deep',
     nameCn: '深层矿井',
     unlockTech: 't_c2',
+    reqBuilding: 'mine_shallow',    // v0.4.24：竖井得先有浅层井架才能往下接
     category: 'collect',
     baseCost: { '石头': 1000, '铁': 300, '木头': 200, '铜': 150 },
     growth: 1.18,
@@ -316,6 +334,7 @@ export const BUILDINGS = [
     id: 'mine_core',
     nameCn: '地心矿井',
     unlockTech: 't_c3',
+    reqBuilding: 'electrolyzer',    // v0.4.24：地核耐热建材（钛 / 碳化钨）要靠电解池供货
     category: 'collect',
     baseCost: { '石头': 5000, '钛': 200, '碳化钨': 100, '钢': 500, '钛合金': 100, '铝合金': 100 },   // v0.0.7：钛合金/铝合金属 T4 ≤ 地心矿井 C3 的 T5
     growth: 1.18,
@@ -333,6 +352,7 @@ export const BUILDINGS = [
     id: 'chem_lab',
     nameCn: '化学实验室',
     unlockTech: 't_d1',
+    reqBuilding: 'dock',            // v0.4.24：实验室的真空 / 低温腔体由船坞工艺装配
     category: 'refine',
     // v0.1.3 修订（死锁修复）：原造价含 **塑料 100 / 橡胶 100**，而这两种复合资源
     //   **只能由化学实验室自己生产** —— 于是「想造实验室 → 得先有实验室」，永远建不出来。
@@ -350,6 +370,7 @@ export const BUILDINGS = [
     id: 'refinery',
     nameCn: '精细加工厂',
     unlockTech: 't_d2',
+    reqBuilding: 'chem_lab',        // v0.4.24：精细加工是把实验室工艺放大到产线
     category: 'industry',
     baseCost: { '石头': 1000, '石英': 400, '钛': 100, '铜': 200 },
     growth: 1.25,
@@ -365,6 +386,7 @@ export const BUILDINGS = [
     id: 'custom_chem',
     nameCn: '自定义化工厂',
     unlockTech: 't_d3',
+    reqBuilding: 'refinery',        // v0.4.24：自定义配方建立在精细加工的纯度能力上
     category: 'refine',
     baseCost: { '石头': 3000, '石墨烯': 100, '钛合金': 200, '铝': 500 },
     growth: 1.22,
@@ -395,6 +417,7 @@ export const BUILDINGS = [
     id: 'fabricator',
     nameCn: '制造车间',
     unlockTech: 't_e4',
+    reqBuilding: 'repair_bay',      // v0.4.24：先有修理能力，才谈得上精密制造
     category: 'industry',
     baseCost: { '铁': 400, '铜': 200, '玻璃': 150, '石头': 800 },
     growth: 1.18,
@@ -445,6 +468,7 @@ export const BUILDINGS = [
     id: 'training_ground',
     nameCn: '训练场',
     unlockTech: 't_m2',
+    reqBuilding: 'barracks',        // v0.4.24：没有营区就没有可训练的建制
     category: 'dock',
     baseCost: { '钢': 80, '塑料': 60, '玻璃': 30 },
     growth: 1.22,

@@ -1,14 +1,14 @@
 // 开始界面：标题、离线/在线模式、账号选择、各次要入口模态层（Astrix）
 import {  STATE, createAccount, switchAccount, deleteAccount, currentAccount, START_MODES, switchPool,
-  exportAccount, importAccount, SAVE_IMPORT_MAX_BYTES  } from '../core/state.js?v=63.14';
+  exportAccount, importAccount, SAVE_IMPORT_MAX_BYTES  } from '../core/state.js?v=64.15';
 // v0.4.19：不再需要科幻势力表 —— 开局势力下拉框已整段移除（见下方 buildNewAccountForm）
-import { fmtNum, fmtTime } from '../core/format.js?v=63.14';
+import { fmtNum, fmtTime } from '../core/format.js?v=64.15';
 // 版本号与更新日志的唯一来源：任何地方要显示版本都从这里取，改版本只改 js/version.js 一处
 // v0.4.22：VERSIONS 已拆到 data/changelog.js 并按需动态加载（体积原因，见 version.js 注释）
-import { VERSION, CACHE_TAG } from '../version.js?v=63.14';
+import { VERSION, CACHE_TAG } from '../version.js?v=64.15';
 // v0.4.7：el() 收敛到 ui/common.js（此前本文件自带一份；全项目共 14 份、两种不兼容签名，
 //   v0.3.2「列强区块不显示」即源于把 A 型调用写进了 B 型文件）
-import { el, esc } from './common.js?v=63.14';
+import { el, esc } from './common.js?v=64.15';
 
 // ============================================================================
 // 存档文件下载 / 读取（v0.4.23）

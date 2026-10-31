@@ -12,31 +12,32 @@
 //  - 所有数字走 js/core/format.js；文本一律用 el({text})（textContent）做 HTML 转义。
 //  - 样式内联注入，不碰 css/ 目录。
 
-import { PLANETS } from '../data/planets.js?v=63.14';
+import { PLANETS } from '../data/planets.js?v=64.15';
 import {
   STATE, getPlanetInstance, shelterRatio, ownedOf,
-} from '../core/state.js?v=63.14';
-import { fmtNum } from '../core/format.js?v=63.14';
+  housingFreeOf, popCapOf,
+} from '../core/state.js?v=64.15';
+import { fmtNum } from '../core/format.js?v=64.15';
 // v0.3.3：宣战统一走 core/war.js#declareWar（此前 colony.js 是手写 acc.wars.push，
 //   绕过了战争槽位上限与历史门控，与 galaxy.js 行为不一致）
-import { declareWar } from '../core/war.js?v=63.14';
+import { declareWar } from '../core/war.js?v=64.15';
 // v0.1.2（R8）：调派人力从母星扣「可用人力」，走 population.js 既有接口，不硬改字段
-import { getAvailable } from '../core/population.js?v=63.14';
+import { getAvailable } from '../core/population.js?v=64.15';
 // v0.1.5（需求 2）：运输物资到殖民地 —— 复用 fleet.js 的运输任务（startMission + listFleets）
-import { startMission, listFleets } from '../core/fleet.js?v=63.14';
+import { startMission, listFleets } from '../core/fleet.js?v=64.15';
 // v0.0.93：商店星 Ast1（独立星球入口）+ 商店面板（舰队页复用）
-import { SHOP_PLANET } from '../core/shop.js?v=63.14';
+import { SHOP_PLANET } from '../core/shop.js?v=64.15';
 // v0.1.1：发现门禁 + 商店星拦截 + 托管说明
 import {
   capturePlanet, ensureDiscoveredDefaults, purgeShopColonies,
   modeOf, TRIBUTE_RATES, MANAGEMENT_MODES,
-} from '../core/planetgen.js?v=63.14';
-import { renderShop } from './fleet.js?v=63.14';
+} from '../core/planetgen.js?v=64.15';
+import { renderShop } from './fleet.js?v=64.15';
 // v0.2.1：殖民地报告内联化 —— 每颗星球行内直接显示最新报告（不再弹右下角提示条）
-import { reportTextOf } from './reports.js?v=63.14';
+import { reportTextOf } from './reports.js?v=64.15';
 // v0.4.7：el() 收敛到 ui/common.js（此前本文件自带一份；全项目共 14 份、两种不兼容签名，
 //   v0.3.2「列强区块不显示」即源于把 A 型调用写进了 B 型文件）
-import { el, ensureStyle, uiTick } from './common.js?v=63.14';
+import { el, ensureStyle, uiTick } from './common.js?v=64.15';
 
 const CSS = `
   .col-panel { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; color: #e8eef2; padding: 12px; box-sizing: border-box; max-width: 960px; margin: 0 auto; }
@@ -114,12 +115,16 @@ export function canEnterPlanet(inst) {
 
 // R8 调派人力：从母星实例扣 N 个可用人力，加到新星实例上。
 //   · 走 population.js 的 getAvailable / pop.total 接口，不硬改 available 等派生字段；
-//   · 实际调派数 = min(N, 母星可用人力)，不会把母星抽成负数；
+//   · 实际调派数 = min(N, 母星可用人力, 目的地剩余居住容量)，不会把母星抽成负数；
 //   · 返回真正调派的人数（用于核对「母星减、新星加、总数守恒」）。
+// v0.4.24：加入**目的地居住容量**夹取 —— 人口有了硬上限（capOfShelter）之后，
+//   若这里不夹，移民就成了绕开上限的后门：往 0 栋房子的星球一次塞 500 人，
+//   上限形同虚设。返回 0 时调用方应提示「目的地住房已满」。
 export function dispatchWorkforce(homeInst, newInst, n) {
   if (!homeInst || !homeInst.pop || !newInst || !newInst.pop || !(n > 0)) return 0;
   const avail = getAvailable(homeInst.pop);
-  const move = Math.max(0, Math.min(Math.floor(Number(n) || 0), Math.floor(avail)));
+  const free = housingFreeOf(newInst);          // 目的地还能住几个
+  const move = Math.max(0, Math.min(Math.floor(Number(n) || 0), Math.floor(avail), Math.floor(free)));
   if (move <= 0) return 0;
   homeInst.pop.total = Math.max(0, (Number(homeInst.pop.total) || 0) - move);
   newInst.pop.total = (Number(newInst.pop.total) || 0) + move;
@@ -329,6 +334,9 @@ export function renderColony(root, ctx) {
     });
     const hasAvail = homeAvail > 0 && !!homeInst;
     if (!hasAvail) input.setAttribute('disabled', 'disabled');
+    // v0.4.24：目的地居住容量 —— 人口有硬上限，移民必须先看它还剩多少床位
+    const freeBeds = Math.max(0, Math.floor(housingFreeOf(inst)));
+    const curPop = Math.floor((inst.pop && inst.pop.total) || 0);
     wrap.appendChild(el('div', { class: 'col-confirm-row' }, [
       el('span', { class: 'k', text: '运送人数 ' }),
       input,
@@ -338,6 +346,12 @@ export function renderColony(root, ctx) {
       text: '母星当前可用人力 ' + fmtNum(Math.floor(homeAvail))
         + '（可用人力 = 总人力 × 劳动参与率 × 幸福度 − 已分配岗位与产线）。'
         + (hasAvail ? '运送后从母星扣除、计入本星，总数守恒。' : '母星暂无剩余可用人力，无法运送。'),
+    }));
+    wrap.appendChild(el('div', {
+      class: 'col-confirm-note' + (freeBeds > 0 ? '' : ' warn'),
+      text: '本星居住容量 ' + fmtNum(curPop) + ' / ' + fmtNum(popCapOf(inst))
+        + '（庇护总量 × 1.2，至少 20 人的基础营地）'
+        + (freeBeds > 0 ? '　可再接收 ' + fmtNum(freeBeds) + ' 人。' : '　已满员，需先建「房屋」才能再接收移民。'),
     }));
     const msg = el('div', { class: 'col-confirm-note' });
     const row = el('div', { class: 'col-confirm-btns' });
@@ -349,8 +363,11 @@ export function renderColony(root, ctx) {
       if (!homeInst) { msg.textContent = '找不到母星实例，无法运送。'; return; }
       const moved = dispatchWorkforce(homeInst, inst, n);
       if (!(moved > 0)) {
-        msg.textContent = '运送失败：母星可用人力不足（当前 '
-          + fmtNum(Math.floor(getAvailable(homeInst.pop))) + '）。';
+        // 两种失败要分开报：缺人 vs 缺房（否则玩家会以为「母星没人」却发现还有 900 可用人力）
+        const why = housingFreeOf(inst) <= 0
+          ? '本星住房已满（居住容量 ' + fmtNum(popCapOf(inst)) + '），请先建「房屋」'
+          : '母星可用人力不足（当前 ' + fmtNum(Math.floor(getAvailable(homeInst.pop))) + '）';
+        msg.textContent = '运送失败：' + why + '。';
         return;
       }
       if (closeModal) closeModal();

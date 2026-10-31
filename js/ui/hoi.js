@@ -5,10 +5,10 @@
 //   · 顶部：剧本日历（到天）、国家、阵营、人口、军队 / 舰队概览
 //   · 国策树：工业 / 军事 / 外交三支，各两支；按游戏天数推进，完成即生效
 //   · 轨道圈层：母星行星的 7 个轨道圈层，争夺轨道控制权
-import { fmtNum } from '../core/format.js?v=63.14';
-import { currentAccount, getPlanetInstance } from '../core/state.js?v=63.14';
-import { listArmies, totalArmyPowerOf } from '../core/army.js?v=63.14';
-import { listFleets, fleetPowerOf } from '../core/fleet.js?v=63.14';
+import { fmtNum } from '../core/format.js?v=64.15';
+import { currentAccount, getPlanetInstance, ownedOf, spendOwned, buildingCount } from '../core/state.js?v=64.15';
+import { listArmies, totalArmyPowerOf } from '../core/army.js?v=64.15';
+import { listFleets, fleetPowerOf } from '../core/fleet.js?v=64.15';
 import {
   scenarioDateOf, gameDaysOf, ensureFocus, focusOptionsOf, startFocus,
   ensureSeas, contestSea, blocNameOf, nationOf, deepOf, enemySeaPressure, backgroundOf, HOI_SCENARIO_ID,
@@ -17,12 +17,12 @@ import {
   //   ARMY_MEN 本身在 data/hoi1936.js 且 core 层未 re-export，
   //   这里用 core/hoi1936.js 已经导出的 ARMY_MEN_MAX（= ARMY_MEN 的再导出）。
   ARMY_MEN_MAX,
-} from '../core/hoi1936.js?v=63.14';
+} from '../core/hoi1936.js?v=64.15';
 // v0.3.3：战争数据（实时交战双方状态）
 // v0.4.8：declareWar / warWith —— 非 1936 剧本的战区页要能直接对敌对势力宣战
-import { activeWarsOf, declareWar, warWith } from '../core/war.js?v=63.14';
+import { activeWarsOf, declareWar, warWith } from '../core/war.js?v=64.15';
 // v0.4.8：通用势力名解析（fac_* 势力在非 1936 剧本下用于战区归属显示）
-import { factionNameCn, factionFlag, factionDesc, factionPower} from '../data/factions.js?v=63.14';
+import { factionNameCn, factionFlag, factionDesc, factionPower} from '../data/factions.js?v=64.15';
 // v0.3.4：战役系统（师级交战 / 组织度 / 补给 / 工事 / 增援）—— 替代「只有进度条」
 import {
   listBattles, battleView, startBattle, committableArmies, foeRemaining,
@@ -30,7 +30,7 @@ import {
   ORBITAL_BOMB_CHARGES, orbitalControlOf,
   // v0.4.5（需求 2）：指挥官 + 战役事件
   commandersOf, assignCommander, battleById,
-} from '../core/battle.js?v=63.14';
+} from '../core/battle.js?v=64.15';
 // v0.4.1：行星战区地图（战区归属 / 补给网络 / 战略轨道打击 / 殖民地争夺）
 import {
   ensureTheater, theaterView, attackTargetsOf, canStrikeRegion, strikeRegion,
@@ -38,15 +38,19 @@ import {
   frontInfoOf as THfrontInfo, canOpenFront as THcanFront,
   REGION_MAX_FRONTS as TH_MAX_FRONTS, SIEGE_REQUIRED as TH_SIEGE,
   regionYieldOf, colonySupportOf, regionById,
-} from '../core/theater.js?v=63.14';
+} from '../core/theater.js?v=64.15';
 // v0.4.9 入口整合：战争终局（和平会议 / 投降）接入本页 —— 此前这两个操作**只在
 //   「星际页」的国家卡片上**，而仗是在本页的战区地图上打的，玩家打完找不到地方结束战争。
-import { surrenderWar } from '../core/war.js?v=63.14';
-import { openPeaceConference } from './treaty.js?v=63.14';
-import { HOI_BY_ID, HIST_TIMELINE} from '../data/hoi1936.js?v=63.14';
+import { surrenderWar } from '../core/war.js?v=64.15';
+// v0.4.24：舰队会战（多回合舰队战 → 战果计入战争分数与轨道控制）
+import {
+  fleetWarViewOf, fleetBattle, repairFleet, fleetPreviewOf, FLEET_BATTLE_COOLDOWN_MS,
+} from '../core/fleetwar.js?v=64.15';
+import { openPeaceConference } from './treaty.js?v=64.15';
+import { HOI_BY_ID, HIST_TIMELINE} from '../data/hoi1936.js?v=64.15';
 // v0.4.7：el() 收敛到 ui/common.js（此前本文件自带一份；全项目共 14 份、两种不兼容签名，
 //   v0.3.2「列强区块不显示」即源于把 A 型调用写进了 B 型文件）
-import { el, ensureStyle, uiTick } from './common.js?v=63.14';
+import { el, ensureStyle, uiTick } from './common.js?v=64.15';
 
 // v0.4.1：地图交互状态（同样放模块级，避免每秒重绘冲掉选中项）
 // v0.4.3：plan = 多路战线规划（同时开辟多条战线），mode='plan' 时点目标只入队不立即开战
@@ -58,6 +62,9 @@ const _mapSel = { regionId: null, plan: [], mode: 'single' };
 //   UI 下拉框只列太空地貌（SPACE_TERRAIN_IDS），玩家不选地形直接开战时
 //   会被 startBattle 兜底成 'regolith'，导致这个默认值形同虚设。
 const _lineSel = { warId: null, ids: [], terrain: 'regolith', msg: '', originId: null, targetId: null };
+
+// v0.4.24：舰队会战的参战编队选择（同样必须放模块级 —— 本页每秒整块重绘）
+const _fleetSel = { warId: null, ids: [] };
 
 const CSS = `
   .hoi-panel { font-family: system-ui, sans-serif; color: #e8eef2; padding: 12px; box-sizing: border-box; }
@@ -99,6 +106,22 @@ const CSS = `
   .hoi-war-ongoing { display:flex; flex-wrap:wrap; gap:6px; padding:8px 12px 0; }
   .hoi-war-chip { font-size:11px; border:1px solid #34465a; border-radius:10px; padding:2px 8px; }
   .hoi-war-chip.hot { color:#f09595; border-color:rgba(240,149,149,.5); }
+  /* —— v0.4.24 舰队会战 —— */
+  .hoi-fleets { flex:1 1 100%; border:1px solid #2a3645; border-radius:10px; margin-top:8px; overflow:hidden; }
+  .hoi-fleets > .fh { padding:9px 12px; background:#16202b; font-weight:700; display:flex; justify-content:space-between; align-items:baseline; gap:8px; flex-wrap:wrap; }
+  .hoi-fleets .fbody { padding:8px 12px; }
+  .hoi-fleet-pick { display:flex; flex-wrap:wrap; gap:6px; margin:6px 0; }
+  .hoi-fleet-chip { display:flex; align-items:center; gap:6px; font-size:12px; border:1px solid #34465a; border-radius:10px; padding:6px 10px; background:#101820; cursor:pointer; }
+  .hoi-fleet-chip.on { border-color:#9FE1CB; color:#9FE1CB; }
+  .hoi-fleet-chip input { width:16px; height:16px; }
+  .hoi-fleet-meta { font-size:12px; opacity:.75; line-height:1.7; }
+  .hoi-fleet-actions { display:flex; flex-wrap:wrap; gap:8px; margin-top:8px; }
+  .hoi-fleet-actions button { min-height:42px; border-radius:8px; border:none; background:#2d3e50; color:#fff; cursor:pointer; padding:0 14px; font-weight:600; }
+  .hoi-fleet-actions button.primary { background:#2a5a4d; }
+  .hoi-fleet-actions button[disabled] { background:#28323d; color:#7d8a97; cursor:not-allowed; }
+  .hoi-fleet-log { font-size:12px; line-height:1.8; margin-top:8px; border-top:1px solid #223040; padding-top:6px; }
+  .hoi-fleet-log .win { color:#9FE1CB; }
+  .hoi-fleet-log .lose { color:#f09595; }
   /* v0.4.8：势力宣战面板（对所有剧本可用） */
   .hoi-fac-row { display:flex; align-items:center; gap:10px; flex-wrap:wrap;
     padding:10px 12px; margin:6px 0; background:#16202b; border:1px solid #2a3645; border-radius:10px; }
@@ -990,6 +1013,165 @@ function BATTLE_TERRAIN_CN(id) {
   return t ? t.nameCn : '';
 }
 
+// ============================================================================
+// v0.4.24：舰队会战
+// ============================================================================
+// 规则在 core/fleetwar.js（回合 / 命中 / 穿甲 / 撤退 / 战果）。
+// 这一层只负责「选编队 → 打 → 看结果 → 修船」，不重复任何算式。
+function buildFleetWarSection(acc, war, refresh, ctx) {
+  const sec = el('div', 'hoi-fleets');
+  const v = fleetWarViewOf(acc, war);
+
+  // 切换战争时清空选择（模块级状态，见 _fleetSel 注释）
+  if (_fleetSel.warId !== war.id) { _fleetSel.warId = war.id; _fleetSel.ids = []; }
+
+  const head = el('div', 'fh');
+  head.appendChild(el('span', null, '舰队会战'));
+  head.appendChild(el('span', { class: 'hoi-sub',
+    text: '会战 ' + v.battles + ' 场 · 敌方舰队残余 ' + Math.round((1 - v.navalLoss) * 100) + '%'
+      + ' · 轨道实力修正 ' + (v.edge >= 0 ? '+' : '') + v.edge.toFixed(2) }));
+  sec.appendChild(head);
+
+  const body = el('div', 'fbody');
+
+  // ---- 敌方舰队 ----
+  const foeLine = el('div', 'hoi-fleet-meta');
+  const comp = v.foe.byType.map((t) => t.nameCn + '×' + t.count).join('、');
+  foeLine.textContent = '敌方舰队「' + v.foe.nameCn + '」 · 战力 ' + fmtNum(v.foe.power)
+    + ' · 编成 ' + (comp || '—');
+  body.appendChild(foeLine);
+
+  // ---- 我方编队选择 ----
+  const fleets = listFleets(acc).filter((f) => f && (f.shipIds || []).length > 0);
+  if (!fleets.length) {
+    body.appendChild(el('div', 'hoi-note',
+      '还没有可用编队。先到「舰队」页把飞船编入编队，再回来发起会战。'));
+    sec.appendChild(body);
+    return sec;
+  }
+
+  const pick = el('div', 'hoi-fleet-pick');
+  for (const f of fleets) {
+    const pv = fleetPreviewOf(acc, f.id);
+    const on = _fleetSel.ids.indexOf(f.id) >= 0;
+    const chip = el('label', 'hoi-fleet-chip' + (on ? ' on' : ''));
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.checked = on;
+    cb.addEventListener('change', () => {
+      const i = _fleetSel.ids.indexOf(f.id);
+      if (cb.checked && i < 0) _fleetSel.ids.push(f.id);
+      if (!cb.checked && i >= 0) _fleetSel.ids.splice(i, 1);
+      if (typeof refresh === 'function') refresh();
+    });
+    chip.appendChild(cb);
+    chip.appendChild(el('span', null,
+      f.nameCn + '（' + pv.count + ' 艘' + (pv.armed ? '' : ' · 无武装') + ' · 火力 ' + fmtNum(pv.atk) + '）'));
+    pick.appendChild(chip);
+  }
+  body.appendChild(pick);
+
+  // ---- 选中编队的合计预览 ----
+  let sumAtk = 0, sumHull = 0, sumCount = 0, armed = 0;
+  for (const id of _fleetSel.ids) {
+    const pv = fleetPreviewOf(acc, id);
+    sumAtk += pv.atk; sumHull += pv.hull; sumCount += pv.count;
+    if (pv.armed) armed++;
+  }
+  if (_fleetSel.ids.length) {
+    body.appendChild(el('div', 'hoi-fleet-meta',
+      '出击合计：' + sumCount + ' 艘 · 火力 ' + fmtNum(sumAtk) + ' · 结构 ' + fmtNum(sumHull)
+        + '　（敌方战力 ' + fmtNum(v.foe.power) + '）'));
+  } else {
+    body.appendChild(el('div', 'hoi-fleet-meta', '勾选参战编队后可以发起会战。'));
+  }
+
+  const msg = el('div', 'hoi-note');
+  const actions = el('div', 'hoi-fleet-actions');
+
+  // ---- 发起会战 ----
+  const go = el('button', 'primary', v.cooldownLeft > 0
+    ? '冷却中（' + v.cooldownLeft + ' 秒）'
+    : '发起舰队会战');
+  const cannot = !_fleetSel.ids.length || v.cooldownLeft > 0;
+  if (cannot) go.setAttribute('disabled', 'disabled');
+  go.addEventListener('click', () => {
+    const r = fleetBattle(acc, war, _fleetSel.ids.slice());
+    if (!r.ok) { msg.textContent = '无法开战：' + r.reason; return; }
+    showFleetResult(ctx, r.result);
+    if (typeof refresh === 'function') refresh();
+  });
+  actions.appendChild(go);
+
+  // ---- 维修 ----
+  const inst = getPlanetInstance(acc.homePlanetCode);
+  const dockCount = inst ? buildingCount(inst, 'dock') : 0;
+  const fix = el('button', null, '维修全部编队');
+  fix.title = dockCount > 0 ? '按结构缺口消耗「钢」把舰体修回 100%' : '需要先在本星球建成船坞';
+  if (!dockCount) fix.setAttribute('disabled', 'disabled');
+  fix.addEventListener('click', () => {
+    if (!inst) { msg.textContent = '找不到母星实例。'; return; }
+    let repaired = 0, spent = 0, anyFail = '';
+    for (const f of listFleets(acc)) {
+      const r = repairFleet(acc, f.id, {
+        dock: buildingCount(inst, 'dock') > 0,
+        have: (m) => ownedOf(inst, m),
+        pay: (m, n) => spendOwned(inst, m, n),
+      });
+      if (r.ok) { repaired += r.repaired; spent += r.cost; }
+      else if (r.reason && r.reason.indexOf('完好') < 0) anyFail = anyFail || r.reason;
+    }
+    msg.textContent = repaired
+      ? '已修复 ' + repaired + ' 艘舰船，消耗钢 ' + spent + '。'
+      : (anyFail || '所有舰船都完好，无需维修。');
+    if (repaired && typeof refresh === 'function') refresh();
+  });
+  actions.appendChild(fix);
+  body.appendChild(actions);
+  body.appendChild(msg);
+
+  // ---- 最近的会战 ----
+  if (v.log.length) {
+    const log = el('div', 'hoi-fleet-log');
+    log.appendChild(el('div', { class: 'hoi-note', text: '最近会战：' }));
+    for (const L of v.log) {
+      log.appendChild(el('div', { class: L.win ? 'win' : 'lose', text: '· ' + (L.text || '') }));
+    }
+    body.appendChild(log);
+  }
+
+  sec.appendChild(body);
+  return sec;
+}
+
+/** 会战结果：一回合一行，把「为什么输」写清楚（命中率 / 剩余结构） */
+function showFleetResult(ctx, r) {
+  const lines = [];
+  lines.push(r.summary);
+  lines.push('');
+  for (const x of r.rounds) {
+    lines.push('回合 ' + x.round + '：我方命中 ' + Math.round(x.ourAcc * 100) + '% / 敌方 '
+      + Math.round(x.foeAcc * 100) + '%　造成 ' + fmtNum(x.dmgToFoe) + ' / 承受 ' + fmtNum(x.dmgToUs)
+      + '　存活 ' + x.ourAlive + ' : ' + x.foeAlive
+      + '　结构 ' + Math.round(x.ourHull * 100) + '% : ' + Math.round(x.foeHull * 100) + '%');
+  }
+  if (r.sunkNames && r.sunkNames.length) lines.push('');
+  if (r.sunkNames && r.sunkNames.length) lines.push('损失舰船：' + r.sunkNames.join('、'));
+  if (r.ourRetreat) lines.push('我方因战损过大主动撤出战斗。');
+  if (r.foeRetreat) lines.push('敌方编队溃退，我方掌握轨道主动。');
+  const text = lines.join('\n');
+
+  if (ctx && typeof ctx.openModal === 'function') {
+    ctx.openModal({
+      title: r.win ? '舰队会战 · 胜利' : '舰队会战 · 失利',
+      body: '<pre class="detail-desc" style="white-space:pre-wrap;line-height:1.8;margin:0">'
+        + text.replace(/[<>&]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' }[c])) + '</pre>',
+    });
+  } else if (typeof window !== 'undefined' && window.alert) {
+    window.alert(text);
+  }
+}
+
 export function renderHoi(root, ctx) {
   const acc = currentAccount();
   // v0.3.4：战线操作（开辟/撤出/结束）后立刻重绘，不必等下一秒的定时器
@@ -1297,6 +1479,9 @@ export function renderHoi(root, ctx) {
       // ===== v0.3.4：战线（真实交战）=====
       body.appendChild(buildBattleSection(acc, w, refresh, ctx));
 
+      // ===== v0.4.24：舰队会战（先夺轨道，再打地面）=====
+      body.appendChild(buildFleetWarSection(acc, w, refresh, ctx));
+
       const logs = Array.isArray(w.log) ? w.log.slice(0, 3) : [];
       if (logs.length) {
         const lg = el('div', { style: 'flex:1 1 100%;' });
@@ -1384,6 +1569,8 @@ export function renderHoi(root, ctx) {
   //   与实际不符的话（战区地图现在对所有剧本开放）。
   panel.appendChild(el('p', 'hoi-note', isHoi
     ? '说明：本页为官方 mod「1936 剧本」专属。交战采用钢铁雄心式多回合结算（编队宽度 3、组织度耗尽撤退）；'
+      + '**舰队会战**按舰船实际火力/装甲/结构/机动打最多 8 回合，胜负会累加战争分数并修正轨道控制实力'
+      + '（每胜一场 +0.10，上限 ±0.30），被击沉的舰船永久损失、受损的船需回船坞修；同一条约 60 秒只能打一场。'
       + '轨道战按舰队实力与真实海军规模换算（含舰队传统加成）；国策按游戏天数推进，'
       + '同支国策需按序解锁，外交线两策互斥。'
       + '战争严格按历史时间表推进：只有踩到对应史实节点才可宣战，AI 也只在节点日开战；'
@@ -1393,6 +1580,8 @@ export function renderHoi(root, ctx) {
     : '说明：行星战区地图与战争结算对所有剧本开放。交战采用钢铁雄心式多回合结算'
       + '（编队宽度 3、组织度耗尽撤退）；补给只在我方连片战区内流通，'
       + '断供或失守会大幅压低该战区产出。'
+      + '**舰队会战**同样可用：勾选编队发起会战，击沉敌舰、累积战争分数，并修正轨道控制实力'
+      + '（胜负各 ±0.10，上限 ±0.30）—— 先夺轨道再打地面，补给会更宽裕。'
       + '「国策」与「轨道圈层」为「风暴前夜」剧本专属，本页不显示。'
       + '另外：「星球管理 → 战时总动员」在全存档可用（产出 +30%、幸福度下滑）。'));
 

@@ -28,17 +28,17 @@
 // 约定：不 import state.js（账号对象由调用方传入），与 army.js 同构。
 // ============================================================================
 
-import { armyById, armyEffStats, armyPowerOf } from './army.js?v=63.14';
-import { fleetPowerOf } from './fleet.js?v=63.14';   // v0.4.0：空间舰队实力 → 轨道控制
-import { HOI_BY_ID } from '../data/hoi1936.js?v=63.14';
+import { armyById, armyEffStats, armyPowerOf } from './army.js?v=64.15';
+import { fleetPowerOf } from './fleet.js?v=64.15';   // v0.4.0：空间舰队实力 → 轨道控制
+import { HOI_BY_ID } from '../data/hoi1936.js?v=64.15';
 // v0.4.1：行星战区地图 —— 战斗「在哪打」、打赢后归谁、补给通不通
 import {
   ensureTheater, regionById, regionSupplyOf, refreshSupply, captureRegion,
   applyColonyProgress, decayStrikePressure, GARRISON_MAX,
   frontInfoOf, canOpenFront, REGION_MAX_FRONTS, SIEGE_REQUIRED,
-} from './theater.js?v=63.14';
+} from './theater.js?v=64.15';
 // 迫降线（与 core/war.js 同源常量；此处只读，避免反向依赖 war.js）
-import { WAR_FORCE_SURRENDER_SCORE } from './war.js?v=63.14';
+import { WAR_FORCE_SURRENDER_SCORE, NAVY_TO_SHIP_POWER, navalEdgeOf } from './war.js?v=64.15';
 // 注意：**不 import core/hoi1936.js** —— 它要 import 本模块来驱动敌方进攻，
 //   这里再反向 import 就成了循环依赖。战役时钟用本文件自己的 BATTLE_HOURS_PER_SEC。
 
@@ -59,7 +59,8 @@ export const XP_ATK_PER_HOUR = 1.5;         // 参战每小时获得的经验
 export const EQUIP_LOSS_PER_HOUR = 0.022;    // 补给不足时每小时掉多少装备率
 export const EQUIP_RECOVER_PER_HOUR = 0.012; // 补给恢复时每小时补回多少
 // v0.4.0 太空化：敌方「海军」基准值 → 折算空间舰队战力
-export const FLEET_POWER_PER_NAVY = 12;
+// v0.4.24：常量已提到 war.js（NAVY_TO_SHIP_POWER），这里保留同名导出供既有调用方使用。
+export const FLEET_POWER_PER_NAVY = NAVY_TO_SHIP_POWER;
 // v0.4.0 **轨道轰炸**（太空专属）：控制轨道后可直接从天上打地面
 export const ORBITAL_BOMB_MIN_CONTROL = 0.60; // 发起轨道轰炸所需的最低轨道控制度
 export const ORBITAL_BOMB_CHARGES = 4;         // 每场战役初始轰炸次数
@@ -196,7 +197,11 @@ export function seaControlOf(acc) {
   return n ? s / n : 0.5;
 }
 
-/** v0.4.0：空间舰队实力比（0~1）—— 玩家舰队 vs 敌方基准舰队 */
+/** v0.4.0：空间舰队实力比（0~1）—— 玩家舰队 vs 敌方基准舰队
+ *  v0.4.24：叠加**舰队会战的战果修正**（navalEdge，−0.3~+0.3）。
+ *   此前这里的分子只算玩家自己的舰队总战力，敌方永远是史实静态值 ——
+ *   于是无论打多少次会战，轨道控制都不会变，舰队会战等于白打。
+ *   现在每赢一场会战 +0.1（上限 +0.3），每输一场 −0.1，直接改变这个比值。 */
 export function fleetSuperiorityOf(acc, targetId) {
   let mine = 0;
   try {
@@ -208,8 +213,8 @@ export function fleetSuperiorityOf(acc, targetId) {
   const n = HOI_BY_ID[String(targetId || '').replace(/^hoi_/, '')];
   const foe = n ? Math.max(0, Number(n.navy) || 0) * FLEET_POWER_PER_NAVY : 0;
   const sum = mine + foe;
-  if (!(sum > 0)) return 0.5;
-  return clamp(mine / sum, 0, 1);
+  const base = sum > 0 ? clamp(mine / sum, 0, 1) : 0.5;
+  return clamp(base + navalEdgeOf(acc, targetId) * 0.5, 0, 1);
 }
 
 /** v0.4.0：**轨道控制**（制海权的太空化）= 圈层控制 × 舰队增益。
@@ -227,7 +232,7 @@ export function orbitalControlOf(acc, targetId) {
 // v0.4.7：确定性随机与 clamp 已收敛到 core/util.js（唯一实现）。
 // 本文件继续 re-export，外部调用方（自检脚本等）无需改动。
 // 实测 hash32 / mulberry32 与原实现逐位一致，收敛零回归。
-import { mulberry32, hash32, clamp } from './util.js?v=63.14';
+import { mulberry32, hash32, clamp } from './util.js?v=64.15';
 let _seq = 0;
 function newId() {
   _seq = (_seq + 1) % 1000000;

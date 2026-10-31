@@ -13,29 +13,29 @@
 // 3. **新增人数输入栏**：每行都有 −/输入框/＋/满员，方便大规模分配（人数很多时不用点几百次）。
 // 4. 顶部营养区改为 3 消耗（氧气/有机质/水）+ 3 产出（二氧化碳/甲烷/氨气）。
 
-import { fmtNum, fmtRate } from '../core/format.js?v=63.14';
-import { BUILDINGS, BUILDING_BY_ID } from '../data/buildings.js?v=63.14';
+import { fmtNum, fmtRate } from '../core/format.js?v=64.15';
+import { BUILDINGS, BUILDING_BY_ID } from '../data/buildings.js?v=64.15';
 import {
   createPopulation, assignWorkers, setJobIntensity, getIntensity,
   getTotalLabor, getAssigned, getAvailable, consumptionPerSec, metabolitePerSec,
   JOBS, JOBS_BY_BUILDING, WORK_INTENSITY,
   assignedToBuilding, freeSlots, jobCapacity, hiddenJobCount, getJobCount,
   MANAGE_MODES, manageModeOf,
-} from '../core/population.js?v=63.14';
-import { getBuildingCounts, currentAccount } from '../core/state.js?v=63.14';
-import { ARMY_BP_BY_ID } from '../data/army_parts.js?v=63.14';   // v0.2.0 军队组装线命名
+} from '../core/population.js?v=64.15';
+import { getBuildingCounts, currentAccount, popCapOf, totalShelter } from '../core/state.js?v=64.15';
+import { ARMY_BP_BY_ID } from '../data/army_parts.js?v=64.15';   // v0.2.0 军队组装线命名
 // v0.1.1（需求 20）：殖民管理模式——判断本星球是否由电脑接管发展
-import { modeOf } from '../core/planetgen.js?v=63.14';
+import { modeOf } from '../core/planetgen.js?v=64.15';
 // v0.2.3（需求）：殖民地报告历史已从人力页移除 —— 报告只在「星球选择 / 星际」的
 //   每颗星球行内联展示（colony.js），不再在人力页保留历史副本。
 // v0.0.7：生产线接口（核心模块正在实现中）。用命名空间导入 + 函数存在性守卫，
 //   若接口尚未落地（addLine 等不是函数），本文件不会报错，也不渲染生产线区块。
-import * as PR from '../core/production.js?v=63.14';
+import * as PR from '../core/production.js?v=64.15';
 // v0.4.6 需求 12：自定义化工厂（定义合金）的界面 —— 此前 UI 层完全没有这个入口
-import { renderAlloyForge } from './alloy.js?v=63.14';
+import { renderAlloyForge } from './alloy.js?v=64.15';
 // v0.4.7：el() 收敛到 ui/common.js（此前本文件自带一份；全项目共 14 份、两种不兼容签名，
 //   v0.3.2「列强区块不显示」即源于把 A 型调用写进了 B 型文件）
-import { el, ensureStyle, uiTick } from './common.js?v=63.14';
+import { el, ensureStyle, uiTick } from './common.js?v=64.15';
 
 // 取/建星球上的人口对象（挂在 planet.pop，首次访问惰性创建）
 function ensurePop(planet) {
@@ -149,10 +149,19 @@ export function renderPopulation(root, planet) {
   }
 
   // ---- 顶部四个数字 ----
+  // v0.4.24：总人数改为「总人数 / 居住容量」—— 人口现在有硬上限，
+  //   玩家必须能一眼看到「还能不能涨、涨到多少要补房子」。
+  const popNow = Math.floor(pop.total);
+  const popCap = popCapOf(planet);
+  const popFree = Math.max(0, popCap - popNow);
+  const fullHouse = popNow >= popCap;
   panel.appendChild(el('div', { class: 'pop-stats' }, [
     el('div', { class: 'pop-stat' }, [
-      el('div', { class: 'lbl', text: '总人数' }),
-      el('div', { class: 'val', text: fmtNum(Math.floor(pop.total)) }),
+      el('div', { class: 'lbl', text: '总人数 / 居住容量' }),
+      el('div', { class: 'val', text: fmtNum(popNow) + ' / ' + fmtNum(popCap) }),
+      el('div', { class: 'lbl' + (fullHouse ? ' neg' : ''),
+        style: fullHouse ? 'color:#f09595' : '',
+        text: fullHouse ? '已满员：再建房屋才能继续增长' : '剩余 ' + fmtNum(popFree) + ' 个床位' }),
     ]),
     el('div', { class: 'pop-stat' }, [
       el('div', { class: 'lbl', text: '总人力' }),
@@ -167,6 +176,11 @@ export function renderPopulation(root, planet) {
       el('div', { class: 'val', style: `color:${happinessColor(pop.happiness)}`, text: Math.round(pop.happiness * 100) + '%' }),
     ]),
   ]));
+  // 容量口径说明：一句就够，但必须写清「1.2 倍超员」与「基础营地 20 人」
+  panel.appendChild(el('div', { class: 'pop-hint',
+    text: '居住容量 = 庇护总量 ' + fmtNum(totalShelter(planet)) + ' × 1.2（允许超员 20%，至少 20 人的基础营地）'
+      + ' —— 每栋房屋提供 40 点庇护。人口到达容量后停止增长（不会强制削减现有人口），'
+      + '想继续扩张就得先建房屋；容纳不足时幸福度照样会被庇护项拉低。' }));
 
   // v0.1.1（需求 20）：托管殖民地提示——电脑每 30 秒重排人力与生产线
   if (isManagedColony(planet)) {

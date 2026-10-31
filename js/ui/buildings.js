@@ -16,17 +16,18 @@
 // 与人力系统的关系：
 //   建筑提供工位 → 人力面板按建筑分组分配人 → 分配了「建筑工」才有人施工（硬门槛）。
 
-import { BUILDINGS, BUILDING_BY_ID, CATEGORIES} from '../data/buildings.js?v=63.14';
-import { fmtNum, fmtTime, fmtRateBody } from '../core/format.js?v=63.14';
+import { BUILDINGS, BUILDING_BY_ID, CATEGORIES} from '../data/buildings.js?v=64.15';
+import { fmtNum, fmtTime, fmtRateBody } from '../core/format.js?v=64.15';
 import {
   getBuildingCounts, buildingCount, costOfNext, isBuildingUnlocked,
   startBuild, cancelBuild, buildQueueOf, BUILD_QUEUE_MAX, currentAccount,
-} from '../core/state.js?v=63.14';
-import { buildingSlots, assignedToBuilding, freeSlots } from '../core/population.js?v=63.14';
-import { buildRateOf, buildBlockReason } from '../core/construction.js?v=63.14';
+  buildingPrereqMissing, buildingPrereqLabel,   // v0.4.24：建筑前置
+} from '../core/state.js?v=64.15';
+import { buildingSlots, assignedToBuilding, freeSlots } from '../core/population.js?v=64.15';
+import { buildRateOf, buildBlockReason } from '../core/construction.js?v=64.15';
 // v0.4.7：el() 收敛到 ui/common.js（此前本文件自带一份；全项目共 14 份、两种不兼容签名，
 //   v0.3.2「列强区块不显示」即源于把 A 型调用写进了 B 型文件）
-import { el, ensureStyle, uiTick } from './common.js?v=63.14';
+import { el, ensureStyle, uiTick } from './common.js?v=64.15';
 
 const CSS = `
   .bld-panel { font-family: system-ui, sans-serif; color: #e8eef2; padding: 12px; box-sizing: border-box; }
@@ -51,6 +52,7 @@ const CSS = `
   .bld-row .b-name { font-weight: 600; }
   .bld-row .b-name .own { color: #9FE1CB; margin-left: 6px; font-size: 12px; }
   .bld-row .b-desc { font-size: 11px; opacity: .6; line-height: 1.45; }
+  .bld-row .b-lack { font-size: 12px; color: #f0c895; margin-top: 3px; }
   .bld-row .b-power { font-size: 12px; opacity: .85; margin-top: 2px; }
   .bld-row .b-power .out { color: #9FE1CB; }
   .bld-row .b-power .draw { color: #f0c895; }
@@ -153,6 +155,9 @@ export function renderBuildings(root, ctx) {
       const slots = buildingSlots(b.id, counts);
       const assigned = assignedToBuilding(pop, b.id);
       const free = freeSlots(pop, b.id, counts);
+      // v0.4.24：建筑前置（科技已研究但前置建筑还没造出来）
+      const lackId = buildingPrereqMissing(b.id);
+      const lackLabel = lackId ? buildingPrereqLabel(b.id) : '';
 
       const main = el('div', { class: 'b-main' });
       main.appendChild(el('div', { class: 'b-name' }, [
@@ -160,6 +165,10 @@ export function renderBuildings(root, ctx) {
         n > 0 ? el('span', { class: 'own', text: '已有 ' + fmtNum(n) + ' 座' }) : null,
       ]));
       main.appendChild(el('div', { class: 'b-desc', text: b.desc || '' }));
+      // 前置缺失时给一条显眼提示（按钮也会禁用，但先说清原因）
+      if (lackId) {
+        main.appendChild(el('div', { class: 'b-lack', text: '需先建成「' + lackLabel + '」（帝国内任一星球已建成即可）' }));
+      }
       // 发电 / 耗电 静态信息（文案不带单位，见 v0.0.7 去单位约定）
       if (b.powerOut > 0 || b.powerDraw > 0) {
         const parts = [];
@@ -183,8 +192,9 @@ export function renderBuildings(root, ctx) {
       const costBox = el('div', { class: 'b-cost', text: '造价 ' + costText(cost) });
 
       const btn = el('button', { class: 'build', text: n > 0 ? '再建一座' : '建造' });
-      const disabled = rate <= 0 || queue.length >= BUILD_QUEUE_MAX;
+      const disabled = rate <= 0 || queue.length >= BUILD_QUEUE_MAX || !!lackId;
       if (disabled) btn.setAttribute('disabled', 'disabled');
+      if (lackId) btn.title = '需先建成「' + lackLabel + '」';
       btn.addEventListener('click', () => {
         const res = startBuild(planet, b.id, account);
         if (!res.ok) {

@@ -18,6 +18,47 @@ export const WAR_MAX_ACTIVE = 4;               // 同时进行的战争上限（
 export const TREATY_REPARATION_RATE = 0.35;    // 赔款 = 战败方国库 × 35%
 const WARLOG_CAP = 60;
 
+// ============================================================================
+// 舰队会战的海军系数（v0.4.24）
+// ============================================================================
+// 这两个常量放在 war.js 而不是 battle.js / fleetwar.js，是为了**避免模块环**：
+//   battle.js 已经 import 了 fleet.js，fleet.js 又 import state.js，state.js 再 import battle.js
+//   （既有环，靠「只在函数体内使用」跑得通）。舰队会战判定（fleetwar.js）要用同一个换算系数，
+//   若它去 import battle.js，就会再多绕一圈。war.js 是零依赖叶子模块，放这里最稳。
+export const NAVY_TO_SHIP_POWER = 12;   // 1 单位「史实海军」折合 12 点舰队战力（battle.js 也用它）
+export const FLEET_EDGE_MAX = 0.3;      // 舰队会战对轨道控制实力的最大修正幅度
+
+/** 确保账号上有舰队会战附加数据（老存档自动迁移） */
+export function ensureNaval(acc) {
+  if (!acc) return { edge: {}, log: [] };
+  if (!acc.fleetEdge || typeof acc.fleetEdge !== 'object' || Array.isArray(acc.fleetEdge)) {
+    acc.fleetEdge = {};
+  }
+  if (!Array.isArray(acc.fleetLog)) acc.fleetLog = [];
+  return { edge: acc.fleetEdge, log: acc.fleetLog };
+}
+
+/** 对某势力的舰队会战优势（−0.3 ~ +0.3）：胜仗加分、败仗扣分，影响轨道控制 */
+export function navalEdgeOf(acc, targetId) {
+  const key = String(targetId || '');
+  if (!key) return 0;
+  const nav = ensureNaval(acc);
+  const v = Number(nav.edge[key]);
+  if (!Number.isFinite(v)) return 0;
+  return Math.max(-FLEET_EDGE_MAX, Math.min(FLEET_EDGE_MAX, v));
+}
+
+/** 累加舰队会战优势（会战结束后调用）；返回加完之后的值 */
+export function addNavalEdge(acc, targetId, delta) {
+  const key = String(targetId || '');
+  if (!key) return 0;
+  const nav = ensureNaval(acc);
+  const cur = navalEdgeOf(acc, key);
+  const next = Math.max(-FLEET_EDGE_MAX, Math.min(FLEET_EDGE_MAX, cur + (Number(delta) || 0)));
+  nav.edge[key] = next;
+  return next;
+}
+
 export function ensureWars(acc) {
   if (!acc) return [];
   if (!Array.isArray(acc.wars)) acc.wars = [];

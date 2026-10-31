@@ -33,8 +33,8 @@
 // 人口变化：H > 0.5 增长、H < 0.3 下降，否则持平。
 // 各项系数都在下方常量区，改一个数就能调平衡。
 
-import { BUILDING_BY_ID } from '../data/buildings.js?v=63.14';
-import { clamp } from './util.js?v=63.14';
+import { BUILDING_BY_ID } from '../data/buildings.js?v=64.15';
+import { clamp } from './util.js?v=64.15';
 
 // ============================================================================
 // 可调常量（集中放这里，方便策划调参）
@@ -157,6 +157,65 @@ export const SHELTER_BONUS_MAX = 0.5;   // 人口增速最多 +50%
 export function shelterGrowthBonus(ratio) {
   const r = Number(ratio) || 0;
   return 1 + Math.min(SHELTER_BONUS_MAX, Math.max(0, r - 1) * SHELTER_BONUS_MAX);
+}
+
+// ============================================================================
+// 人口硬上限（v0.4.24）
+// ============================================================================
+// 为什么需要它
+//   幸福度公式里「吃饱 0.35 + 基准 0.40 + 庇护 0.15」在供给充足时**恒为 0.75**，
+//   而生育率为 0 的临界点是 H = 0.5 —— 也就是说只要粮食不断，人口**永远涨**：
+//   庇护覆盖率 C 再低（1000 人的星球只有 1 栋房）也只把 H 拉到 0.75，仍在增长区间。
+//   实测长跑存档人口会一路顶到数百万，把采集/施工/产线全部拖成空转。
+//   所以必须有一道**硬上限**兜住，而不是指望软机制自己平衡。
+//
+// 口径（两条，缺一不可）
+//   ① 容量 = max(基础营地 20, 庇护总量 × 1.2)
+//      · 1.2 是允许的**超员比例**：庇护 200 的星球最多住 240 人。
+//        留出这 20% 是为了让「庇护覆盖率」软惩罚仍然有作用区间（100%~120%），
+//        而不是一住满就直接硬停，那样住房系统就只剩一个开关。
+//      · 基础营地 20 人是为了**殖民地不死锁**：新星球 0 人 0 房，
+//        若容量按「庇护 × 1.2」算就是 0，连移民都送不进去，
+//        而建房子又需要本地建筑工 —— 会形成永久死锁。20 人足够先把第一座房盖起来。
+//   ② 上限**只压制增长**，绝不削减现有人口
+//      · 老存档可能已经超员（旧版没有上限），不能一升级就凭空蒸发几百万人。
+//      · 饥荒 / 战争造成的减员也不受上限影响。
+export const POP_OVERCROWD_LIMIT = 1.2;   // 允许超员 20%
+export const POP_CAPACITY_FLOOR = 20;     // 基础营地容量（0 房也能落 20 人）
+
+/**
+ * 居住容量（硬上限）。
+ * @param {number} shelterTotal 庇护总量（Σ 建筑座数 × 每栋 shelter）
+ * @param {number} limit 超员系数，缺省 1.2
+ * @returns {number} 人口上限（整数）；非有限值按基础营地处理
+ */
+export function capOfShelter(shelterTotal, limit = POP_OVERCROWD_LIMIT) {
+  const s = Number(shelterTotal);
+  const k = Number.isFinite(Number(limit)) && Number(limit) > 0 ? Number(limit) : POP_OVERCROWD_LIMIT;
+  const cap = (Number.isFinite(s) && s > 0 ? s : 0) * k;
+  return Math.max(POP_CAPACITY_FLOOR, Math.floor(cap));
+}
+
+/**
+ * 把「本拍算出的人口」夹到硬上限内。
+ *
+ * 三个分支必须分清：
+ *   · 下降（next ≤ prev）→ 原样返回（减员不能被上限拦住）
+ *   · 已超员（prev ≥ cap）→ 返回 prev（不涨也不砍，等玩家补房子或等减员）
+ *   · 正常增长 → 返回 min(next, cap)
+ *
+ * @param {number} prev 本拍开始前的人口
+ * @param {number} next 本拍算完的人口
+ * @param {number} cap 上限（<=0 / 非有限 → 视为无上限）
+ */
+export function applyPopulationCap(prev, next, cap) {
+  const p = Math.max(0, Number(prev) || 0);
+  const n = Math.max(0, Number(next) || 0);
+  const c = Number(cap);
+  if (!Number.isFinite(c) || c <= 0) return n;
+  if (n <= p) return n;                 // 减员不受上限影响
+  if (p >= c) return p;                 // 已经超员：停涨，但不强制削减
+  return Math.min(n, c);
 }
 // ============================================================================
 // 工作强度 5 档
@@ -626,10 +685,15 @@ export function tickPopulation(pop, dt, supply, opts = {}) {
 
   const f = (pop.happiness - NEUTRAL_HAPPINESS) / (1 - NEUTRAL_HAPPINESS);
   // v0.2.11：管理模式放大增长（仅 f ≥ 0；衰减不受影响）
+  // v0.4.24：增长算完后夹到**居住容量**（opts.popCap）。不传则不限（1936 剧本）。
+  const prevTotal = pop.total;
   pop.total += pop.total * (f >= 0 ? f * GROWTH_RATE * growthBonus * mm.growthMul : f * DECLINE_RATE) * dt;
   pop.total = Math.max(0, pop.total);
+  pop.total = applyPopulationCap(prevTotal, pop.total, opts.popCap);
+  const capped = Number.isFinite(Number(opts.popCap)) && Number(opts.popCap) > 0
+    && pop.total >= Number(opts.popCap) - 1e-9;
 
-  return { ratio, consumed, produced };
+  return { ratio, consumed, produced, capped, cap: Number.isFinite(Number(opts.popCap)) ? Number(opts.popCap) : 0 };
 }
 
 // 某职业当前的有效产出系数 = 人数 × 强度产出倍率（未分配人 → 0）
