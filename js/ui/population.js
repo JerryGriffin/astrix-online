@@ -143,7 +143,9 @@ export function renderPopulation(root, planet) {
       line.appendChild(el('b', { text: m.icon + ' ' + m.nameCn }));
       // v0.4.25：desc 里的 **强调** 要渲染成粗体，此前是字面星号
       const tail = (m.id === cur.id ? '　◀ 当前' : '');
-      line.insertAdjacentHTML('beforeend', '　' + mdInline(m.desc) + esc(tail));
+      // 用 appendChild(el(...)) 而不是 insertAdjacentHTML：渲染层统一走 el()，
+      // 也避免自检用的轻量 DOM 桩缺少 insertAdjacentHTML 时整个人力面板加载失败。
+      line.appendChild(el('span', { html: '　' + mdInline(m.desc) + esc(tail) }));
       list.appendChild(line);
     }
     box.appendChild(list);

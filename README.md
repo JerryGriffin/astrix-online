@@ -20,6 +20,7 @@ python -m http.server 8080
 
 - 版本号唯一来源：`js/version.js`（对外 VERSION 与缓存击穿 REVISION/CACHE_TAG 分离）。
 - 所有模块引用带 `?v=` 串；改代码后运行 `node docs/bump_imports.mjs` 统一补串。
+- 提交前跑 `npm run check:logic`（不需要 `npm ci`）。CI 模板在 `docs/ci_check.yml`，启用方式见文件头。
 
 ## 目录结构
 

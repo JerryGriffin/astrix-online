@@ -1,19 +1,20 @@
-# CI 回归任务（v0.4.22）
+# CI 回归任务
 #
-# 为什么放在 docs/ 而不是 .github/workflows/
-#   本仓库当前使用的 GitHub 令牌 scope 为 gist / read:org / repo，**没有 workflow**。
-#   GitHub 会直接拒绝任何新增 .github/workflows/* 的推送（git push 与 Git Data API 两条路
-#   都会被挡），进而把整次发版卡住 —— 所以这里先以「可复制模板」的形式入库。
-#
-# 启用方式（获得带 workflow scope 的令牌后，二选一）：
-#   git mv docs/ci_check.yml .github/workflows/check.yml && git commit && git push
-#   或在网页端新建 .github/workflows/check.yml 并粘贴本文件内容。
-#
-# 覆盖范围说明：
+# 覆盖范围：
 #   * 只跑「不依赖浏览器」的部分 —— 13 套自检里的 v048 / v049 / smoke_browser 需要
 #     playwright-core + 本机 Edge/Chromium，放在 CI 上要额外装浏览器，成本高于收益；
 #   * 逻辑自检里的 selfcheck_v047 已包含「版本号 / CACHE_TAG / 全库 ?v= 自洽」断言，
 #     所以「发版忘记跑 bump_imports」这类事故在 CI 上会被直接拦下。
+#
+# 本地等价命令：npm run check:logic
+#
+# 为什么还在 docs/：当前 gh 登录令牌 scope 是 gist / read:org / repo，
+# 另一个 fine-grained PAT 没有 Workflows 权限；GitHub 会拒绝任何
+# .github/workflows/* 的写入（git push 与 Git Data API 都会被挡）。
+# 启用（需要带 workflow scope 的令牌）：
+#   gh auth refresh -s workflow
+#   git mv docs/ci_check.yml .github/workflows/check.yml
+#   git commit -m "ci: enable check" && git push
 
 name: check
 
@@ -43,5 +44,5 @@ jobs:
           exit $fail
 
       # 逻辑自检不依赖 playwright-core（渲染类用自制 DOM 桩），无需 npm ci
-      - name: 逻辑自检（10 套）
+      - name: 逻辑自检（13 套）
         run: npm run check:logic
